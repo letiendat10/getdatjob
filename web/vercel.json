@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/warmup-jobs",
-      "schedule": "*/5 * * * *"
+      "schedule": "55 14 * * *"
     }
   ]
 }

@@ -11,13 +11,18 @@
 // and `User-Agent: vercel-cron/1.0`. We require CRON_SECRET to match so the
 // endpoint isn't a free DoS amplifier for randos discovering it.
 //
-// Combos hit (chosen for traffic share + CDN-key independence):
-//   1. Default landing query — every visitor's first paint
-//   2. location=Remote — second-most-popular landing filter
-//   3. location=New York City — third-most-popular landing filter
-// Each combo gets its own CDN cache entry, so warming one doesn't warm another.
-// We refresh CDN simultaneously (each ping is itself a CDN-cached response with
-// stale-while-revalidate=120, so the revalidation happens in the background).
+// Combos hit — chosen for traffic share + CDN-key independence.
+// Each combo gets its own CDN cache entry; warming one doesn't warm another.
+// Priority order: highest-traffic first so even a partial run covers the most users.
+//
+//  1. Default landing  — every visitor's first paint
+//  2. Remote           — most-popular location filter
+//  3. NYC              — top metro
+//  4. SF Bay Area      — top tech hub
+//  5. Seattle          — Amazon/Microsoft corridor
+//  6. Engineering dept — largest job category
+//  7. Data dept        — second-largest
+//  8. AI / ML dept     — fastest-growing, high engagement
 
 import { NextRequest } from "next/server";
 
@@ -28,12 +33,17 @@ const BASE =
       ? `https://${process.env.VERCEL_URL}`
       : "https://getdatjob.vercel.app";
 
-const COMMON = "posted=7d&sort=recent&page=0&signal=all&visa=H1B&department=all&level=all";
+const COMMON = "posted=7d&sort=recent&page=0&signal=all&visa=H1B";
 
 const WARMUP_COMBOS = [
-  `q=&location=all&${COMMON}`,
-  `q=&location=Remote&${COMMON}`,
-  `q=&location=New%20York%20City&${COMMON}`,
+  `q=&location=all&${COMMON}&department=all&level=all`,
+  `q=&location=Remote&${COMMON}&department=all&level=all`,
+  `q=&location=New%20York%20City&${COMMON}&department=all&level=all`,
+  `q=&location=San%20Francisco%20Bay%20Area&${COMMON}&department=all&level=all`,
+  `q=&location=Seattle%2C%20WA&${COMMON}&department=all&level=all`,
+  `q=&location=all&${COMMON}&department=Engineering&level=all`,
+  `q=&location=all&${COMMON}&department=Data&level=all`,
+  `q=&location=all&${COMMON}&department=AI+%2F+ML&level=all`,
 ];
 
 export async function GET(req: NextRequest) {

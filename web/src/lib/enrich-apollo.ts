@@ -10,6 +10,7 @@ import { createSupabaseAdmin } from "./supabase-admin";
 
 const PDL_URL    = "https://api.peopledatalabs.com/v5/person/enrich";
 const APOLLO_URL = "https://api.apollo.io/api/v1/people/match";
+const GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1";
 
 // ── Shared mappings ───────────────────────────────────────────────────────────
 
@@ -117,6 +118,44 @@ async function tryPDL(
   }
 }
 
+// ── Google Custom Search (LinkedIn URL discovery) ─────────────────────────────
+
+async function tryGoogleCSE(
+  fullName: string,
+  country:  string | null,
+): Promise<string | null> {
+  const apiKey = process.env.GOOGLE_CSE_API_KEY;
+  const cseId  = process.env.GOOGLE_CSE_ID;
+  if (!apiKey || !cseId) return null;
+
+  const q = country
+    ? `site:linkedin.com/in "${fullName}" ${country}`
+    : `site:linkedin.com/in "${fullName}"`;
+
+  try {
+    const res = await fetch(
+      `${GOOGLE_CSE_URL}?key=${apiKey}&cx=${cseId}&q=${encodeURIComponent(q)}&num=1`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`[google-cse] ${res.status}: ${body.slice(0, 300)}`);
+      return null;
+    }
+
+    const data = await res.json() as { items?: { link: string }[] };
+    const link = data.items?.[0]?.link ?? null;
+    if (!link?.includes("linkedin.com/in/")) return null;
+
+    console.log(`[google-cse] resolved linkedin url: ${link}`);
+    return link;
+  } catch (err) {
+    console.error("[google-cse] fetch error:", err);
+    return null;
+  }
+}
+
 // ── Apollo.io ─────────────────────────────────────────────────────────────────
 
 async function tryApollo(
@@ -192,12 +231,30 @@ export async function enrichUser(
   firstName:   string | null,
   lastName:    string | null,
   linkedinUrl: string | null,
+  locale?:     string | null,
 ): Promise<void> {
   const supabase = createSupabaseAdmin();
 
+  // If no LinkedIn URL, try Google CSE to discover one from name + country
+  let resolvedUrl = linkedinUrl;
+  if (!resolvedUrl) {
+    const fullName = [firstName, lastName].filter(Boolean).join(" ");
+    if (fullName) {
+      const country = locale ? (locale.split("_")[1] ?? null) : null;
+      resolvedUrl = await tryGoogleCSE(fullName, country);
+      if (resolvedUrl) {
+        await supabase
+          .schema("linkedin")
+          .from("profiles")
+          .update({ linkedin_url: resolvedUrl })
+          .eq("id", userId);
+      }
+    }
+  }
+
   const result =
-    (await tryPDL(linkedinUrl, email, firstName, lastName)) ??
-    (await tryApollo(linkedinUrl, email, firstName, lastName));
+    (await tryPDL(resolvedUrl, email, firstName, lastName)) ??
+    (await tryApollo(resolvedUrl, email, firstName, lastName));
 
   if (result) {
     const { error } = await supabase.rpc("enrich_set_result", {

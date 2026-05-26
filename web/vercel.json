@@ -6,6 +6,14 @@
       "schedule": "55 14 * * *"
     },
     {
+      "path": "/api/cron/warmup-jobs",
+      "schedule": "55 19 * * *"
+    },
+    {
+      "path": "/api/cron/warmup-jobs",
+      "schedule": "55 23 * * *"
+    },
+    {
       "path": "/api/cron/re-enrich-failed",
       "schedule": "0 15 * * *"
     }

@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
   const firstName = (meta.given_name ?? null) as string | null;
   const lastName = (meta.family_name ?? null) as string | null;
   after(async () => {
-    await enrichUser(userId, email, firstName, lastName, linkedinUrl);
+    await enrichUser(userId, email, firstName, lastName, linkedinUrl, meta.locale ?? null);
   });
 
   return NextResponse.redirect(`${origin}/kai-first`);

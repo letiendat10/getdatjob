@@ -166,12 +166,18 @@ def check_bamboohr(slug: str) -> tuple[str | None, bool]:
 
 
 def check_workable(slug: str) -> tuple[str | None, bool]:
-    url = f"https://www.workable.com/api/accounts/{slug}"
+    # ?details=true returns the account's jobs list. Requiring jobs>0 avoids
+    # false positives on squatted/placeholder slugs (e.g. "microsoft", "test"
+    # return 200 with name populated but jobs:[]).
+    url = f"https://www.workable.com/api/accounts/{slug}?details=true"
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-        if r.status_code == 200 and "name" in r.json():
-            return r.json().get("name"), True
-        return None, False
+        if r.status_code != 200:
+            return None, False
+        data = r.json()
+        if not data.get("jobs"):
+            return None, False
+        return data.get("name"), True
     except Exception:
         return None, False
 

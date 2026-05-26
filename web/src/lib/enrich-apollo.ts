@@ -8,9 +8,9 @@
 
 import { createSupabaseAdmin } from "./supabase-admin";
 
-const PDL_URL    = "https://api.peopledatalabs.com/v5/person/enrich";
-const APOLLO_URL = "https://api.apollo.io/api/v1/people/match";
-const GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1";
+const PDL_URL     = "https://api.peopledatalabs.com/v5/person/enrich";
+const APOLLO_URL  = "https://api.apollo.io/api/v1/people/match";
+const SERP_API_URL = "https://serpapi.com/search";
 
 // ── Shared mappings ───────────────────────────────────────────────────────────
 
@@ -118,15 +118,14 @@ async function tryPDL(
   }
 }
 
-// ── Google Custom Search (LinkedIn URL discovery) ─────────────────────────────
+// ── SerpAPI (LinkedIn URL discovery via Google Search) ────────────────────────
 
-async function tryGoogleCSE(
+async function trySerpAPI(
   fullName: string,
   country:  string | null,
 ): Promise<string | null> {
-  const apiKey = process.env.GOOGLE_CSE_API_KEY;
-  const cseId  = process.env.GOOGLE_CSE_ID;
-  if (!apiKey || !cseId) return null;
+  const apiKey = process.env.SERP_API_KEY;
+  if (!apiKey) return null;
 
   const q = country
     ? `site:linkedin.com/in "${fullName}" ${country}`
@@ -134,24 +133,24 @@ async function tryGoogleCSE(
 
   try {
     const res = await fetch(
-      `${GOOGLE_CSE_URL}?key=${apiKey}&cx=${cseId}&q=${encodeURIComponent(q)}&num=1`,
-      { signal: AbortSignal.timeout(5000) },
+      `${SERP_API_URL}?engine=google&q=${encodeURIComponent(q)}&num=1&api_key=${apiKey}`,
+      { signal: AbortSignal.timeout(8000) },
     );
 
     if (!res.ok) {
       const body = await res.text();
-      console.error(`[google-cse] ${res.status}: ${body.slice(0, 300)}`);
+      console.error(`[serp] ${res.status}: ${body.slice(0, 300)}`);
       return null;
     }
 
-    const data = await res.json() as { items?: { link: string }[] };
-    const link = data.items?.[0]?.link ?? null;
+    const data = await res.json() as { organic_results?: { link: string }[] };
+    const link = data.organic_results?.[0]?.link ?? null;
     if (!link?.includes("linkedin.com/in/")) return null;
 
-    console.log(`[google-cse] resolved linkedin url: ${link}`);
+    console.log(`[serp] resolved linkedin url: ${link}`);
     return link;
   } catch (err) {
-    console.error("[google-cse] fetch error:", err);
+    console.error("[serp] fetch error:", err);
     return null;
   }
 }
@@ -241,7 +240,7 @@ export async function enrichUser(
     const fullName = [firstName, lastName].filter(Boolean).join(" ");
     if (fullName) {
       const country = locale ? (locale.split("_")[1] ?? null) : null;
-      resolvedUrl = await tryGoogleCSE(fullName, country);
+      resolvedUrl = await trySerpAPI(fullName, country);
       if (resolvedUrl) {
         await supabase
           .schema("linkedin")

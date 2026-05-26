@@ -729,10 +729,14 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   const [loading, setLoading] = useState(!initialData);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // Meta (company list for dropdown)
+  // Meta (company list for dropdown + hero stats)
+  // P2: lazy-loaded — see loadMetaOnce() below. Fires on first filter-bar
+  // interaction OR via requestIdleCallback after first paint, whichever wins.
   const [allCompanies, setAllCompanies] = useState<string[]>([]);
   const [weekCount, setWeekCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [metaLoaded, setMetaLoaded] = useState(false);
+  const metaInflightRef = useRef(false);
 
   // Detail panel state
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
@@ -749,8 +753,26 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   // Skip the first client-side fetch when we already have SSR data for the default params
   const skipInitialFetchRef = useRef(!!initialData);
 
-  // Meta is loaded via /api/jobs/init on first mount (P2/P4).
-  // No separate meta fetch needed.
+  // P2: Lazy-load meta (companies list + hero stats).
+  // Called on first filter-bar pointerEnter/focus (user about to interact)
+  // OR via requestIdleCallback after first paint (backstop for users who
+  // never interact). Dedupes via metaInflightRef.
+  const loadMetaOnce = useCallback(() => {
+    if (metaInflightRef.current) return;
+    metaInflightRef.current = true;
+    fetch("/api/jobs/meta")
+      .then((r) => r.json())
+      .then((data) => {
+        setAllCompanies(data.companies ?? []);
+        setWeekCount(data.weekCount ?? 0);
+        setTotalCount(data.totalCount ?? 0);
+        setMetaLoaded(true);
+      })
+      .catch(() => {
+        // Allow retry on next interaction if the fetch failed.
+        metaInflightRef.current = false;
+      });
+  }, []);
 
   // Restore selected job from URL
   useEffect(() => {
@@ -780,8 +802,10 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // P4: First load uses /api/jobs/init (jobs + meta in one request).
-  // All subsequent calls use /api/jobs (meta already in state).
+  // P4/P2: First non-append load hits /api/jobs/init (jobs only — meta lazy-loads
+  // separately via loadMetaOnce). The init route exists as a stable CDN-cacheable
+  // URL that the layout's <link rel="preload"> can prime. Subsequent loads use
+  // /api/jobs directly.
   const useInitEndpointRef = useRef(true);
 
   // Main fetch: fires when filters change (page resets to 0)
@@ -803,25 +827,14 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
         level:      params.level,
       });
 
-      let rawJobs: JobRow[];
-      let total: number;
+      const useInit = useInitEndpointRef.current && !append;
+      if (useInit) useInitEndpointRef.current = false;
+      const url  = useInit ? `/api/jobs/init?${qs}` : `/api/jobs?${qs}`;
+      const data = await fetch(url).then((r) => r.json());
+      const rawJobs: JobRow[] = data.jobs;
+      const total: number     = data.total;
 
-      if (useInitEndpointRef.current && !append) {
-        // P4: first non-append load — use init endpoint for jobs + meta in one shot
-        useInitEndpointRef.current = false;
-        const data = await fetch(`/api/jobs/init?${qs}`).then((r) => r.json());
-        setAllCompanies(data.companies ?? []);
-        setWeekCount(data.weekCount ?? 0);
-        setTotalCount(data.totalCount ?? 0);
-        rawJobs = data.jobs;
-        total   = data.total;
-      } else {
-        const data = await fetch(`/api/jobs?${qs}`).then((r) => r.json());
-        rawJobs = data.jobs;
-        total   = data.total;
-      }
-
-      const normalized = (rawJobs as JobRow[]).map(toJobWithNorm);
+      const normalized = rawJobs.map(toJobWithNorm);
       setJobs((prev) => (append ? [...prev, ...normalized] : normalized));
       setTotal(total);
       setPage(pageNum);
@@ -878,6 +891,22 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
       autoSelectedRef.current = true;
     }
   }, [loading, jobs, selectedJobId]);
+
+  // P2: Backstop meta loader — once the first jobs payload has rendered, kick
+  // off meta during the browser's idle period. If the user hovers a filter
+  // chip first, that path wins (dedupe is in loadMetaOnce).
+  useEffect(() => {
+    if (loading || metaLoaded || metaInflightRef.current) return;
+    if (typeof window === "undefined") return;
+    const ric: typeof window.requestIdleCallback | undefined =
+      (window as any).requestIdleCallback;
+    if (ric) {
+      const handle = ric(() => loadMetaOnce(), { timeout: 2000 });
+      return () => (window as any).cancelIdleCallback?.(handle);
+    }
+    const t = setTimeout(loadMetaOnce, 400);
+    return () => clearTimeout(t);
+  }, [loading, metaLoaded, loadMetaOnce]);
 
   // Fetch job description when selected
   useEffect(() => {
@@ -951,10 +980,18 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   }, [selectedJobId]);
 
   const companyOptions = useMemo(() => {
+    // P2: while meta is loading, show a single disabled "Loading…" item so
+    // the dropdown doesn't appear empty if the user clicks it immediately.
+    if (!metaLoaded) {
+      return [
+        { label: "All companies", value: "" },
+        { label: "Loading companies…", value: "" },
+      ];
+    }
     const opts = allCompanies.map((raw) => ({ label: normalizeCompanyName(raw), value: raw }));
     opts.sort((a, b) => a.label.localeCompare(b.label));
     return [{ label: "All companies", value: "" }, ...opts];
-  }, [allCompanies]);
+  }, [allCompanies, metaLoaded]);
 
   const selectedJob = useMemo(
     () => (selectedJobId !== null ? (jobs.find((j) => j.id === selectedJobId) ?? null) : null),
@@ -1016,17 +1053,32 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
           <em className="italic font-bold">USCIS-verified</em>{" "}
           visa-sponsoring companies
         </h1>
-        <p className="text-base text-zinc-500 mt-2">
-          <span className="font-semibold text-zinc-700">{weekCount.toLocaleString()} new jobs this week</span>
-          {" · "}
-          <span className="font-semibold text-zinc-700">{totalCount.toLocaleString()} total jobs</span>
-          {" · "}
-          <span className="font-semibold text-zinc-700">{(companyOptions.length - 1).toLocaleString()} sponsoring companies</span>
+        <p className="text-base text-zinc-500 mt-2 min-h-[1.5rem]">
+          {/* P2: stats render once /api/jobs/meta resolves (lazy-loaded). Reserve a
+              line of height so there's no layout shift when the numbers arrive. */}
+          {metaLoaded ? (
+            <>
+              <span className="font-semibold text-zinc-700">{weekCount.toLocaleString()} new jobs this week</span>
+              {" · "}
+              <span className="font-semibold text-zinc-700">{totalCount.toLocaleString()} total jobs</span>
+              {" · "}
+              <span className="font-semibold text-zinc-700">{(companyOptions.length - 1).toLocaleString()} sponsoring companies</span>
+            </>
+          ) : (
+            <span className="text-zinc-300">Loading stats…</span>
+          )}
         </p>
       </div>
 
       {/* Filter chips */}
-      <div ref={filterBarRef} className="sticky top-14 z-40 bg-white border-y border-zinc-100 shadow-sm">
+      {/* P2: pointerEnter/focusCapture trigger lazy meta load (companies + stats).
+          Backstop is requestIdleCallback after first paint — see effect above. */}
+      <div
+        ref={filterBarRef}
+        onPointerEnter={loadMetaOnce}
+        onFocusCapture={loadMetaOnce}
+        className="sticky top-14 z-40 bg-white border-y border-zinc-100 shadow-sm"
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center gap-2 py-2.5 overflow-x-auto scrollbar-none">
           <FilterChip
             label="Company"

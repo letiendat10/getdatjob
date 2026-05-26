@@ -39,6 +39,10 @@ type UserProfile = {
   avatar: string | null;
 };
 
+type LinkedInProfile = {
+  headline: string | null;
+};
+
 type EnrichedProfile = {
   current_title: string | null;
   location: string | null;
@@ -48,12 +52,12 @@ type EnrichedProfile = {
 
 type OnboardingStep =
   | "init"
-  | "q1"
+  | "q1"          // intent
   | "q1_layoff_date"
-  | "q2"
-  | "q3"
-  | "q4"
-  | "q5"
+  | "q2"          // visa
+  | "q3"          // salary
+  | "q4"          // level (pre-confirm if headline available)
+  | "q5"          // location (PDL/Apollo pre-confirm or ask)
   | "scanning"
   | "batch1"
   | "email_optin"
@@ -527,6 +531,7 @@ export default function KaiFirstPage() {
   const [showSupport, setShowSupport] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [userLoading, setUserLoading] = useState(true);
+  const [linkedIn, setLinkedIn] = useState<LinkedInProfile | null>(null);
   const [enriched, setEnriched] = useState<EnrichedProfile | null>(null);
   const [timeGreeting, setTimeGreeting] = useState<{ headline: string; em: string } | null>(null);
 
@@ -564,7 +569,18 @@ export default function KaiFirstPage() {
           avatar: meta.avatar_url ?? meta.picture ?? null,
         });
 
-        // Fetch enriched profile — non-blocking, best-effort
+        // linkedin.profiles — populated synchronously in auth callback, always available
+        supabase
+          .schema("linkedin")
+          .from("profiles")
+          .select("headline")
+          .eq("id", data.user.id)
+          .maybeSingle()
+          .then(({ data: lp }) => {
+            if (lp?.headline) setLinkedIn({ headline: lp.headline });
+          });
+
+        // enriched.profiles — PDL/Apollo async enrichment, available on re-visits
         supabase
           .schema("enriched")
           .from("profiles")
@@ -596,12 +612,13 @@ export default function KaiFirstPage() {
     const firstName = user?.firstName ?? null;
 
     let greeting: string;
-    if (firstName && enriched?.current_title) {
-      greeting = `Hey ${firstName}! I'm Kai. I found your LinkedIn — you're a ${enriched.current_title}. I'm an AI on a working visa too, and I'm here to help you land your next role, visa-sponsored and fast.`;
+    const headline = linkedIn?.headline ?? enriched?.current_title ?? null;
+    if (firstName && headline) {
+      greeting = `Hey ${firstName}! I'm Kai. I see you're a ${headline}. I'm an AI on a working visa too, and I'm here to help you land your next visa-sponsored role.`;
     } else if (firstName) {
-      greeting = `Hey ${firstName}! I'm Kai. I'm an AI who is on a working visa too. I'm here to help you land your dream job — visa-sponsored and fast.`;
+      greeting = `Hey ${firstName}! I'm Kai. I'm an AI on a working visa too. I'm here to help you land your next visa-sponsored role.`;
     } else {
-      greeting = "Hey there! I'm Kai. I'm an AI who is on a working visa too. I'm here to help you land your dream job — visa-sponsored and fast.";
+      greeting = "Hey there! I'm Kai. I'm an AI on a working visa too. I'm here to help you land your next visa-sponsored role.";
     }
 
     (async () => {
@@ -620,7 +637,7 @@ export default function KaiFirstPage() {
       setStep("q1");
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userLoading, enriched]);
+  }, [userLoading, linkedIn, enriched]);
 
   // ── Tile click handler (drives the full onboarding state machine) ────────────
 
@@ -649,49 +666,21 @@ export default function KaiFirstPage() {
           : "Yeah, I feel you. That's basically life on a working visa. Aren't we all running a plan B in this economy?";
       setMessages((prev) => [...prev, { id: `k-f1`, role: "assistant", content: filler }]);
       await delay(900);
-      const q2Text = enriched?.location
-        ? `You're in ${enriched.location} — staying local, or open to remote and other cities too?`
-        : "Where are you based right now?";
+      // Q2 is now visa
       setMessages((prev) => [
         ...prev,
-        { id: "k-q2", role: "assistant", content: q2Text },
+        { id: "k-q2", role: "assistant", content: "To match you with the right sponsors — what visa are you working with?" },
       ]);
       setQuickReplies([
-        { label: "Bay Area / SF", value: "bay_area" },
-        { label: "NYC / East Coast", value: "nyc" },
-        { label: "Remote only", value: "remote" },
-        { label: "Open anywhere", value: "anywhere" },
+        { label: "H-1B",     value: "H-1B"   },
+        { label: "OPT",      value: "OPT"    },
+        { label: "E-3 / TN", value: "E-3/TN" },
+        { label: "Other",    value: "Other"  },
       ]);
       setStep("q2");
 
-    // Q2 — location
+    // Q2 — visa
     } else if (step === "q2") {
-      const locMap: Record<string, { location: string | null; locationMode: string }> = {
-        bay_area: { location: "San Francisco", locationMode: "local" },
-        nyc:      { location: "New York", locationMode: "local" },
-        remote:   { location: null, locationMode: "remote" },
-        anywhere: { location: null, locationMode: "anywhere" },
-      };
-      const loc = locMap[qr.value] ?? { location: null, locationMode: "anywhere" };
-      setIntake((prev) => ({ ...prev, ...loc }));
-      setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
-      await delay(400);
-      setMessages((prev) => [...prev, { id: "k-f2", role: "assistant", content: "Locked in." }]);
-      await delay(700);
-      setMessages((prev) => [
-        ...prev,
-        { id: "k-q3", role: "assistant", content: "To match you to the right sponsors — what visa are you working with?" },
-      ]);
-      setQuickReplies([
-        { label: "H-1B", value: "H-1B" },
-        { label: "OPT", value: "OPT" },
-        { label: "E-3 / TN", value: "E-3/TN" },
-        { label: "Other", value: "Other" },
-      ]);
-      setStep("q3");
-
-    // Q3 — visa
-    } else if (step === "q3") {
       const visa = qr.value;
       setIntake((prev) => ({ ...prev, visa }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
@@ -704,65 +693,128 @@ export default function KaiFirstPage() {
       };
       setMessages((prev) => [
         ...prev,
-        { id: "k-f3", role: "assistant", content: visaFiller[visa] ?? "Got it — pulling the right sponsors." },
+        { id: "k-f2", role: "assistant", content: visaFiller[visa] ?? "Got it — pulling the right sponsors." },
       ]);
       await delay(850);
+      // Q3 is now salary
       setMessages((prev) => [
         ...prev,
-        { id: "k-q4", role: "assistant", content: "What's the minimum base salary that would make a move worth it? Or no floor?" },
+        { id: "k-q3", role: "assistant", content: "What's the minimum base salary that would make a move worth it? Or no floor?" },
       ]);
       setQuickReplies([
-        { label: "No floor", value: "0" },
-        { label: "$100K+", value: "100000" },
-        { label: "$150K+", value: "150000" },
-        { label: "$200K+", value: "200000" },
+        { label: "No floor", value: "0"      },
+        { label: "$100K+",   value: "100000" },
+        { label: "$150K+",   value: "150000" },
+        { label: "$200K+",   value: "200000" },
       ]);
-      setStep("q4");
+      setStep("q3");
 
-    // Q4 — comp
-    } else if (step === "q4") {
+    // Q3 — salary
+    } else if (step === "q3") {
       const salaryMin = parseInt(qr.value, 10);
       setIntake((prev) => ({ ...prev, salaryMin: salaryMin > 0 ? salaryMin : null }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(400);
-      setMessages((prev) => [
-        ...prev,
-        { id: "k-q5", role: "assistant", content: "Senior IC, or ready to lead a team?" },
-      ]);
-      setQuickReplies([
-        { label: "Senior IC", value: "senior_ic" },
-        { label: "Manager / Lead", value: "manager" },
-        { label: "Either works", value: "either" },
-      ]);
-      setStep("q5");
+      // Q4 is now level — pre-confirm from LinkedIn headline if available
+      const inferredLevel = inferLevel(linkedIn?.headline ?? "");
+      const q4Text = inferredLevel
+        ? `Based on your title, looks like **${inferredLevel}** — is that right?`
+        : "Senior IC, or ready to lead a team?";
+      const q4Replies: QR[] = inferredLevel
+        ? [
+            { label: "That's right", value: inferredLevel.toLowerCase().includes("manager") || inferredLevel.toLowerCase().includes("lead") ? "manager" : "senior_ic" },
+            { label: "Actually Manager / Lead", value: "manager" },
+            { label: "Either works", value: "either" },
+          ]
+        : [
+            { label: "Senior IC",       value: "senior_ic" },
+            { label: "Manager / Lead",  value: "manager"   },
+            { label: "Either works",    value: "either"    },
+          ];
+      setMessages((prev) => [...prev, { id: "k-q4", role: "assistant", content: q4Text }]);
+      setQuickReplies(q4Replies);
+      setStep("q4");
 
-    // Q5 — level → kicks off scan
-    } else if (step === "q5") {
+    // Q4 — level → then ask / pre-confirm location
+    } else if (step === "q4") {
       const level = qr.value;
-      // Build updatedIntake inline so async scan has the full picture
-      const updatedIntake = { ...intake, level };
-      setIntake(updatedIntake);
+      setIntake((prev) => ({ ...prev, level }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
 
       if (level === "either") {
         await delay(450);
-        setMessages((prev) => [...prev, { id: "k-f5", role: "assistant", content: "Flexible — that opens it up." }]);
+        setMessages((prev) => [...prev, { id: "k-f4", role: "assistant", content: "Flexible — that opens it up." }]);
       }
-      await delay(level === "either" ? 700 : 500);
+      await delay(level === "either" ? 700 : 400);
 
-      const dept = inferDepartment(enriched?.current_title ?? null);
+      // Q5 — location: try PDL/Apollo enrichment first (has had ~16s to run by now)
+      const supabase = createSupabaseBrowser();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      let knownLocation: string | null = null;
+      if (authUser) {
+        const { data: ep } = await supabase
+          .schema("enriched")
+          .from("profiles")
+          .select("location")
+          .eq("user_id", authUser.id)
+          .eq("enrich_status", "done")
+          .maybeSingle();
+        knownLocation = ep?.location ?? null;
+      }
+
+      const q5Text = knownLocation
+        ? `You're in ${knownLocation} — staying local, or open to remote and other cities?`
+        : "Where are you based right now?";
+      const q5Replies: QR[] = knownLocation
+        ? [
+            { label: `${knownLocation.split(",")[0]} / local`, value: "local"   },
+            { label: "Remote only",                            value: "remote"  },
+            { label: "Open to other cities",                   value: "anywhere"},
+          ]
+        : [
+            { label: "Bay Area / SF",    value: "bay_area" },
+            { label: "NYC / East Coast", value: "nyc"      },
+            { label: "Remote only",      value: "remote"   },
+            { label: "Open anywhere",    value: "anywhere" },
+          ];
+
+      // Store knownLocation so Q5 handler can use it
+      if (knownLocation) {
+        setIntake((prev) => ({ ...prev, location: knownLocation, locationMode: "local" }));
+      }
+
+      setMessages((prev) => [...prev, { id: "k-q5", role: "assistant", content: q5Text }]);
+      setQuickReplies(q5Replies);
+      setStep("q5");
+
+    // Q5 — location → kicks off scan
+    } else if (step === "q5") {
+      const level = intake.level ?? "either";
+      const locMap: Record<string, { location: string | null; locationMode: string }> = {
+        local:    { location: intake.location, locationMode: "local"    },
+        bay_area: { location: "San Francisco", locationMode: "local"    },
+        nyc:      { location: "New York",      locationMode: "local"    },
+        remote:   { location: null,            locationMode: "remote"   },
+        anywhere: { location: null,            locationMode: "anywhere" },
+      };
+      const loc = locMap[qr.value] ?? { location: null, locationMode: "anywhere" };
+      const updatedIntake = { ...intake, ...loc, level };
+      setIntake(updatedIntake);
+      setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
+      await delay(500);
+
+      const dept = inferDepartment(linkedIn?.headline ?? enriched?.current_title ?? null);
       const salaryStr = updatedIntake.salaryMin
         ? `$${Math.round(updatedIntake.salaryMin / 1000)}K+`
         : "any salary";
       const levelStr =
         level === "senior_ic" ? "Senior IC" :
-        level === "manager" ? "Manager / Lead" : "all levels";
+        level === "manager"   ? "Manager / Lead" : "all levels";
       const locStr =
-        updatedIntake.locationMode === "remote"    ? "remote" :
-        updatedIntake.locationMode === "anywhere"  ? "anywhere in the US" :
+        updatedIntake.locationMode === "remote"   ? "remote" :
+        updatedIntake.locationMode === "anywhere" ? "anywhere in the US" :
         updatedIntake.location ?? "all locations";
 
-      // Build filter tokens — department only shown when we can infer it
       const filterTokens = [dept, locStr, salaryStr, levelStr, "last 14 days"].filter(Boolean);
 
       setMessages((prev) => [
@@ -906,15 +958,12 @@ export default function KaiFirstPage() {
     await delay(500);
     setMessages((prev) => [...prev, { id: `k-f1b`, role: "assistant", content: "Got it. We'll prioritize companies that can move quickly — and have a strong LCA filing history." }]);
     await delay(900);
-    const q2Text = enriched?.location
-      ? `You're in ${enriched.location} — staying local, or open to remote and other cities too?`
-      : "Where are you based right now?";
-    setMessages((prev) => [...prev, { id: "k-q2", role: "assistant", content: q2Text }]);
+    setMessages((prev) => [...prev, { id: "k-q2", role: "assistant", content: "To match you with the right sponsors — what visa are you working with?" }]);
     setQuickReplies([
-      { label: "Bay Area / SF", value: "bay_area" },
-      { label: "NYC / East Coast", value: "nyc" },
-      { label: "Remote only", value: "remote" },
-      { label: "Open anywhere", value: "anywhere" },
+      { label: "H-1B",     value: "H-1B"   },
+      { label: "OPT",      value: "OPT"    },
+      { label: "E-3 / TN", value: "E-3/TN" },
+      { label: "Other",    value: "Other"  },
     ]);
     setStep("q2");
   };

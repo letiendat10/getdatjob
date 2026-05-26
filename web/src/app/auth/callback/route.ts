@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { enrichWithApollo } from "@/lib/enrich-apollo";
+import { enrichUser } from "@/lib/enrich-apollo";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
   // Fetch vanityName from LinkedIn API using the provider token Supabase returns.
   // This gives us the exact profile URL (linkedin.com/in/{vanityName}).
   let linkedinUrl: string | null = null;
+  let headline: string | null = null;
   const providerToken = data.session?.provider_token ?? null;
   if (providerToken) {
     try {
@@ -48,9 +49,15 @@ export async function GET(request: NextRequest) {
         headers: { Authorization: `Bearer ${providerToken}` },
       });
       if (liRes.ok) {
-        const liData = await liRes.json() as { vanityName?: string };
+        const liData = await liRes.json() as {
+          vanityName?: string;
+          localizedHeadline?: string;
+        };
         if (liData.vanityName) {
           linkedinUrl = `https://www.linkedin.com/in/${liData.vanityName}`;
+        }
+        if (liData.localizedHeadline) {
+          headline = liData.localizedHeadline;
         }
       }
     } catch {
@@ -66,6 +73,7 @@ export async function GET(request: NextRequest) {
       email: data.user.email ?? null,
       avatar_url: meta.avatar_url ?? meta.picture ?? null,
       linkedin_url: linkedinUrl,
+      headline,
     },
     { onConflict: "id" }
   );
@@ -82,7 +90,7 @@ export async function GET(request: NextRequest) {
   const firstName = (meta.given_name ?? null) as string | null;
   const lastName = (meta.family_name ?? null) as string | null;
   after(async () => {
-    await enrichWithApollo(userId, email, firstName, lastName);
+    await enrichUser(userId, email, firstName, lastName, linkedinUrl);
   });
 
   return NextResponse.redirect(`${origin}/kai-first`);

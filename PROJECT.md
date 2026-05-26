@@ -293,6 +293,103 @@ Project-specific skills live in `.claude/skills/`. Invoke by name or trigger phr
 
 
 
+## Update as of 5/25:
+
+### 1. Done since last update (5/23 → 5/25)
+
+**Auth + onboarding**
+- LinkedIn OAuth live — sign-in via Supabase on `/auth/signin`
+- `user_profiles` Supabase migration applied — stores LinkedIn identity data
+- `/me` account page built (`me-client.tsx` + server component)
+- Kai-first onboarding flow built end-to-end: 5-step intake (Q1–Q5), job card scan, 3+3 results grid, email opt-in screen, Venmo support screen
+- Login screen branding reviewed and polished
+
+**Kai**
+- Persona tone enhanced — warmer, more direct voice tuned for visa holders under pressure
+- Greeting + CTA copy optimized
+
+**Jobs page**
+- Filter icons added to filter controls
+- Load performance further optimized
+
+**Landing page**
+- "Connect with us" footer with social links added
+- Color fix on `/k` hero — "gets your visa" highlight corrected
+
+**Data pipeline**
+- Location blocklist applied at ingest — non-US jobs (India, Brazil, etc.) filtered
+- LCA disclosure data intake agent created
+
+**Infrastructure / legal**
+- `/privacy` and `/terms` pages live, linked from footer
+- GitHub repo connected
+- `getdatjob-branding` skill created — design tokens accessible in every session
+
+**Bug fix**
+- Headline font color enforced as `var(--ink)` site-wide
+
+### 2. What we learned
+- Kai-first onboarding is the right call — removing cold-start friction before auth matters more than the auth itself
+- The branding skill prevents duplicate color debates in every session
+- Location data quality was worse than expected — India and Brazil jobs were slipping through before the blocklist
+- 3 daily routines running: `getdatjob-no-ats-employer-intake` (5:07 AM), `getdatjob-daily-pull` (6:03 AM), `jobs-page-perf-monitor` (6:33 AM)
+- 6 project skills active: branding, copy, landing-page-design, product-strategy, kai-dev, weekly-progress-update
+
+### 3. Week 3 remaining — in order
+
+| # | Task | Why it's next |
+|---|---|---|
+| 1 | Fix null `posted_at` display | Workday/iCIMS/BambooHR jobs invisible under default 7-day filter — fallback to `last_seen_at` |
+| 2 | Enhance Kai intake questions (Q1–Q5) | Drop-off risk mid-onboarding if questions feel generic — must feel effortless before community launch |
+| 3 | QA Kai-first flow (`/kai-dev`) | Onboarding exists but untested — don't post to r/h1b with an unvalidated flow |
+| 4 | Community launch | r/h1b, r/f1visa, Facebook, LinkedIn — goal: 5 real feedback pieces, first email signups |
+| 5 | LinkedIn enrichment agent (fix) | Built but not working — needed for employer contact discovery |
+| 6 | Job alerts email capture | Wire Kai's "Alert me" chip to email + saved filters |
+
+### 4. Sprint breakdown
+
+**Sprint 3 (5/25 → 6/1) — current, 8 shipped so far**
+
+| | Kai/Onboarding | Auth | Jobs page | Landing page | Pipeline | Infra/Legal |
+|---|---|---|---|---|---|---|
+| `build` | 1 | 1 | 1 | 1 | 0 | 0 |
+| `Bug` | 0 | 0 | 0 | 0 | 0 | 1 |
+| `optimize` | 0 | 0 | 0 | 0 | 1 | 0 |
+| `infra` | 0 | 0 | 0 | 0 | 1 | 1 |
+
+**Sprint 2 (5/18 → 5/25) — 22 shipped**
+
+| | Landing page | Jobs page | Kai | Product | Pipeline | Infra/Tooling |
+|---|---|---|---|---|---|---|
+| `build` | 2 | 3 | 0 | 2 | 1 | 0 |
+| `Bug` | 0 | 1 | 0 | 1 | 1 | 0 |
+| `optimize` | 1 | 2 | 1 | 0 | 2 | 0 |
+| `infra` | 0 | 0 | 0 | 0 | 2 | 2 |
+
+> Balance: Sprint 2 was heavily `build`-weighted (8) with solid `optimize` (6) — good ratio. Sprint 3 continuing the same. Watch that pipeline `infra` debt doesn't crowd out user-facing `build` in Week 4.
+
+### 5. Pipeline health
+
+| Metric | Sprint 2 (5/18–5/25) | Sprint 3 to date |
+|---|---|---|
+| New jobs pulled | 1,887 → **58,893** | — (daily pull running) |
+| Total active jobs | — | **81,444** |
+| New employers ATS-mapped | 0 | **5** (via daily intake routine) |
+| Total employers confirmed ATS | — | **158** (workday 46 · greenhouse 44 · workable 42 · SR 11 · amazon 5 · lever 4 · ashby 3 · icims 3) |
+| Employers in manual review queue | — | **403** |
+
+The 30× jump in jobs pulled (1,887 → 58,893) is Workday (46 employers) and Workable (42) coming fully online this sprint. The 403 `manual_review` employers are the daily intake routine's queue — at ~5/day it takes ~80 days to clear. This needs to run faster or smarter to keep new qualified jobs flowing.
+
+### 6. The bottleneck
+
+Kai's Q1–Q5 intake questions. Community launch is technically ready (auth, onboarding, 81K jobs) but drop-off in the intake funnel kills conversion before users ever see a job. Polish the questions first — one bad question mid-flow and you've lost a visa holder who was genuinely desperate for this product.
+
+### 7. Week 3 goal
+
+Community launch live — at least one post on r/h1b or r/f1visa, 5 real user feedback pieces, first email signups captured.
+
+---
+
 ## Update as of 5/23:
 
 ### 1. Done since last update (5/21 → 5/23)

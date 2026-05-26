@@ -1,10 +1,14 @@
-// P4: Combined first-load endpoint — returns jobs + meta in one request,
-// eliminating the parallel meta fetch on initial page load.
-// Only called once (on first mount with default params). Filter changes
-// use /api/jobs directly (meta already in client state).
+// P4: Combined first-load endpoint — originally returned jobs + meta in one request.
+// P2 update (2026-05-25): meta stripped out. The init endpoint now returns only
+// jobs, so the critical-path response is as small/fast as queryJobs alone.
+// The client fetches /api/jobs/meta lazily on filter-bar interaction (or via
+// requestIdleCallback as a backstop). See web/src/app/jobs/jobs-client.tsx.
+//
+// Kept the /init route name (vs. just using /api/jobs) so the layout's
+// <link rel="preload"> hint still has a stable URL to prime, and so cold-Lambda
+// vs warm-CDN paths can be monitored independently in perf-logs/measure.sh.
 
 import { queryJobs } from "@/lib/query-jobs";
-import { loadMeta }   from "@/lib/load-meta";
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
@@ -23,15 +27,12 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    const [jobsData, metaData] = await Promise.all([queryJobs(params), loadMeta()]);
-    return Response.json(
-      { ...jobsData, ...metaData },
-      {
-        headers: {
-          "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=120",
-        },
-      }
-    );
+    const jobsData = await queryJobs(params);
+    return Response.json(jobsData, {
+      headers: {
+        "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=120",
+      },
+    });
   } catch (e: any) {
     return Response.json({ error: e.message }, { status: 500 });
   }

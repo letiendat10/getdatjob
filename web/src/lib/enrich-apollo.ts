@@ -75,7 +75,8 @@ async function tryPDL(
 
     if (res.status === 404) return null;
     if (!res.ok) {
-      console.error(`[pdl] API ${res.status}:`, await res.text());
+      const body = await res.text();
+      console.error(`[pdl] API ${res.status}: ${body.slice(0, 500)}`);
       return null;
     }
 
@@ -145,7 +146,8 @@ async function tryApollo(
     });
 
     if (!res.ok) {
-      console.error(`[apollo] API ${res.status}:`, await res.text());
+      const body = await res.text();
+      console.error(`[apollo] API ${res.status}: ${body.slice(0, 500)}`);
       return null;
     }
 

@@ -38,32 +38,12 @@ export async function GET(request: NextRequest) {
   const meta = data.user.user_metadata ?? {};
   const fullName = meta.full_name ?? meta.name ?? null;
 
-  // Fetch vanityName from LinkedIn API using the provider token Supabase returns.
-  // This gives us the exact profile URL (linkedin.com/in/{vanityName}).
-  let linkedinUrl: string | null = null;
-  let headline: string | null = null;
-  const providerToken = data.session?.provider_token ?? null;
-  if (providerToken) {
-    try {
-      const liRes = await fetch("https://api.linkedin.com/v2/me", {
-        headers: { Authorization: `Bearer ${providerToken}` },
-      });
-      if (liRes.ok) {
-        const liData = await liRes.json() as {
-          vanityName?: string;
-          localizedHeadline?: string;
-        };
-        if (liData.vanityName) {
-          linkedinUrl = `https://www.linkedin.com/in/${liData.vanityName}`;
-        }
-        if (liData.localizedHeadline) {
-          headline = liData.localizedHeadline;
-        }
-      }
-    } catch {
-      // Non-fatal — enrichment will fall back to name search
-    }
-  }
+  // LinkedIn OIDC (Supabase linkedin_oidc provider) only returns standard OIDC
+  // claims: sub (member ID), name, email, picture. It does NOT expose vanityName
+  // or headline — those require LinkedIn Partner API access. Both fields stay null
+  // and enrichment falls back to email+name via PDL/Apollo.
+  const linkedinUrl: string | null = null;
+  const headline: string | null = null;
 
   await supabase.schema("linkedin").from("profiles").upsert(
     {

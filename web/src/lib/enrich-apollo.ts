@@ -122,14 +122,15 @@ async function tryPDL(
 
 async function trySerpAPI(
   fullName: string,
+  email:    string | null,
   country:  string | null,
 ): Promise<string | null> {
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) return null;
 
-  const q = country
-    ? `site:linkedin.com/in "${fullName}" ${country}`
-    : `site:linkedin.com/in "${fullName}"`;
+  // Query: linkedin [full name] [email] [country] — mirrors a manual Google search
+  const parts = ["linkedin", fullName, email, country].filter(Boolean);
+  const q = parts.join(" ");
 
   try {
     const res = await fetch(
@@ -240,7 +241,7 @@ export async function enrichUser(
     const fullName = [firstName, lastName].filter(Boolean).join(" ");
     if (fullName) {
       const country = locale ? (locale.split("_")[1] ?? null) : null;
-      resolvedUrl = await trySerpAPI(fullName, country);
+      resolvedUrl = await trySerpAPI(fullName, email, country);
       if (resolvedUrl) {
         await supabase
           .schema("linkedin")

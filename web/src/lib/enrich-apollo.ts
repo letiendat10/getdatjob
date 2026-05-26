@@ -43,7 +43,7 @@ type EnrichResult = {
   p_location:      string | null;
   p_current_title: string | null;
   p_job_function:  string;
-  p_job_level:     "IC" | "Manager";
+  p_job_level:     "Senior IC" | "Manager/Lead";
 };
 
 // ── PDL ───────────────────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ async function tryPDL(
       p_location:      location,
       p_current_title: p.job_title ?? null,
       p_job_function:  FUNCTION_MAP[role] ?? "Other",
-      p_job_level:     levels.some(l => MANAGER_LEVELS.has(l.toLowerCase())) ? "Manager" : "IC",
+      p_job_level:     levels.some(l => MANAGER_LEVELS.has(l.toLowerCase())) ? "Manager/Lead" : "Senior IC",
     };
   } catch (err) {
     console.error("[pdl] fetch error:", err);
@@ -215,7 +215,7 @@ async function tryApollo(
       p_location:      location,
       p_current_title: person.title ?? null,
       p_job_function:  FUNCTION_MAP[dept] ?? "Other",
-      p_job_level:     MANAGER_LEVELS.has(seniority) ? "Manager" : "IC",
+      p_job_level:     MANAGER_LEVELS.has(seniority) ? "Manager/Lead" : "Senior IC",
     };
   } catch (err) {
     console.error("[apollo] fetch error:", err);

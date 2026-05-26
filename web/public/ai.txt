@@ -1,0 +1,4 @@
+# ai.txt — machine-readable AI usage policy for getdatjob.com
+# Spec: https://site.ai.txt/
+
+disallow: all

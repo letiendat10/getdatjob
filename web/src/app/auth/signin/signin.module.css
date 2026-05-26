@@ -1,0 +1,222 @@
+.page {
+  min-height: 100svh;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-geist-sans), sans-serif;
+}
+
+/* ── Announcement strip ─────────────────────────────────────────────────── */
+
+.strip {
+  background: var(--ink);
+  color: #E9E5DA;
+  font-size: 13px;
+}
+
+.strip-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  text-align: center;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+/* ── Nav ────────────────────────────────────────────────────────────────── */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(244, 240, 232, .85);
+  backdrop-filter: saturate(140%) blur(10px);
+  border-bottom: 1px solid rgba(0, 0, 0, .04);
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  height: 62px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+.brand {
+  font-family: var(--font-geist-sans), sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-size: 17px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+/* ── Main centered content ─────────────────────────────────────────────── */
+
+.main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 20px 0;
+}
+
+.center {
+  max-width: 460px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  text-align: center;
+}
+
+.headline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.hl-primary {
+  display: block;
+  font-family: var(--font-instrument-serif), Georgia, serif;
+  font-size: clamp(34px, 5vw, 46px);
+  font-weight: 400;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.hl-muted {
+  display: block;
+  font-family: var(--font-instrument-serif), Georgia, serif;
+  font-size: clamp(34px, 5vw, 46px);
+  font-weight: 400;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.hl-muted em {
+  font-style: italic;
+  color: var(--accent);
+}
+
+/* ── Card ──────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 28px 28px 24px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 4px 32px -4px rgba(23, 22, 20, 0.08);
+}
+
+.body {
+  font-size: 14.5px;
+  color: var(--ink-3);
+  line-height: 1.6;
+  margin: 0;
+  text-align: center;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: 999px;
+  font-size: 15.5px;
+  font-weight: 600;
+  font-family: var(--font-geist-sans), sans-serif;
+  background: #0a66c2;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  transition: opacity 0.15s ease;
+  box-shadow: 0 2px 16px -2px rgba(23, 22, 20, 0.22);
+}
+
+.btn:hover {
+  opacity: 0.88;
+}
+
+.legal {
+  font-size: 10px;
+  color: var(--ink-3);
+  text-align: center;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.legal a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── Company logo shelf ────────────────────────────────────────────────── */
+
+.shelf {
+  padding: 0 0 10px;
+  text-align: center;
+}
+
+.shelf-label {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 10px;
+  font-weight: 500;
+}
+
+.marquee {
+  overflow: hidden;
+  position: relative;
+  padding: 10px 0;
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+
+.track {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 52px;
+  width: max-content;
+  animation: scrollLeft 60s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.65;
+  transition: opacity 0.15s ease;
+}
+
+.logo img {
+  height: 24px;
+  width: auto;
+  display: block;
+}
+
+@keyframes scrollLeft {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}

@@ -1,0 +1,49 @@
+key,ats_type,slug,reason
+citadel americas services,greenhouse,citadel,slug_not_live
+palo alto networks,workday,paloaltonetworks.wd1/External,slug_not_live
+intuit inc,workday,intuit.wd1/Intuit_Careers,slug_not_live
+"workday, inc",workday,workday.wd5/careers,slug_not_live
+rivian automotive,greenhouse,rivian,slug_not_live
+rivian and volkswagen,greenhouse,rivian,slug_not_live
+"chewy, inc",greenhouse,chewy,slug_not_live
+zoom communications,workday,zoom.wd5/Careers,slug_not_live
+"nike, inc",workday,nike.wd3/External,slug_not_live
+crusoe energy,greenhouse,crusoe,slug_not_live
+citadel securities americas,greenhouse,citadel,slug_not_live
+sony interactive,greenhouse,sonyinteractiveentertainment,slug_not_live
+visa u.s.a,greenhouse,visa,slug_not_live
+nordstrom,workday,nordstrom.wd5/Nordstrom_Careers,slug_not_live
+marvell semiconductor,greenhouse,marvell,slug_not_live
+medtronic,workday,medtronic.wd5/External,slug_not_live
+amgen inc,workday,amgen.wd1/jobs,slug_not_live
+gilead sciences,workday,gilead.wd5/External,slug_not_live
+genentech,workday,roche.wd3/external,slug_not_live
+vertex pharmaceuticals,greenhouse,vrtx,slug_not_live
+bristol-myers squibb,workday,bms.wd5/ExternalCareerSite,slug_not_live
+thermo fisher,workday,thermofisher.wd5/ThermoFisher,slug_not_live
+"beckton, dickinson",greenhouse,bd,employer_not_found
+"becton, dickinson",greenhouse,bd,slug_not_live
+hewlett packard enterprise,workday,hpe.wd5/ExternalCareerSite,slug_not_live
+walmart associates,workday,walmart.wd5/WalmartExternal,employer_not_found
+ralph lauren,greenhouse,ralphlauren,slug_not_live
+starbucks coffee,workday,starbucks.wd5/Starbucks,slug_not_live
+blackrock,greenhouse,blackrock,slug_not_live
+zoom,workday,zoom.wd5/Careers,slug_not_live
+ab inbev,greenhouse,abinbev,employer_not_found
+paycom payroll,greenhouse,paycom,slug_not_live
+discover products,greenhouse,discover,slug_not_live
+mckesson,greenhouse,mckesson,slug_not_live
+equifax,greenhouse,equifax,slug_not_live
+experian,greenhouse,experian,slug_not_live
+fis management,greenhouse,fisglobal,slug_not_live
+worldpay,greenhouse,worldpay,slug_not_live
+global payment,greenhouse,globalpayments,slug_not_live
+rocket mortgage,greenhouse,rocketmortgage,slug_not_live
+toyota material,greenhouse,toyota,slug_not_live
+nokia of america,greenhouse,nokia,slug_not_live
+slalom,greenhouse,slalom,slug_not_live
+asurion,greenhouse,asurion,slug_not_live
+exlservice,greenhouse,exl,slug_not_live
+mckinsey,greenhouse,mckinsey,slug_not_live
+boston consulting,greenhouse,bcg,slug_not_live
+zs associates,greenhouse,zs,slug_not_live

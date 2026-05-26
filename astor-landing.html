@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Astor – Finally, your portfolio answers back</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --black: #0d0d0d;
+    --navy: #111827;
+    --blue: #3b82f6;
+    --blue-dark: #2563eb;
+    --white: #ffffff;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-400: #9ca3af;
+    --gray-600: #4b5563;
+    --gray-800: #1f2937;
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+
+  html { scroll-behavior: smooth; }
+  body { font-family: 'Inter', sans-serif; color: var(--black); background: var(--white); line-height: 1.6; }
+
+  /* ── Announcement bar ── */
+  .announce {
+    background: var(--navy);
+    color: var(--white);
+    text-align: center;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 400;
+  }
+  .announce a { color: #93c5fd; text-decoration: none; margin-left: 8px; font-weight: 500; }
+  .announce a:hover { text-decoration: underline; }
+
+  /* ── Nav ── */
+  nav {
+    background: var(--navy);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 48px;
+    height: 60px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-logo { display: flex; align-items: center; gap: 8px; }
+  .nav-logo svg { width: 28px; height: 28px; }
+  .nav-logo span { color: var(--white); font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .nav-links { display: flex; gap: 28px; list-style: none; }
+  .nav-links a { color: rgba(255,255,255,0.75); text-decoration: none; font-size: 14px; font-weight: 400; transition: color 0.15s; }
+  .nav-links a:hover { color: var(--white); }
+  .btn-download {
+    background: var(--blue);
+    color: var(--white);
+    border: none;
+    padding: 9px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-download:hover { background: var(--blue-dark); }
+
+  /* ── Hero ── */
+  .hero {
+    background: var(--white);
+    text-align: center;
+    padding: 80px 24px 0;
+    overflow: hidden;
+  }
+  .hero-tag {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--gray-600);
+    margin-bottom: 20px;
+  }
+  .hero h1 {
+    font-size: clamp(36px, 5vw, 58px);
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+    color: var(--black);
+    max-width: 640px;
+    margin: 0 auto 20px;
+  }
+  .hero p {
+    font-size: 16px;
+    color: var(--gray-600);
+    max-width: 400px;
+    margin: 0 auto 32px;
+    line-height: 1.65;
+  }
+  .btn-dark {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--black);
+    color: var(--white);
+    padding: 13px 28px;
+    border-radius: 50px;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.15s;
+    margin-bottom: 56px;
+  }
+  .btn-dark:hover { opacity: 0.85; }
+
+  /* Phone mockup */
+  .phone-wrap { position: relative; display: inline-block; }
+  .phone {
+    width: 260px;
+    background: var(--black);
+    border-radius: 40px;
+    padding: 12px;
+    box-shadow: 0 40px 120px rgba(0,0,0,0.25);
+    position: relative;
+  }
+  .phone-screen {
+    background: #1a1a2e;
+    border-radius: 30px;
+    overflow: hidden;
+    height: 480px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .phone-top-bar {
+    background: #0f172a;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .phone-greeting { font-size: 11px; color: rgba(255,255,255,0.45); margin-bottom: 2px; }
+  .phone-balance { font-size: 22px; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
+  .phone-chart {
+    flex: 1;
+    background: linear-gradient(180deg, #0f172a 0%, #1e3a5f 60%, #0f172a 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .chart-line {
+    position: absolute;
+    bottom: 60px;
+    left: 0; right: 0;
+  }
+  .chart-line svg { width: 100%; height: 100px; }
+  .phone-chat {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: rgba(15,23,42,0.96);
+    padding: 12px 14px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .chat-msg {
+    background: rgba(255,255,255,0.07);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .chat-question { font-size: 11px; color: rgba(255,255,255,0.8); margin-bottom: 6px; }
+  .chat-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.5);
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .chat-option:last-child { border-bottom: none; }
+  .chat-dot { width: 4px; height: 4px; background: var(--blue); border-radius: 50%; flex-shrink: 0; }
+
+  /* Hero stats */
+  .hero-stats {
+    background: var(--white);
+    border-top: 1px solid var(--gray-200);
+    padding: 20px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 48px;
+  }
+  .stat { text-align: center; }
+  .stat-val { font-size: 18px; font-weight: 700; color: var(--black); }
+  .stat-label { font-size: 12px; color: var(--gray-400); margin-top: 2px; }
+  .stat-divider { width: 1px; height: 36px; background: var(--gray-200); }
+
+  /* Stars */
+  .stars { color: #f59e0b; font-size: 14px; letter-spacing: 1px; }
+
+  /* ── Section common ── */
+  section { padding: 96px 24px; }
+  .section-inner { max-width: 1100px; margin: 0 auto; }
+  .section-label { font-size: 13px; font-weight: 600; color: var(--blue); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 12px; }
+  .section-h2 {
+    font-size: clamp(28px, 3.5vw, 44px);
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1.15;
+    color: var(--black);
+    margin-bottom: 16px;
+  }
+  .section-sub {
+    font-size: 16px;
+    color: var(--gray-600);
+    max-width: 480px;
+    line-height: 1.65;
+    margin-bottom: 32px;
+  }
+  .text-center { text-align: center; }
+  .mx-auto { margin-left: auto; margin-right: auto; }
+
+  /* ── Stop vibe investing ── */
+  .vibe { background: var(--gray-50); }
+  .vibe .section-h2 { text-align: center; max-width: 600px; margin: 0 auto 16px; }
+  .vibe .section-sub { text-align: center; margin: 0 auto; }
+
+  /* ── Plug in section ── */
+  .plug { background: var(--white); }
+  .plug-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+  .plug-features { list-style: none; margin-bottom: 32px; }
+  .plug-features li {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--gray-100);
+  }
+  .plug-features li:last-child { border-bottom: none; }
+  .feat-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--gray-100);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 16px;
+  }
+  .feat-text h4 { font-size: 14px; font-weight: 600; color: var(--black); margin-bottom: 2px; }
+  .feat-text p { font-size: 13px; color: var(--gray-600); }
+
+  /* Two phones side by side */
+  .phones-pair { display: flex; gap: 20px; justify-content: center; }
+  .phone-sm {
+    width: 180px;
+    background: var(--black);
+    border-radius: 30px;
+    padding: 8px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+  }
+  .phone-sm-screen {
+    background: #0f172a;
+    border-radius: 24px;
+    height: 320px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 14px 12px;
+  }
+  .phone-sm-label { font-size: 9px; color: rgba(255,255,255,0.4); margin-bottom: 8px; }
+  .phone-sm-val { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 12px; }
+  .mini-chart-up { width: 100%; height: 60px; }
+  .news-item { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
+  .news-item-label { font-size: 8px; color: rgba(255,255,255,0.35); margin-bottom: 4px; }
+  .news-item-text { font-size: 9px; color: rgba(255,255,255,0.8); line-height: 1.4; }
+
+  /* ── Two column cards ── */
+  .cards-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+  .card {
+    border-radius: 24px;
+    overflow: hidden;
+    min-height: 260px;
+    position: relative;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .card-dark { background: var(--navy); }
+  .card-light { background: var(--gray-50); border: 1px solid var(--gray-200); }
+  .card h3 { font-size: 18px; font-weight: 700; color: var(--white); margin-bottom: 8px; }
+  .card-light h3 { color: var(--black); }
+  .card p { font-size: 13px; color: rgba(255,255,255,0.55); max-width: 260px; }
+  .card-light p { color: var(--gray-600); }
+  .search-bar {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 50px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: rgba(255,255,255,0.35);
+    font-size: 13px;
+  }
+  .advice-bubble {
+    background: var(--white);
+    border-radius: 14px;
+    padding: 14px 18px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  }
+  .advice-bubble-label { font-size: 10px; color: var(--gray-400); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .advice-bubble-text { font-size: 14px; font-weight: 600; color: var(--black); }
+  .advice-tag {
+    display: inline-block;
+    background: #dcfce7;
+    color: #16a34a;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 50px;
+    margin-top: 8px;
+  }
+
+  /* ── Professionals ── */
+  .professionals { background: var(--white); }
+  .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--gray-200); margin-bottom: 48px; }
+  .tab {
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--gray-400);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.15s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    font-family: inherit;
+  }
+  .tab.active { color: var(--black); border-bottom-color: var(--black); font-weight: 600; }
+  .tab:hover:not(.active) { color: var(--gray-600); }
+  .professional-card {
+    border-radius: 24px;
+    background: linear-gradient(160deg, #0f172a 0%, #1e3a5f 50%, #0a0a1a 100%);
+    min-height: 420px;
+    display: flex;
+    align-items: flex-end;
+    padding: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .professional-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='420'%3E%3Cellipse cx='300' cy='300' rx='260' ry='160' fill='rgba(30,58,95,0.4)'/%3E%3Cellipse cx='100' cy='100' rx='80' ry='60' fill='rgba(59,130,246,0.05)'/%3E%3C/svg%3E") center/cover;
+  }
+  .professional-text { position: relative; z-index: 1; }
+  .professional-text h3 { font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -0.5px; margin-bottom: 8px; }
+  .professional-text p { font-size: 15px; color: rgba(255,255,255,0.6); max-width: 440px; }
+
+  /* ── Trust section ── */
+  .trust { background: var(--gray-50); }
+  .trust-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+  .trust-items { list-style: none; }
+  .trust-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .trust-item:last-child { border-bottom: none; }
+  .trust-icon {
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 18px;
+  }
+  .trust-icon.blue { background: #dbeafe; }
+  .trust-icon.green { background: #dcfce7; }
+  .trust-icon.purple { background: #ede9fe; }
+  .trust-text h4 { font-size: 15px; font-weight: 600; color: var(--black); margin-bottom: 3px; }
+  .trust-text p { font-size: 13px; color: var(--gray-600); }
+
+  /* ── Security ── */
+  .security { background: var(--white); padding: 64px 24px; }
+  .security-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 48px;
+  }
+  .security-text h2 { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 12px; }
+  .security-text p { font-size: 15px; color: var(--gray-600); max-width: 380px; line-height: 1.65; }
+  .soc-badge {
+    flex-shrink: 0;
+    text-align: center;
+  }
+  .soc-box {
+    border: 2px solid var(--gray-200);
+    border-radius: 16px;
+    padding: 24px 32px;
+    text-align: center;
+  }
+  .soc-logo { font-size: 28px; margin-bottom: 8px; }
+  .soc-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--gray-400); text-transform: uppercase; }
+  .soc-name { font-size: 14px; font-weight: 700; color: var(--black); }
+  .soc-sub { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+
+  /* ── CTA ── */
+  .cta {
+    background: linear-gradient(160deg, #0a0a1a 0%, #1e3a5f 40%, #0f172a 100%);
+    padding: 96px 24px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cta::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 80%, rgba(59,130,246,0.15) 0%, transparent 60%);
+  }
+  .cta-inner { position: relative; z-index: 1; }
+  .cta h2 { font-size: clamp(28px, 4vw, 48px); font-weight: 800; color: #fff; letter-spacing: -1px; margin-bottom: 16px; }
+  .cta p { font-size: 16px; color: rgba(255,255,255,0.55); max-width: 400px; margin: 0 auto 36px; }
+  .btn-blue {
+    display: inline-block;
+    background: var(--white);
+    color: var(--black);
+    padding: 14px 32px;
+    border-radius: 50px;
+    font-size: 15px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: opacity 0.15s;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+  }
+  .btn-blue:hover { opacity: 0.9; }
+
+  /* Mountain silhouette */
+  .mountain-svg { margin-bottom: -6px; opacity: 0.4; }
+
+  /* ── FAQ ── */
+  .faq { background: var(--white); padding: 96px 24px; }
+  .faq-inner { max-width: 700px; margin: 0 auto; }
+  .faq h2 { font-size: clamp(28px, 3.5vw, 40px); font-weight: 800; letter-spacing: -0.5px; text-align: center; margin-bottom: 48px; }
+  .faq-item { border-bottom: 1px solid var(--gray-200); }
+  .faq-question {
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 20px 0;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--black);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    font-family: inherit;
+    transition: color 0.15s;
+  }
+  .faq-question:hover { color: var(--blue); }
+  .faq-icon { font-size: 20px; font-weight: 300; color: var(--gray-400); flex-shrink: 0; transition: transform 0.2s; }
+  .faq-item.open .faq-icon { transform: rotate(45deg); color: var(--black); }
+  .faq-answer {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+    font-size: 14px;
+    color: var(--gray-600);
+    line-height: 1.7;
+  }
+  .faq-item.open .faq-answer { max-height: 200px; padding-bottom: 20px; }
+
+  /* ── Footer ── */
+  footer {
+    background: var(--black);
+    padding: 64px 48px 40px;
+  }
+  .footer-inner { max-width: 1100px; margin: 0 auto; }
+  .footer-logo {
+    font-size: 64px;
+    font-weight: 800;
+    color: rgba(255,255,255,0.08);
+    letter-spacing: -4px;
+    text-align: center;
+    line-height: 1;
+    margin-bottom: 40px;
+  }
+  .footer-links {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    list-style: none;
+    margin-bottom: 32px;
+  }
+  .footer-links a { color: rgba(255,255,255,0.4); text-decoration: none; font-size: 13px; transition: color 0.15s; }
+  .footer-links a:hover { color: rgba(255,255,255,0.8); }
+  .footer-legal { text-align: center; font-size: 11px; color: rgba(255,255,255,0.2); line-height: 1.6; max-width: 700px; margin: 0 auto; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    nav { padding: 0 20px; }
+    .nav-links { display: none; }
+    .plug-grid, .trust-grid { grid-template-columns: 1fr; }
+    .cards-row { grid-template-columns: 1fr; }
+    .security-inner { flex-direction: column; }
+    .phones-pair { flex-direction: column; align-items: center; }
+    footer { padding: 48px 24px 32px; }
+    .footer-logo { font-size: 40px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Announcement -->
+<div class="announce">
+  Astor raises $1M seed round to reinvent personal investing
+  <a href="#">Learn More &rsaquo;</a>
+</div>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-logo">
+    <svg viewBox="0 0 28 28" fill="none">
+      <circle cx="14" cy="14" r="14" fill="#3b82f6"/>
+      <path d="M8 20 L14 8 L20 20" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="14" cy="14" r="3" fill="white"/>
+    </svg>
+    <span>Astor</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="#">Home</a></li>
+    <li><a href="#">Privacy</a></li>
+    <li><a href="#">Legal</a></li>
+    <li><a href="#">Blog</a></li>
+    <li><a href="#">Contact</a></li>
+  </ul>
+  <button class="btn-download">⬇ Download</button>
+</nav>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="hero-tag">SEC-registered AI investment advisor</div>
+  <h1>Finally, your portfolio answers back</h1>
+  <p>Astor is the new SEC-registered AI investment advisor built for busy professionals</p>
+  <a href="#" class="btn-dark">⬇ Download now</a>
+
+  <!-- Phone mockup -->
+  <div class="phone-wrap">
+    <div class="phone">
+      <div class="phone-screen">
+        <div class="phone-top-bar">
+          <div class="phone-greeting">Good afternoon, Dan</div>
+          <div class="phone-balance">$141,881.45 ↑</div>
+        </div>
+        <div class="phone-chart">
+          <!-- Mini chart line -->
+          <div class="chart-line">
+            <svg viewBox="0 0 236 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3"/>
+                  <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path d="M0 80 Q30 75 50 60 Q70 45 90 50 Q110 55 130 35 Q150 15 170 20 Q190 25 210 12 L236 8 L236 100 L0 100Z" fill="url(#cg)"/>
+              <path d="M0 80 Q30 75 50 60 Q70 45 90 50 Q110 55 130 35 Q150 15 170 20 Q190 25 210 12 L236 8" stroke="#3b82f6" stroke-width="2" fill="none"/>
+            </svg>
+          </div>
+        </div>
+        <div class="phone-chat">
+          <div class="chat-msg">
+            <div class="chat-question">Paycheck just came in, what should I invest?</div>
+            <div class="chat-option"><span class="chat-dot"></span>Analyzing your portfolio…</div>
+            <div class="chat-option"><span class="chat-dot"></span>Rebalancing my profile…</div>
+            <div class="chat-option"><span class="chat-dot"></span>Creating optional recommendations…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="hero-stats">
+    <div class="stat">
+      <div class="stat-val">$500M+</div>
+      <div class="stat-label">Assets connected</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <div class="stars">★★★★★</div>
+      <div class="stat-val">4.8</div>
+      <div class="stat-label">App Store rating</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div class="stat">
+      <div class="stat-val">8,000+</div>
+      <div class="stat-label">Trusted by users</div>
+    </div>
+  </div>
+</div>
+
+<!-- Stop vibe investing -->
+<section class="vibe">
+  <div class="section-inner">
+    <h2 class="section-h2">Stop vibe investing. Talk to Astor.</h2>
+    <p class="section-sub mx-auto text-center">Get personalized, data-driven guidance instead of guessing what to do with your money.</p>
+  </div>
+</section>
+
+<!-- Plug in section -->
+<section class="plug">
+  <div class="section-inner">
+    <div class="plug-grid">
+      <div>
+        <div class="section-label">Connect &amp; ask</div>
+        <h2 class="section-h2">Plug in your accounts. Get real answers.</h2>
+        <p class="section-sub">Build your bridge to all your brokerage accounts, analyze your holdings, and get AI-powered guidance &amp; portfolio optimization.</p>
+        <ul class="plug-features">
+          <li>
+            <div class="feat-icon">🔗</div>
+            <div class="feat-text">
+              <h4>Link your brokerage in seconds</h4>
+              <p>Bank-level security by Plaid</p>
+            </div>
+          </li>
+          <li>
+            <div class="feat-icon">💬</div>
+            <div class="feat-text">
+              <h4>Ask anything, anytime</h4>
+              <p>Talk to Astor about your finances 24/7</p>
+            </div>
+          </li>
+          <li>
+            <div class="feat-icon">🎯</div>
+            <div class="feat-text">
+              <h4>Stop guessing with your money</h4>
+              <p>Get advice based on all your holdings at afuze.com/security</p>
+            </div>
+          </li>
+        </ul>
+        <button class="btn-dark">⬇ Download now</button>
+      </div>
+      <div class="phones-pair">
+        <!-- Phone 1: News -->
+        <div class="phone-sm">
+          <div class="phone-sm-screen">
+            <div class="phone-sm-label">Market news</div>
+            <div class="phone-sm-val">Good afternoon</div>
+            <div class="news-item">
+              <div class="news-item-label">Tech stocks</div>
+              <div class="news-item-text">NVDA up 4.2% after earnings beat expectations</div>
+            </div>
+            <div class="news-item">
+              <div class="news-item-label">Your portfolio</div>
+              <div class="news-item-text">Your AAPL position is outperforming S&P by 12%</div>
+            </div>
+            <div class="news-item">
+              <div class="news-item-label">Recommendation</div>
+              <div class="news-item-text">Consider rebalancing: tech is 68% of holdings</div>
+            </div>
+          </div>
+        </div>
+        <!-- Phone 2: Advice -->
+        <div class="phone-sm" style="margin-top: 40px;">
+          <div class="phone-sm-screen" style="background: #f9fafb;">
+            <div style="font-size: 9px; color: #9ca3af; margin-bottom: 8px; font-weight: 600;">ASTOR ADVICE</div>
+            <div style="background: white; border-radius: 10px; padding: 10px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 8px;">
+              <div style="font-size: 9px; color: #6b7280; margin-bottom: 4px;">Suggested action</div>
+              <div style="font-size: 12px; font-weight: 700; color: #111;">Move $12,000 from US equities to international stocks</div>
+              <span style="display:inline-block; background:#dcfce7; color:#16a34a; font-size:9px; font-weight:700; padding: 2px 8px; border-radius: 50px; margin-top: 6px;">Recommended ✓</span>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 10px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+              <div style="font-size: 9px; color: #6b7280; margin-bottom: 4px;">Reason</div>
+              <div style="font-size: 10px; color: #374151; line-height: 1.4;">Your tech allocation is above target. Diversifying reduces risk.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Two cards -->
+<div class="cards-row">
+  <div class="card card-dark">
+    <div>
+      <h3>Only news that move your money</h3>
+      <p>Market updates filtered to your holdings, so you only read what matters.</p>
+    </div>
+    <div class="search-bar">
+      <span>🔍</span>
+      <span>Ask Astor about anything…</span>
+    </div>
+  </div>
+  <div class="card card-light">
+    <div>
+      <h3>Advice this specific</h3>
+      <p style="color: var(--gray-600);">Built to give hyper-personalized guidance based on your actual holdings.</p>
+    </div>
+    <div class="advice-bubble">
+      <div class="advice-bubble-label">Astor advice</div>
+      <div class="advice-bubble-text">Move $12,000 from US equities to international stocks</div>
+      <span class="advice-tag">Recommended ✓</span>
+    </div>
+  </div>
+</div>
+
+<!-- Professionals -->
+<section class="professionals">
+  <div class="section-inner">
+    <h2 class="section-h2 text-center" style="margin-bottom: 12px;">Designed for busy professionals like you</h2>
+    <p class="section-sub text-center mx-auto" style="margin-bottom: 36px;">Astor adapts its guidance to your specific financial situation and career type.</p>
+
+    <div class="tabs">
+      <button class="tab active" onclick="setTab(this, 'tech')">💻 Tech Workers</button>
+      <button class="tab" onclick="setTab(this, 'consultant')">📊 Consultants</button>
+      <button class="tab" onclick="setTab(this, 'banker')">🏦 Bankers</button>
+      <button class="tab" onclick="setTab(this, 'founder')">🚀 Founders</button>
+    </div>
+
+    <div class="professional-card" id="tab-content">
+      <div class="professional-text">
+        <h3 id="tab-title">Tech Workers</h3>
+        <p id="tab-desc">For builders with RSUs and illiquid stock who want clarity across equity and cash.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Trust -->
+<section class="trust">
+  <div class="section-inner">
+    <div class="trust-grid">
+      <div>
+        <div class="section-label">Trust</div>
+        <h2 class="section-h2">Built on trust. Regulated by design.</h2>
+        <p class="section-sub">Astor is an SEC-registered investment advisor platform built with bank-grade security and compliant at its core.</p>
+        <ul class="trust-items">
+          <li class="trust-item">
+            <div class="trust-icon blue">🏛️</div>
+            <div class="trust-text">
+              <h4>SEC-signed advisors</h4>
+              <p>We operate as an SEC-registered investment advisor</p>
+            </div>
+          </li>
+          <li class="trust-item">
+            <div class="trust-icon green">🔒</div>
+            <div class="trust-text">
+              <h4>Bank-grade security</h4>
+              <p>Your data never leaves our encrypted environment</p>
+            </div>
+          </li>
+          <li class="trust-item">
+            <div class="trust-icon purple">🛡️</div>
+            <div class="trust-text">
+              <h4>Battle-proofed platform</h4>
+              <p>We conduct professional-level beta tests against our system</p>
+            </div>
+          </li>
+        </ul>
+        <button class="btn-dark" style="margin-top: 24px;">⬇ Download now</button>
+      </div>
+      <div style="display:flex; justify-content:center; align-items:center;">
+        <!-- Phone mockup for trust -->
+        <div class="phone" style="width:220px;">
+          <div class="phone-screen" style="height:360px;">
+            <div class="phone-top-bar">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <div style="width:32px;height:32px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:14px;">A</div>
+                <span style="color:rgba(255,255,255,0.8);font-size:12px;font-weight:600;">Tap to set your strategy</span>
+              </div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;">
+              <div style="width:64px;height:64px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:28px;">A</div>
+              <div style="color:rgba(255,255,255,0.5);font-size:11px;text-align:center;line-height:1.5;">Astor uses SEC-compliant<br/>algorithms to protect<br/>your investments</div>
+              <div style="width:100%;height:1px;background:rgba(255,255,255,0.06);"></div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.3);text-align:center;">256-bit encryption · SOC 2 Type II</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Security -->
+<section class="security">
+  <div class="security-inner">
+    <div class="security-text">
+      <h2>We care about data security</h2>
+      <p>That's why we follow SOC 2 — the industry standard that audits that customer data is protected. SOC 2 Type II process is in progress.</p>
+    </div>
+    <div class="soc-badge">
+      <div class="soc-box">
+        <div class="soc-logo">🏅</div>
+        <div class="soc-label">Certified</div>
+        <div class="soc-name">SOC 2</div>
+        <div class="soc-sub">Type II — In Progress</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <svg class="mountain-svg" viewBox="0 0 1440 120" xmlns="http://www.w3.org/2000/svg" style="position:absolute;bottom:0;left:0;width:100%;opacity:0.12;">
+    <path d="M0 120 L200 60 L400 90 L600 20 L800 70 L1000 10 L1200 50 L1440 30 L1440 120Z" fill="white"/>
+  </svg>
+  <div class="cta-inner">
+    <h2>Let us plan your financial future</h2>
+    <p>Turn your money into a clear strategy. Start building real wealth today.</p>
+    <button class="btn-blue">⬇ Download now</button>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq">
+  <div class="faq-inner">
+    <h2>Frequently asked questions</h2>
+
+    <div class="faq-item">
+      <button class="faq-question" onclick="toggleFaq(this)">
+        What is Astor?
+        <span class="faq-icon">+</span>
+      </button>
+      <div class="faq-answer">Astor is an SEC-registered AI investment advisor built for busy professionals. It connects to your brokerage accounts, analyzes your portfolio, and gives personalized guidance through a conversational interface.</div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-question" onclick="toggleFaq(this)">
+        Is my financial data secure?
+        <span class="faq-icon">+</span>
+      </button>
+      <div class="faq-answer">Yes. We use bank-grade 256-bit encryption and connect to your brokerage via Plaid — the same technology used by thousands of financial apps. We never store your brokerage credentials.</div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-question" onclick="toggleFaq(this)">
+        Does Astor execute trades?
+        <span class="faq-icon">+</span>
+      </button>
+      <div class="faq-answer">Astor provides guidance and recommendations, but all trades are executed by you. We believe in empowering you with information rather than automating decisions you haven't approved.</div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-question" onclick="toggleFaq(this)">
+        How does Astor provide investment advice?
+        <span class="faq-icon">+</span>
+      </button>
+      <div class="faq-answer">Astor analyzes your complete portfolio across all connected accounts, factors in your goals and risk tolerance, and uses AI models trained on financial data to generate personalized recommendations.</div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-question" onclick="toggleFaq(this)">
+        Is Astor suitable for beginners?
+        <span class="faq-icon">+</span>
+      </button>
+      <div class="faq-answer">Absolutely. Astor is designed to be conversational and accessible. You can ask any question about your finances and receive a clear, jargon-free answer — no prior investing knowledge required.</div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-question" onclick="toggleFaq(this)">
+        How do I connect my investment accounts?
+        <span class="faq-icon">+</span>
+      </button>
+      <div class="faq-answer">After downloading the app, you'll be guided through a simple setup process. Search for your brokerage, log in securely through Plaid, and your accounts will sync automatically in seconds.</div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-question" onclick="toggleFaq(this)">
+        Which platforms is Astor available on?
+        <span class="faq-icon">+</span>
+      </button>
+      <div class="faq-answer">Astor is currently available on iOS (iPhone and iPad). An Android version is coming soon. Sign up for our waitlist to be notified.</div>
+    </div>
+
+    <div class="faq-item">
+      <button class="faq-question" onclick="toggleFaq(this)">
+        What makes Astor different from other investment apps?
+        <span class="faq-icon">+</span>
+      </button>
+      <div class="faq-answer">Unlike robo-advisors that auto-trade or generic apps that only show charts, Astor gives you a genuine conversation partner that understands your entire financial picture and explains the why behind every recommendation.</div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">Astor</div>
+    <ul class="footer-links">
+      <li><a href="#">Home</a></li>
+      <li><a href="#">Privacy</a></li>
+      <li><a href="#">Legal</a></li>
+      <li><a href="#">Blog</a></li>
+      <li><a href="#">Contact</a></li>
+    </ul>
+    <p class="footer-legal">
+      Astor is an SEC-registered investment advisor. Investing involves risk, including possible loss of principal. Past performance does not guarantee future results.
+      The information provided is for educational purposes only and should not be construed as personalized investment advice.
+      © 2025 Astor Financial Inc. All rights reserved.
+    </p>
+  </div>
+</footer>
+
+<script>
+  function toggleFaq(btn) {
+    const item = btn.closest('.faq-item');
+    const isOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item.open').forEach(el => el.classList.remove('open'));
+    if (!isOpen) item.classList.add('open');
+  }
+
+  const tabData = {
+    tech:       { title: 'Tech Workers',  desc: 'For builders with RSUs and illiquid stock who want clarity across equity and cash.' },
+    consultant: { title: 'Consultants',   desc: 'For high earners with variable income who need smarter cash management and tax-efficient investing.' },
+    banker:     { title: 'Bankers',       desc: 'For finance professionals who want a second opinion on their own portfolio strategy.' },
+    founder:    { title: 'Founders',      desc: 'For startup founders managing cap table complexity, liquidation events, and diversification timing.' },
+  };
+
+  function setTab(el, key) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('tab-title').textContent = tabData[key].title;
+    document.getElementById('tab-desc').textContent = tabData[key].desc;
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,54 @@
+🚨 There's a schema error — the enrichment script is referencing a column `employers.lca_count_2025` that doesn't exist in the database. This needs to be fixed before we can proceed. Let me surface this clearly:
+
+---
+
+## ⛔ Intake Blocked — Schema Error
+
+### Error Detail
+```
+postgrest.exceptions.APIError:
+  column employers.lca_count_2025 does not exist  (code: 42703)
+```
+
+**Where it failed:** `run_lca_enrichment` → line 233 of `00_quarterly_intake.py`, during the initial `SELECT` of existing employer rows.
+
+---
+
+### Root Cause
+
+The intake script tries to read/write a **year-partitioned column** (`lca_count_2025`) that was never added to the `employers` table. This is likely a leftover reference from a prior schema design iteration that used per-year columns instead of (or in addition to) the canonical `lca_count` and `lca_by_quarter` JSONB fields.
+
+---
+
+### How to Fix (choose one path)
+
+#### ✅ Option A — Patch the script (recommended, ~5 min)
+Search `00_quarterly_intake.py` for every reference to `lca_count_2025` (and any sibling columns like `lca_count_2024`, `lca_count_2026`) and remove or replace them. The canonical columns `lca_count`, `lca_by_quarter`, and `last_filing_date` already exist and are what the script should be using.
+
+```bash
+grep -n "lca_count_2025" /Users/dat/getdatjob/scrapers/00_quarterly_intake.py
+```
+
+#### ✅ Option B — Add the missing column to the DB
+If the per-year column is intentional and you want to keep it:
+```sql
+ALTER TABLE employers ADD COLUMN lca_count_2025 INTEGER DEFAULT 0;
+-- (and any other year columns the script expects)
+```
+
+#### ✅ Option C — Run a DB migration that normalizes everything
+If you've been accumulating per-year columns as a pattern, now is a good time to decide: stick with JSONB `lca_by_quarter`, or formalize year columns. Either way, schema and script need to match.
+
+---
+
+### Next Steps Checklist
+
+- [ ] **Fix the schema mismatch** using Option A, B, or C above
+- [ ] Re-run `validate_xlsx_file` (can skip — file already confirmed valid)
+- [ ] Re-run `run_lca_enrichment` after the fix
+- [ ] Then proceed with `process_unmapped_bucket` ATS mapping
+- [ ] The xlsx file itself is clean — **no data loss, nothing was written**
+
+---
+
+Once you've patched the script or the schema, just say **"re-run from enrichment"** and I'll pick up at Step 2 without re-validating the file. 🙌

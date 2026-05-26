@@ -1,0 +1,31 @@
+# Vercel
+.vercel
+
+# Claude Code local config — contains tokens and runtime state
+.claude/settings.local.json
+.claude/launch.json
+.claude/scheduled_tasks.lock
+
+# Node
+node_modules/
+web/node_modules/
+web/.next/
+web/tsconfig.tsbuildinfo
+
+# Env files — never commit secrets
+.env
+.env.local
+.env*.local
+web/.env.local
+
+# macOS
+.DS_Store
+
+# Large raw data (603MB+)
+data/raw/
+
+# Temp / local artifacts
+perf-logs/
+output.md
+web/.claude/
+.github/workflows/

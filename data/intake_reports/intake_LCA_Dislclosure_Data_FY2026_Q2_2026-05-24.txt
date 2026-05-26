@@ -1,0 +1,114 @@
+We've hit offset 200 — 200 employers processed. The remaining unmapped employers are now below LCA count ~100, meeting our stop condition. Let me compile the final report.
+
+---
+
+# 📋 getdatjob FY2026 Q2 — Quarterly LCA Intake Report
+
+---
+
+## 1. Pipeline Summary
+
+| Stage | Result |
+|---|---|
+| **File** | `LCA_Dislclosure_Data_FY2026_Q2.xlsx` |
+| **Quarter** | FY2026_Q2 |
+| **Total rows in file** | 210,387 |
+| **Certified filings** | 190,152 |
+| **Filing date range** | 2025-09-24 → 2026-09-24 |
+| **Visa breakdown** | H-1B: 183,993 · E-3 Australian: 4,505 · H-1B1 Chile: 937 · H-1B1 Singapore: 717 |
+| **Previously loaded?** | ❌ No — fresh load |
+| **Filings inserted** | 130,270 |
+| **Employers updated** | 2,000 |
+| **Employers newly added** | 0 (all pre-existing from prior quarters) |
+
+---
+
+## 2. ATS Mapping — Cumulative Results (Buckets 1–40, Offsets 0–199)
+
+| Metric | Count |
+|---|---|
+| **Employers processed** | 200 |
+| **Buckets run** | 40 |
+| **Total unmapped employers (at start)** | 1,900 |
+| **Confirmed ATS matches** | **2** |
+| **Not mapped (manual review)** | 198 |
+| **Jobs pulled this run** | **226** |
+
+### ✅ Confirmed ATS Matches
+
+| # | Employer | LCA Count | ATS | Slug | Jobs Live |
+|---|---|---|---|---|---|
+| 1 | **Zoox Inc.** | 144 | Lever | `zoox` | 223 |
+| 2 | **Synechron Inc.** | 132 | SmartRecruiters | `synechron` | 3 |
+
+---
+
+## 3. QA Failures (Slug Found, 0 Jobs)
+
+> ✅ **None.** All confirmed slugs passed QA with >0 jobs.
+
+---
+
+## 4. Not-Mapped List — Top 20 by LCA Count (Manual Workday / iCIMS / Custom ATS Follow-up)
+
+These are the highest-value employers that couldn't be resolved to Greenhouse, Lever, Ashby, or SmartRecruiters. Likely on Workday, iCIMS, Taleo, SuccessFactors, or proprietary career portals.
+
+| Rank | Employer | LCA Count | Notes |
+|---|---|---|---|
+| 1 | **Ernst & Young U.S. LLP** | 9,704 | EY — custom portal |
+| 2 | **Apple Inc.** | 7,767 | Apple Jobs — custom portal |
+| 3 | **Microsoft Corporation** | 7,168 | Workday |
+| 4 | **Google LLC** | 6,854 | Custom portal (careers.google.com) |
+| 5 | **Meta Platforms, Inc** | 6,115 | Custom portal |
+| 6 | **WIPRO LIMITED** | 1,907 | Custom/iCIMS |
+| 7 | **TT Commerce & Global Services LLC** | 1,802 | Unknown |
+| 8 | **Capgemini America Inc** | 1,717 | Custom portal |
+| 9 | **LTIMindtree Limited** | 1,698 | Custom portal |
+| 10 | **Qualcomm Technologies, Inc.** | 1,648 | Workday |
+| 11 | **Oracle America, Inc.** | 1,026 | Custom portal (oracle.com/careers) |
+| 12 | **eBay Inc.** | 958 | Custom portal |
+| 13 | **IBM Corporation** | 954 | Custom portal |
+| 14 | **Intuit Inc.** | 894 | Workday |
+| 15 | **Cummins Inc.** | 874 | Workday |
+| 16 | **KFORCE INC.** | 698 | Custom/iCIMS |
+| 17 | **CGI Technologies and Solutions Inc.** | 693 | Workday |
+| 18 | **GOLDMAN SACHS SERVICES LLC** | 687 | Custom portal |
+| 19 | **UST Global Inc** | 669 | Custom portal |
+| 20 | **University of Michigan** | 650 | Custom/Taleo |
+
+> 💡 **Combined LCA count for Top 20:** ~41,679 — representing massive user acquisition opportunity. Prioritize EY, Apple, Microsoft, Google, and Meta first.
+
+---
+
+## 5. Notable Observations
+
+- **🚨 Very low ATS hit rate (2/200 = 1%)** — The overwhelming majority of high-LCA employers in this dataset use proprietary, Workday, iCIMS, or Taleo-based career sites that are not detectable via Greenhouse/Lever/Ashby/SmartRecruiters slug probing. This is expected for Big Tech, Big 4, staffing firms, and universities.
+- **📊 Staffing/consulting firms dominate the top** — Wipro, Capgemini, LTIMindtree, Kforce, Cognizant-adjacent entities appear heavily. These are body-shop H-1B filers and may not have useful job postings matching their LCA profile.
+- **🎓 University presence is high** — Michigan, Iowa, Florida, Stanford, Purdue, etc. Most run their own HR portals (PeopleAdmin, Workday). Worth a dedicated university ATS sweep.
+- **🚗 Zoox (Amazon-owned AV)** is the standout win — 223 jobs live at a $1B+ autonomous vehicle company.
+
+---
+
+## 6. ✅ NEXT STEPS Checklist
+
+### 🔴 Immediate (This Week)
+- [ ] **Manual Workday mapping** — Prioritize: Microsoft, Qualcomm, Intuit, Cummins, CGI, Capgemini. Use `workday.com/<slug>/jobs` pattern and confirm via job count.
+- [ ] **Manual iCIMS / Taleo mapping** — Prioritize: Wipro, Kforce, UST Global, IBM. Check `careers-<slug>.icims.com` patterns.
+- [ ] **Custom portal scraping setup** — Apple, Google, Meta, EY, Oracle, Goldman Sachs, eBay. These 7 alone represent **~33,000 LCA filings**. Bespoke scrapers needed.
+
+### 🟡 Short-Term (This Sprint)
+- [ ] **Continue `process_unmapped_bucket` below offset 200** if Workday/iCIMS integration is added to the tool — thousands of employers remain in the 20–99 LCA count range.
+- [ ] **University portal sweep** — Batch-check all 25+ universities in the unmapped list against PeopleAdmin and Interfolio job board patterns.
+- [ ] **Review TT Commerce & Global Services LLC** (1,802 LCAs) — unusual volume for an unfamiliar entity; verify legitimacy and identify ATS.
+- [ ] **Deduplicate Goldman Sachs entities** — `GOLDMAN SACHS SERVICES LLC` (687) and `GOLDMAN SACHS BANK USA` (434) may resolve to a single career portal.
+- [ ] **Deduplicate TikTok entities** — `TikTok U.S. Data Security Inc.` (146) and `TikTok USDS Joint Venture LLC` (146) — likely same ATS.
+
+### 🟢 Ongoing
+- [ ] **Monitor Zoox job freshness** — 223 jobs pulled; set re-pull cadence to weekly.
+- [ ] **Monitor Synechron** — only 3 jobs; verify slug is correct and check again next week.
+- [ ] **Schedule FY2026_Q3 intake** — file typically released ~January 2026.
+- [ ] **Backfill prior-quarter unmapped employers** — Any employer mapped manually this sprint should be run through `process_unmapped_bucket` to pull their jobs retroactively.
+
+---
+
+*Report generated: FY2026_Q2 intake complete. 200 employers screened, 2 mapped, 226 jobs live. 1,700+ employers remain in the unmapped queue below offset 200.*

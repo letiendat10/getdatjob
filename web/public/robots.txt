@@ -1,0 +1,24 @@
+User-agent: GPTBot
+User-agent: ChatGPT-User
+User-agent: OAI-SearchBot
+User-agent: ClaudeBot
+User-agent: anthropic-ai
+User-agent: Claude-Web
+User-agent: PerplexityBot
+User-agent: Bytespider
+User-agent: CCBot
+User-agent: omgili
+User-agent: omgilibot
+User-agent: Diffbot
+User-agent: ImagesiftBot
+User-agent: YouBot
+User-agent: Applebot-Extended
+User-agent: GoogleOther
+User-agent: Google-Extended
+User-agent: cohere-ai
+User-agent: Meta-ExternalAgent
+User-agent: FacebookBot
+Disallow: /
+
+User-agent: *
+Allow: /

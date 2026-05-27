@@ -32,6 +32,7 @@ type ChatMessage = {
   jobs?: Job[];
   isThinking?: boolean;
   isStreaming?: boolean;
+  isRateLimited?: boolean;
 };
 
 type QR = { label: string; value: string };
@@ -744,7 +745,7 @@ export default function KaiFirstPage() {
       if (raw) {
         const saved = JSON.parse(raw) as { step: OnboardingStep; messages: ChatMessage[] };
         if (saved.step === "done" && saved.messages?.length > 0) {
-          const clean = saved.messages.filter((m) => !m.isThinking && !m.isStreaming && !m.isRateLimited);
+          const clean = saved.messages.filter((m) => !m.isThinking && !m.isStreaming);
           if (clean.length > 0) {
             setMessages(clean);
             setStep("done");

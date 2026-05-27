@@ -18,13 +18,19 @@ export default async function MePage() {
     redirect("/auth/signin");
   }
 
-  const [{ data: profile }, { data: enrichedPrefs }] = await Promise.all([
+  const [{ data: profile }, { data: enrichedPrefs }, { data: liProfile }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single(),
     supabase
       .schema("enriched")
       .from("profiles")
       .select("visa_type, salary_floor, job_level, location, is_supporter")
       .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .schema("linkedin")
+      .from("profiles")
+      .select("avatar_url")
+      .eq("id", user.id)
       .maybeSingle(),
   ]);
 
@@ -37,6 +43,7 @@ export default async function MePage() {
       null,
     email: profile?.email ?? user.email ?? null,
     avatar_url:
+      liProfile?.avatar_url ??
       profile?.avatar_url ??
       user.user_metadata?.avatar_url ??
       user.user_metadata?.picture ??

@@ -77,8 +77,9 @@ async function fetchLinkedInProfile(accessToken: string): Promise<LiProfile> {
     const pic = me.profilePicture as Picture | undefined;
     avatarUrl = pic?.["displayImage~"]?.elements?.at(-1)?.identifiers?.[0]?.identifier ?? null;
   } catch {
-    avatarUrl = (userinfo.picture as string | null) ?? null;
+    // ignore parse errors
   }
+  avatarUrl = avatarUrl ?? (userinfo.picture as string | null) ?? null;
 
   return {
     email: (userinfo.email as string | null) ?? null,

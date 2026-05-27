@@ -45,7 +45,7 @@ export const KAI_TOOLS: Tool[] = [
         },
         posted_within: {
           type: "string",
-          enum: ["1d", "7d", "30d"],
+          enum: ["1d", "3d", "7d", "30d"],
           description: "Only show jobs posted within this window",
         },
         limit: {
@@ -78,7 +78,7 @@ type SearchJobsInput = {
   industry?: string;
   salary_min?: number;
   visa_category?: string;
-  posted_within?: "1d" | "7d" | "30d";
+  posted_within?: "1d" | "3d" | "7d" | "30d";
   limit?: number;
 };
 
@@ -95,12 +95,12 @@ const DEPT_KEYWORDS: Record<string, string[]> = {
 
 export async function handleSearchJobs(input: SearchJobsInput) {
   const limit = Math.min(input.limit ?? 5, 10);
-  const POSTED_DAYS: Record<string, number> = { "1d": 1, "7d": 7, "30d": 30 };
+  const POSTED_DAYS: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30 };
 
   let q = supabaseServer.from("jobs_kai_view").select("*");
 
-  // Date filter — default to 7d if not specified
-  const postedWithin = input.posted_within ?? "7d";
+  // Date filter — default to 3d if not specified
+  const postedWithin = input.posted_within ?? "3d";
   const days = POSTED_DAYS[postedWithin];
   const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
   q = q.gte("posted_at", cutoff);

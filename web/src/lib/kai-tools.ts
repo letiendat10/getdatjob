@@ -191,6 +191,7 @@ export async function handleSearchJobs(input: SearchJobsInput) {
       posted_at: j.posted_at,
       visa_tier: j.visa_tier,
       visa_class: j.visa_class,
+      salary_range: j.salary_range ?? null,
       salary_estimate: j.salary_estimate ? Number(j.salary_estimate) : null,
       lca_count: j.lca_count,
       lca_count_2025: j.lca_count_2025 ? Number(j.lca_count_2025) : null,

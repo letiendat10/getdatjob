@@ -160,7 +160,7 @@ function getTimeGreeting(firstName: string | null): { headline: string; em: stri
   if (hour < 9) return { headline: "Early bird gets the job", em: `let's find yours${name}.` };
   if (hour < 12) return { headline: `Good morning${name}.`, em: "Let's get to work." };
   if (hour < 17) return { headline: `You got this${name}.`, em: "Let's find your next role." };
-  return { headline: `Ready to apply tonight${name}? Let's`, em: "make it count." };
+  return { headline: `Ready to apply tonight${name}?`, em: "Let's make it count." };
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -699,7 +699,11 @@ export default function KaiFirstPage() {
       // Q3 is now salary
       setMessages((prev) => [
         ...prev,
-        { id: "k-q3", role: "assistant", content: "What's the minimum base salary that would make a move worth it? Or no floor?" },
+        { id: "k-q3", role: "assistant", content: [
+            "What's the minimum base salary that would make a move worth it? Or are you open?",
+            "What's the minimum base salary that would make a move worth it? Or no minimum?",
+            "What's the minimum base salary that would make a move worth it? Or are you flexible on salary?",
+          ][Math.floor(Math.random() * 3)] },
       ]);
       setQuickReplies([
         { label: "No floor", value: "0"      },
@@ -1157,7 +1161,8 @@ export default function KaiFirstPage() {
           {timeGreeting && (
             <div className={s["page-greeting"]}>
               <h1 className={s["page-headline"]}>
-                {timeGreeting.headline}{" "}
+                {timeGreeting.headline}
+                <br />
                 <em>{timeGreeting.em}</em>
               </h1>
             </div>
@@ -1203,7 +1208,7 @@ export default function KaiFirstPage() {
                 </div>
                 {/* Job cards below Kai messages */}
                 {msg.role === "assistant" && msg.jobs && msg.jobs.length > 0 && (
-                  <div className={s["msg-row"]} style={{ paddingLeft: 38 }}>
+                  <div className={s["msg-row"]} style={{ paddingLeft: 50 }}>
                     <div className={s["jobs-wrap"]}>
                       {msg.jobs.map((job) => <JobCard key={job.id} job={job} onClick={() => setSelectedJob(job)} />)}
                     </div>
@@ -1238,7 +1243,7 @@ export default function KaiFirstPage() {
 
           {/* Post-result chips in free-chat mode */}
           {showPostChips && step === "done" && (
-            <div className={s.chips} style={{ justifyContent: "flex-start", paddingLeft: 38 }}>
+            <div className={s.chips} style={{ justifyContent: "flex-start", paddingLeft: 50 }}>
               {POST_RESULT_CHIPS.map((c) => (
                 <button key={c} className={s.chip} onClick={() => sendChatMessage(c)}>{c}</button>
               ))}
@@ -1247,15 +1252,39 @@ export default function KaiFirstPage() {
         </div>
       </div>
 
-      {/* Quick-reply tiles (shown during intake + email opt-in) */}
+      {/* Quick-reply tiles + text input (shown during intake + email opt-in) */}
       {quickReplies.length > 0 && (
-        <div className={s["tiles-bar"]}>
-          <div className={s["tiles-inner"]}>
+        <div className={s["bottom-bar"]}>
+          <div className={s["bottom-bar-chips"]}>
             {quickReplies.map((qr) => (
               <button key={qr.value} className={s.tile} onClick={() => handleTileClick(qr)}>
                 {qr.label}
               </button>
             ))}
+          </div>
+          <div className={s["input-bar-inner"]}>
+            <div className={s["input-wrap"]}>
+              <textarea
+                ref={chatInputRef}
+                className={s.input}
+                placeholder="Or type your answer..."
+                value={chatInput}
+                onChange={handleChatInputChange}
+                onKeyDown={handleChatKeyDown}
+                rows={1}
+                disabled={isChatStreaming}
+              />
+            </div>
+            <button
+              className={s["send-btn"]}
+              onClick={() => sendChatMessage(chatInput)}
+              disabled={!chatInput.trim() || isChatStreaming}
+              aria-label="Send"
+            >
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 8H2M8 2l6 6-6 6" />
+              </svg>
+            </button>
           </div>
         </div>
       )}

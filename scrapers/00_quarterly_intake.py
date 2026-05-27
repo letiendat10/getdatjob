@@ -264,12 +264,12 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
                     sb.table("employers").update(meta).eq("name_clean", nc).execute()
                 updated_count += 1
             else:
-                sb.table("employers").insert({
+                sb.table("employers").upsert({
                     "name":       r["employer_name"],
                     "name_clean": nc,
                     "fein":       r["fein"] if pd.notna(r["fein"]) else None,
                     **meta,
-                }).execute()
+                }, on_conflict="name_clean").execute()
                 new_count += 1
 
         # Fetch full employer ID map

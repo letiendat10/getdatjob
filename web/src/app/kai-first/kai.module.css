@@ -279,12 +279,12 @@
 
 /* Kai avatar */
 .kai-avatar {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--accent);
   color: #e9e5da;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -296,8 +296,8 @@
 
 /* User avatar */
 .user-avatar {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   flex-shrink: 0;
   align-self: flex-end;
@@ -567,7 +567,7 @@
 .send-btn:disabled { background: #000; color: #fff; cursor: not-allowed; }
 .send-btn svg { width: 16px; height: 16px; }
 
-/* ── Onboarding quick-reply tiles bar ────────────────────────────────────── */
+/* ── Onboarding quick-reply tiles bar (legacy standalone, kept for reference) */
 .tiles-bar {
   flex-shrink: 0;
   border-top: 1px solid var(--line);
@@ -578,6 +578,27 @@
 .tiles-inner {
   max-width: 720px;
   margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+/* ── Combined bottom bar: chips + text input ─────────────────────────────── */
+.bottom-bar {
+  flex-shrink: 0;
+  border-top: 1px solid var(--line);
+  background: rgba(244, 240, 232, 0.97);
+  backdrop-filter: blur(8px);
+  padding: 12px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bottom-bar-chips {
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -631,7 +652,7 @@
 /* ── "Show more" inline button ───────────────────────────────────────────── */
 .show-more-row {
   display: flex;
-  padding-left: 38px;
+  padding-left: 50px;
   margin-top: 4px;
 }
 .show-more-btn {
@@ -770,6 +791,7 @@
   .bubble { font-size: 14px; }
   .tiles-bar { padding: 12px 16px 20px; }
   .tile { min-width: 0; flex: 1 1 calc(50% - 5px); }
+  .bottom-bar { padding: 10px 16px 16px; }
   .support-sheet { border-radius: 20px 20px 0 0; padding: 24px 20px 32px; }
   .scan-bubble { font-size: 12px; }
 }

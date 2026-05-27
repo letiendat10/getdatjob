@@ -44,7 +44,7 @@ def load_lca(path: str) -> pd.DataFrame:
     df = df[df["case_status"].str.upper() == "CERTIFIED"]
     df["employer_name"] = df["employer_name"].str.strip()
     df["name_clean"] = df["employer_name"].apply(clean_name)
-    df["received_date"] = pd.to_datetime(df["received_date"], format="%m/%d/%Y", errors="coerce").dt.date
+    df["received_date"] = pd.to_datetime(df["received_date"], errors="coerce").dt.date
     df["wage_offered"] = pd.to_numeric(df["wage_offered"], errors="coerce")
     print(f"  {len(df):,} certified filings loaded")
     return df

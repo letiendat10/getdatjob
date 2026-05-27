@@ -173,7 +173,7 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
         df = df[df["case_status"].str.upper() == "CERTIFIED"].copy()
         df["employer_name"] = df["employer_name"].str.strip()
         df["name_clean"] = df["employer_name"].apply(clean_name)
-        df["received_date"] = pd.to_datetime(df["received_date"], format="%m/%d/%Y", errors="coerce").dt.date
+        df["received_date"] = pd.to_datetime(df["received_date"], errors="coerce").dt.date
         df["wage_offered"] = pd.to_numeric(df["wage_offered"], errors="coerce")
 
         # Use RECEIVED_DATE (not filename) for all quarter attribution
@@ -240,8 +240,9 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
         existing_result = sb.table("employers").select("id,name_clean,last_filing_date").execute()
         existing_by_name = {e["name_clean"]: e for e in existing_result.data}
 
+        # Build batched upsert lists — avoids per-row HTTP calls that exhaust HTTP/2 streams
         new_count = updated_count = 0
-        print(f"  Upserting {len(counts):,} employers …")
+        rows_to_write: list[dict] = []
         for _, r in counts.iterrows():
             nc = r["name_clean"]
             new_last = str(r["last_filing_date"]) if pd.notna(r["last_filing_date"]) else None
@@ -261,16 +262,26 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
                 # Only overwrite POC + metadata if this file is the most recent source.
                 # Guards against an older quarter (e.g. Q1) clobbering a newer quarter's (Q2) POC.
                 if new_last and (not existing_last or new_last >= existing_last):
-                    sb.table("employers").update(meta).eq("name_clean", nc).execute()
+                    # Always include name so any NULL names from partial runs get healed.
+                    rows_to_write.append({
+                        "name":       r["employer_name"],
+                        "name_clean": nc,
+                        **meta,
+                    })
                 updated_count += 1
             else:
-                sb.table("employers").upsert({
+                rows_to_write.append({
                     "name":       r["employer_name"],
                     "name_clean": nc,
                     "fein":       r["fein"] if pd.notna(r["fein"]) else None,
                     **meta,
-                }, on_conflict="name_clean").execute()
+                })
                 new_count += 1
+
+        print(f"  Upserting {len(rows_to_write):,} employer rows in batches of 500 …")
+        for i in range(0, len(rows_to_write), 500):
+            sb.table("employers").upsert(rows_to_write[i:i + 500], on_conflict="name_clean").execute()
+            print(f"    {min(i + 500, len(rows_to_write)):,}/{len(rows_to_write):,}")
 
         # Fetch full employer ID map
         id_result = sb.table("employers").select("id,name_clean").execute()

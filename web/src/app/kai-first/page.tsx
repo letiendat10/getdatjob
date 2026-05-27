@@ -252,6 +252,17 @@ function CompanyAvatar({ name, domain }: { name: string; domain: string | null }
 }
 
 function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
+  const [saved, setSaved] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+
+  function handleSave() {
+    if (!saved) {
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 1500);
+    }
+    setSaved(v => !v);
+  }
+
   const isVerified = job.visa_tier === "verified";
   const isFriendly = job.visa_tier === "friendly";
   const posted = timeAgo(job.posted_at);
@@ -272,9 +283,20 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
           <span className="text-sm font-semibold text-zinc-600 truncate">{displayCompany}</span>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0 ml-2" onClick={e => e.stopPropagation()}>
-          <button className="p-1.5 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all" aria-label="Save job">
-            <Bookmark size={14} />
-          </button>
+          <div className="relative">
+            {showToast && (
+              <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none animate-fade-out">
+                Saved
+              </span>
+            )}
+            <button
+              onClick={handleSave}
+              className={`p-1.5 rounded-full border transition-all ${saved ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`}
+              aria-label={saved ? "Unsave job" : "Save job"}
+            >
+              <Bookmark size={14} className={saved ? "fill-current" : ""} />
+            </button>
+          </div>
           {job.url && (
             <a href={job.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-zinc-900 text-white text-xs font-semibold hover:bg-zinc-700 transition-colors no-underline">
               Apply <ExternalLink size={11} />
@@ -392,7 +414,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
     <>
       <div className={s["job-overlay"]} onClick={onClose} />
       <div className={s["job-panel"]}>
-        {/* Drag handle — mobile only */}
+        {/* Drag handle – mobile only */}
         <div className={s["job-drag-handle"]}>
           <div className="w-10 h-1 rounded-full bg-zinc-200" />
         </div>
@@ -485,7 +507,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
           ) : descText ? (
             <p className="text-xs text-zinc-600 leading-relaxed whitespace-pre-wrap">{descText}</p>
           ) : (
-            <p className="text-xs text-zinc-400 italic">Description unavailable — view full posting on company site.</p>
+            <p className="text-xs text-zinc-400 italic">Description unavailable – view full posting on company site.</p>
           )}
         </div>
       </div>
@@ -508,7 +530,7 @@ function KaiText({ text, isStreaming }: { text: string; isStreaming?: boolean })
   );
 }
 
-// Scan checklist — shown inside a Kai bubble during the job search
+// Scan checklist – shown inside a Kai bubble during the job search
 const SCAN_LABELS = [
   "Checking ATS feeds",
   "Filtering for active sponsors",
@@ -600,20 +622,20 @@ function SupportScreen({
           match your profile.
         </p>
         <p className={s["support-body"]}>
-          Tip $10 to unlock the rest — that&apos;s your daily limit.
+          Tip $10 to unlock the rest – that&apos;s your daily limit.
         </p>
         <p className={s["support-story"]}>
           I&apos;m Dat, solo founder of getdatjob. I&apos;m on a working visa too.
-          No VC, no team — I build this on weeknights and weekends.
+          No VC, no team – I build this on weeknights and weekends.
         </p>
         <a href={venmoDeepLink} onClick={handleVenmoClick} className={s["support-cta"]}>
-          Support on Venmo — $10 👊
+          Support on Venmo – $10 👊
         </a>
         <button className={s["support-sent"]} onClick={onSent}>
           I sent it ✓
         </button>
         <button className={s["support-skip"]} onClick={onClose}>
-          No pressure — come back tomorrow
+          No pressure – come back tomorrow
         </button>
       </div>
     </div>
@@ -676,7 +698,7 @@ export default function KaiFirstPage() {
           avatar: meta.avatar_url ?? meta.picture ?? null,
         });
 
-        // linkedin.profiles — populated synchronously in auth callback, always available
+        // linkedin.profiles – populated synchronously in auth callback, always available
         supabase
           .schema("linkedin")
           .from("profiles")
@@ -687,7 +709,7 @@ export default function KaiFirstPage() {
             if (lp?.headline) setLinkedIn({ headline: lp.headline });
           });
 
-        // enriched.profiles — PDL/Apollo async enrichment, available on re-visits
+        // enriched.profiles – PDL/Apollo async enrichment, available on re-visits
         supabase
           .schema("enriched")
           .from("profiles")
@@ -738,8 +760,8 @@ export default function KaiFirstPage() {
       ]);
       setQuickReplies([
         { label: "I just got laid off.", value: "laid_off" },
-        { label: "I'm actively looking.", value: "active" },
-        { label: "Worried about layoffs — staying prepared.", value: "prepared" },
+        { label: "I'm employed, but actively looking.", value: "active" },
+        { label: "I'm employed – just worried about potential layoffs and want to stay prepared.", value: "prepared" },
       ]);
       setStep("q1");
     })();
@@ -751,7 +773,7 @@ export default function KaiFirstPage() {
   const handleTileClick = async (qr: QR) => {
     setQuickReplies([]);
 
-    // Q1 — intent
+    // Q1 – intent
     if (step === "q1") {
       const intent = qr.value;
       setIntake((prev) => ({ ...prev, intent }));
@@ -769,14 +791,14 @@ export default function KaiFirstPage() {
 
       const filler =
         intent === "active"
-          ? "Got it. I'm here to fast-track your search — visa sponsoring opportunities only, so you're not wasting time on companies that won't work for you."
+          ? "Got it. I'm here to fast-track your search – visa sponsoring opportunities only, so you're not wasting time on companies that won't work for you."
           : "That's the immigrant mindset. Aren't we all running a plan B in this economy?";
       setMessages((prev) => [...prev, { id: `k-f1`, role: "assistant", content: filler }]);
       await delay(900);
       // Q2 is now visa
       setMessages((prev) => [
         ...prev,
-        { id: "k-q2", role: "assistant", content: "To match you with the right sponsors — what visa are you working with?" },
+        { id: "k-q2", role: "assistant", content: "To match you with the right sponsors – what visa are you working with?" },
       ]);
       setQuickReplies([
         { label: "H-1B", value: "H-1B" },
@@ -786,23 +808,23 @@ export default function KaiFirstPage() {
       ]);
       setStep("q2");
 
-    // Q2 — visa
+    // Q2 – visa
     } else if (step === "q2") {
       const visa = qr.value;
       setIntake((prev) => ({ ...prev, visa }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(450);
       const visaFiller: Record<string, string> = {
-        "h1b":  "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year — the good ones are in here.",
-        "e3":   "E-3 sponsors are a more specific group — I'll zero in on the ones with a strong Australian hire track record.",
-        "tn":   "TN sponsors are a more specific group — I'll zero in on the ones with a strong Canada/Mexico hire track record.",
-        "opt":  "Got it — OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
-        "o1":   "O-1 is for people with extraordinary ability — and honestly, it's the most flexible work visa out there. Most employers can hire you without going through the H-1B lottery or LCA process. Your options are wider than you might think. I'll pull from our full verified employer list.",
+        "h1b":  "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year – the good ones are in here.",
+        "e3":   "E-3 sponsors are a more specific group – I'll zero in on the ones with a strong Australian hire track record.",
+        "tn":   "TN sponsors are a more specific group – I'll zero in on the ones with a strong Canada/Mexico hire track record.",
+        "opt":  "Got it – OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
+        "o1":   "O-1 is for people with extraordinary ability – and honestly, it's the most flexible work visa out there. Most employers can hire you without going through the H-1B lottery or LCA process. Your options are wider than you might think. I'll pull from our full verified employer list.",
       };
       const visaKey = visa.toLowerCase().replace(/[-/ ]/g, "");
       setMessages((prev) => [
         ...prev,
-        { id: "k-f2", role: "assistant", content: visaFiller[visaKey] ?? "Got it — pulling the right sponsors." },
+        { id: "k-f2", role: "assistant", content: visaFiller[visaKey] ?? "Got it – pulling the right sponsors." },
       ]);
       await delay(850);
       // Q3 is now salary
@@ -822,16 +844,16 @@ export default function KaiFirstPage() {
       ]);
       setStep("q3");
 
-    // Q3 — salary
+    // Q3 – salary
     } else if (step === "q3") {
       const salaryMin = parseInt(qr.value, 10);
       setIntake((prev) => ({ ...prev, salaryMin: salaryMin > 0 ? salaryMin : null }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(400);
-      // Q4 is now level — pre-confirm from LinkedIn headline if available
+      // Q4 is now level – pre-confirm from LinkedIn headline if available
       const inferredLevel = inferLevel(linkedIn?.headline ?? "");
       const q4Text = inferredLevel
-        ? `Based on your title, looks like **${inferredLevel}** — is that right?`
+        ? `Based on your title, looks like **${inferredLevel}** – is that right?`
         : "Senior IC, or ready to lead a team?";
       const q4Replies: QR[] = inferredLevel
         ? [
@@ -848,7 +870,7 @@ export default function KaiFirstPage() {
       setQuickReplies(q4Replies);
       setStep("q4");
 
-    // Q4 — level → then ask / pre-confirm location
+    // Q4 – level → then ask / pre-confirm location
     } else if (step === "q4") {
       const level = qr.value;
       setIntake((prev) => ({ ...prev, level }));
@@ -856,11 +878,11 @@ export default function KaiFirstPage() {
 
       if (level === "either") {
         await delay(450);
-        setMessages((prev) => [...prev, { id: "k-f4", role: "assistant", content: "Flexible — that opens it up." }]);
+        setMessages((prev) => [...prev, { id: "k-f4", role: "assistant", content: "Flexible – that opens it up." }]);
       }
       await delay(level === "either" ? 700 : 400);
 
-      // Q5 — location: try PDL/Apollo enrichment first (has had ~16s to run by now)
+      // Q5 – location: try PDL/Apollo enrichment first (has had ~16s to run by now)
       const supabase = createSupabaseBrowser();
       const { data: { user: authUser } } = await supabase.auth.getUser();
       let knownLocation: string | null = null;
@@ -876,7 +898,7 @@ export default function KaiFirstPage() {
       }
 
       const q5Text = knownLocation
-        ? `You're in ${knownLocation} — staying local, or open to remote and other cities?`
+        ? `You're in ${knownLocation} – staying local, or open to remote and other cities?`
         : "Where are you based right now?";
       const q5Replies: QR[] = knownLocation
         ? [
@@ -900,7 +922,7 @@ export default function KaiFirstPage() {
       setQuickReplies(q5Replies);
       setStep("q5");
 
-    // Q5 — location → kicks off scan
+    // Q5 – location → kicks off scan
     } else if (step === "q5") {
       const level = intake.level ?? "either";
       const locMap: Record<string, { location: string | null; locationMode: string }> = {
@@ -935,7 +957,7 @@ export default function KaiFirstPage() {
         {
           id: "k-scan-announce",
           role: "assistant",
-          content: `Running a pass across ${filterTokens.join(" · ")}.\n\nGive me a sec — I'll come back with whatever's worth your time.`,
+          content: `Running a pass across ${filterTokens.join(" · ")}.\n\nGive me a sec – I'll come back with whatever's worth your time.`,
         },
       ]);
       setStep("scanning");
@@ -970,7 +992,7 @@ export default function KaiFirstPage() {
       setScanPhase(4);
       await delay(1300);
 
-      // Reveal batch 1 — one job per company
+      // Reveal batch 1 – one job per company
       setScanPhase(0);
       const seenCos = new Set<string>();
       const batch1 = jobs.filter((j) => {
@@ -982,8 +1004,8 @@ export default function KaiFirstPage() {
       const count = batch1.length;
       const hasVerified = batch1.some((j) => j.visa_tier === "verified");
       const revealText = count > 0
-        ? `Okay, found ${count} job${count !== 1 ? "s" : ""} worth your time.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before — so the sponsorship signal is extremely high." : ""}`
-        : "Hmm, nothing matching exactly right now — this changes daily. Come back tomorrow for fresh picks.";
+        ? `Okay, found ${count} job${count !== 1 ? "s" : ""} worth your time.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before – so the sponsorship signal is extremely high." : ""}`
+        : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks.";
       setMessages((prev) => [
         ...prev,
         { id: "k-reveal1", role: "assistant", content: revealText, jobs: batch1 },
@@ -997,7 +1019,7 @@ export default function KaiFirstPage() {
       if (qr.value === "yes") {
         setMessages((prev) => [
           ...prev,
-          { id: "k-optin-yes", role: "assistant", content: "Perfect — I'll ping you daily when new matches hit. Won't spam you." },
+          { id: "k-optin-yes", role: "assistant", content: "Perfect – I'll ping you daily when new matches hit. Won't spam you." },
         ]);
         // Best-effort save preference
         try {
@@ -1010,7 +1032,7 @@ export default function KaiFirstPage() {
       } else {
         setMessages((prev) => [
           ...prev,
-          { id: "k-optin-no", role: "assistant", content: "Got it — no pressure." },
+          { id: "k-optin-no", role: "assistant", content: "Got it – no pressure." },
         ]);
       }
       await delay(600);
@@ -1025,7 +1047,7 @@ export default function KaiFirstPage() {
       } else {
         setMessages((prev) => [
           ...prev,
-          { id: "k-no-more", role: "assistant", content: "That's all the matches for today — new ones drop daily." },
+          { id: "k-no-more", role: "assistant", content: "That's all the matches for today – new ones drop daily." },
         ]);
         setStep("done");
       }
@@ -1052,7 +1074,7 @@ export default function KaiFirstPage() {
       setMessages((prev) => [
         ...prev,
         { id: `u-${Date.now()}`, role: "user", content: trimmed },
-        { id: `k-date-err-${Date.now()}`, role: "assistant", content: "Hmm, that doesn't look right. Try MM/DD/YY — for example, 05/25/25." },
+        { id: `k-date-err-${Date.now()}`, role: "assistant", content: "Hmm, that doesn't look right. Try MM/DD/YY – for example, 05/25/25." },
       ]);
       setTimeout(() => dateInputRef.current?.focus(), 100);
       return;
@@ -1061,7 +1083,7 @@ export default function KaiFirstPage() {
     setDateInput("");
     setIntake((prev) => ({ ...prev, layoffDate: trimmed }));
     setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: trimmed }]);
-    // Best-effort save — requires layoff_date column on profiles table
+    // Best-effort save – requires layoff_date column on profiles table
     try {
       const supabase = createSupabaseBrowser();
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -1070,9 +1092,9 @@ export default function KaiFirstPage() {
       }
     } catch { /* graceful */ }
     await delay(500);
-    setMessages((prev) => [...prev, { id: `k-f1b`, role: "assistant", content: "Okay — 30, 60, 90 days matters here. I'm pulling for roles that can move fast." }]);
+    setMessages((prev) => [...prev, { id: `k-f1b`, role: "assistant", content: "Okay – 30, 60, 90 days matters here. I'm pulling for roles that can move fast." }]);
     await delay(900);
-    setMessages((prev) => [...prev, { id: "k-q2", role: "assistant", content: "To match you with the right sponsors — what visa are you working with?" }]);
+    setMessages((prev) => [...prev, { id: "k-q2", role: "assistant", content: "To match you with the right sponsors – what visa are you working with?" }]);
     setQuickReplies([
       { label: "H-1B", value: "H-1B" },
       { label: "E-3",  value: "E-3"  },
@@ -1092,7 +1114,7 @@ export default function KaiFirstPage() {
       {
         id: "k-optin-ask",
         role: "assistant",
-        content: "Before I pull the next batch — want me to ping you when new matches come in? Your daily batch resets at midnight.",
+        content: "Before I pull the next batch – want me to ping you when new matches come in? Your daily batch resets at midnight.",
       },
     ]);
     setQuickReplies([
@@ -1115,7 +1137,7 @@ export default function KaiFirstPage() {
       {
         id: "k-skip-support",
         role: "assistant",
-        content: "No worries — that's today's batch. New matches drop daily, come back tomorrow and I'll pull fresh ones.",
+        content: "No worries – that's today's batch. New matches drop daily, come back tomorrow and I'll pull fresh ones.",
       },
     ]);
   };
@@ -1136,7 +1158,7 @@ export default function KaiFirstPage() {
       {
         id: "k-supporter",
         role: "assistant",
-        content: "You're in — thank you! Unlimited Kai starting now. What else can I find you?",
+        content: "You're in – thank you! Unlimited Kai starting now. What else can I find you?",
       },
     ]);
   };
@@ -1359,7 +1381,7 @@ export default function KaiFirstPage() {
             </div>
           )}
 
-          {/* Inline quick-reply chips — tree connector style, anchored to last Kai question */}
+          {/* Inline quick-reply chips – tree connector style, anchored to last Kai question */}
           {quickReplies.length > 0 && (
             <div className={s["inline-replies"]}>
               <div className={s["inline-stem"]} />
@@ -1423,7 +1445,7 @@ export default function KaiFirstPage() {
         </div>
       )}
 
-      {/* Input bar — visible throughout conversation except init/scanning/date-entry */}
+      {/* Input bar – visible throughout conversation except init/scanning/date-entry */}
       {step !== "init" && step !== "scanning" && step !== "q1_layoff_date" && (
         <div className={s["input-bar"]}>
           <div className={s["input-bar-inner"]}>

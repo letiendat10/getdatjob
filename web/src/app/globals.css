@@ -21,6 +21,12 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-instrument-serif);
+  --animate-fade-out: fade-out 1.5s ease-out forwards;
+  @keyframes fade-out {
+    0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    60%  { opacity: 1; transform: translateX(-50%) translateY(-2px); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+  }
 }
 
 @layer base {

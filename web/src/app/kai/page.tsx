@@ -44,7 +44,7 @@ const LOGO_DEV_TOKEN = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN ?? "";
 
 const DOMAIN_OVERRIDES: Record<string, string> = {
   block: "block.xyz",
-  // Amazon — many legal entities, all resolve to amazon.com
+  // Amazon – many legal entities, all resolve to amazon.com
   amazoncomservices: "amazon.com",
   amazonadvertising: "amazon.com",
   amazondataservices: "amazon.com",
@@ -215,6 +215,16 @@ function CompanyAvatar({ name, domain }: { name: string; domain: string | null }
 }
 
 function JobCard({ job }: { job: Job }) {
+  const [saved, setSaved] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+
+  function handleSave() {
+    if (!saved) {
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 1500);
+    }
+    setSaved(v => !v);
+  }
   const isVerified = job.visa_tier === "verified";
   const isFriendly = job.visa_tier === "friendly";
   const posted = timeAgo(job.posted_at);
@@ -232,9 +242,20 @@ function JobCard({ job }: { job: Job }) {
           <span className="text-sm font-semibold text-zinc-600 truncate">{displayCompany}</span>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-          <button className="p-1.5 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all" aria-label="Save job">
-            <Bookmark size={14} />
-          </button>
+          <div className="relative">
+            {showToast && (
+              <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none animate-fade-out">
+                Saved
+              </span>
+            )}
+            <button
+              onClick={handleSave}
+              className={`p-1.5 rounded-full border transition-all ${saved ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`}
+              aria-label={saved ? "Unsave job" : "Save job"}
+            >
+              <Bookmark size={14} className={saved ? "fill-current" : ""} />
+            </button>
+          </div>
           {job.url && (
             <a href={job.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-zinc-900 text-white text-xs font-semibold hover:bg-zinc-700 transition-colors no-underline">
               Apply <ExternalLink size={11} />
@@ -531,7 +552,7 @@ export default function KaiPage() {
                 );
               }
             } catch {
-              // malformed SSE line — skip
+              // malformed SSE line – skip
             }
           }
         }
@@ -576,7 +597,7 @@ export default function KaiPage() {
       <div className={s.thread} ref={threadRef}>
         <div className={s["thread-inner"]}>
 
-          {/* Empty state — greeting */}
+          {/* Empty state – greeting */}
           {isEmpty && (
             <div className={s.greeting}>
               <h1 className={s["greeting-headline"]}>{getGreeting()}</h1>
@@ -715,7 +736,7 @@ export default function KaiPage() {
         </div>
       </div>
 
-      {/* Input bar — only when conversation is active */}
+      {/* Input bar – only when conversation is active */}
       {!isEmpty && (
         <div className={s["input-bar"]}>
           <div className={s["input-bar-inner"]}>

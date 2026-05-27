@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import s from "./kai.module.css";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
-import { MapPin, ExternalLink, X } from "lucide-react";
+import { Bookmark, MapPin, ExternalLink, X } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +19,8 @@ type Job = {
   visa_tier: string | null;
   salary_estimate: number | null;
   lca_count: number | null;
+  lca_count_2025: number | null;
+  lca_last_filed: string | null;
   ats_source: string | null;
   ats_job_id: string | null;
 };
@@ -123,6 +125,16 @@ const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // Infer a human-readable department label from a LinkedIn job title.
 // Returns lowercase, suitable for inline use: "product marketing", "engineering", etc.
 // Returns null when the title is ambiguous or missing.
+function formatLcaDate(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+  const parts = dateStr.split("-");
+  if (parts.length < 2) return null;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${months[month]} ${year}`;
+}
+
 function inferDepartment(title: string | null): string | null {
   if (!title) return null;
   const t = title.toLowerCase();
@@ -246,67 +258,83 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
   const displayCompany = normalizeCompanyName(job.company);
   const level = inferLevel(job.title);
   const department = inferDepartment(job.title);
+  const lcaLastFiled = formatLcaDate(job.lca_last_filed);
+
   return (
-    <button
+    <div
+      className="border border-zinc-200 rounded-xl bg-white px-4 pt-4 pb-3 cursor-pointer hover:bg-zinc-50 active:bg-zinc-100 transition-colors"
       onClick={onClick}
-      className="w-full text-left border border-zinc-200 rounded-xl bg-white hover:bg-zinc-50 active:bg-zinc-100 transition-colors px-4 pt-4 pb-3"
     >
-      {/* Header: logo + company | post date */}
+      {/* Logo + company | bookmark + apply */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 min-w-0">
           <CompanyAvatar name={job.company} domain={job.company_domain} />
           <span className="text-sm font-semibold text-zinc-600 truncate">{displayCompany}</span>
         </div>
-        {posted && <span className="text-xs text-zinc-400 flex-shrink-0 ml-2">{posted}</span>}
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+          <button className="p-1.5 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all" aria-label="Save job">
+            <Bookmark size={14} />
+          </button>
+          {job.url && (
+            <a href={job.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-zinc-900 text-white text-xs font-semibold hover:bg-zinc-700 transition-colors no-underline">
+              Apply <ExternalLink size={11} />
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Title */}
-      <h3 className="text-base font-bold text-zinc-900 leading-snug mb-2">
-        {job.title}
-      </h3>
+      <h3 className="text-base font-bold text-zinc-900 leading-snug mb-2">{job.title}</h3>
 
-      {/* Location */}
-      {job.location && (
+      {/* Location · date posted */}
+      {(job.location || posted) && (
         <div className="flex items-center gap-1 text-xs text-zinc-500 mb-2.5">
           <MapPin size={10} className="text-zinc-400 flex-shrink-0" />
-          <span className="truncate">{job.location}</span>
+          <span>{[job.location, posted ? `Posted ${posted}` : null].filter(Boolean).join(" · ")}</span>
         </div>
       )}
 
-      {/* Tags */}
-      <div className="flex flex-wrap gap-1.5 mb-2.5">
-        {level && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{level}</span>}
-        {department && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium capitalize">{department}</span>}
-        {isVerified && (
-          <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
-            <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
-              Verified LCA Filings With Similar Job Title
-            </span>
-          </span>
-        )}
-        {isFriendly && (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium border border-green-200">
-            H-1B Friendly Employer
-          </span>
-        )}
-      </div>
-
-      {/* Salary + LCA count */}
-      {(job.salary_estimate && job.salary_estimate > 50000 || job.lca_count) && (
-        <div className="flex flex-wrap gap-1.5">
+      {/* Tags: salary, level, department, verified */}
+      {(job.salary_estimate || level || department || isVerified || isFriendly) && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
           {job.salary_estimate && job.salary_estimate > 50000 && (
             <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
               {formatSalary(job.salary_estimate)}
             </span>
           )}
-          {job.lca_count && job.lca_count > 0 && (
-            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-              {job.lca_count} LCA filings
+          {level && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{level}</span>}
+          {department && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium capitalize">{department}</span>}
+          {isVerified && (
+            <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
+              <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
+                Verified LCA Filings With Similar Job Title
+              </span>
+            </span>
+          )}
+          {isFriendly && (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium border border-green-200">
+              H-1B Friendly Employer
             </span>
           )}
         </div>
       )}
-    </button>
+
+      {/* LCA stats: last filed + year count */}
+      {(lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0)) && (
+        <div className="flex flex-wrap gap-1.5">
+          {lcaLastFiled && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+              Last LCA filed in {lcaLastFiled}
+            </span>
+          )}
+          {job.lca_count_2025 && job.lca_count_2025 > 0 && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+              {job.lca_count_2025} LCA filings in 2025
+            </span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -122,13 +122,22 @@ export async function GET(request: NextRequest) {
 
   const supabaseAdmin = createSupabaseAdmin();
 
-  // Find existing user by email in our linkedin.profiles table
-  const { data: existingProfile } = await supabaseAdmin
-    .schema("linkedin")
-    .from("profiles")
-    .select("id")
-    .eq("email", profile.email)
-    .maybeSingle();
+  // generateLink finds-or-creates the user by email in one call.
+  // This avoids the createUser "already registered" error for users who signed
+  // in previously via Supabase OIDC but don't yet have a linkedin.profiles row.
+  const { data: linkData, error: linkError } =
+    await supabaseAdmin.auth.admin.generateLink({
+      type: "magiclink",
+      email: profile.email,
+      options: { redirectTo: `${siteUrl}/auth/callback` },
+    });
+
+  if (linkError || !linkData?.properties?.action_link) {
+    console.error("[linkedin-custom] generateLink error:", linkError);
+    return NextResponse.redirect(`${origin}/auth/signin?error=auth_failed`);
+  }
+
+  const userId = linkData.user.id;
 
   const profileMeta = {
     full_name: profile.fullName,
@@ -140,26 +149,10 @@ export async function GET(request: NextRequest) {
     linkedin_vanity: profile.vanityName,
   };
 
-  let userId: string;
-
-  if (existingProfile?.id) {
-    userId = existingProfile.id as string;
-    await supabaseAdmin.auth.admin.updateUserById(userId, {
-      user_metadata: profileMeta,
-    });
-  } else {
-    const { data: newUser, error: createError } =
-      await supabaseAdmin.auth.admin.createUser({
-        email: profile.email,
-        email_confirm: true,
-        user_metadata: profileMeta,
-      });
-    if (createError || !newUser.user) {
-      console.error("[linkedin-custom] createUser error:", createError);
-      return NextResponse.redirect(`${origin}/auth/signin?error=auth_failed`);
-    }
-    userId = newUser.user.id;
-  }
+  // Stamp LinkedIn metadata onto the user record so /auth/callback can read it.
+  await supabaseAdmin.auth.admin.updateUserById(userId, {
+    user_metadata: profileMeta,
+  });
 
   // Store LinkedIn profile data now — before the magic link bounce — so that
   // /auth/callback can read headline + linkedinUrl from user_metadata and skip
@@ -176,20 +169,6 @@ export async function GET(request: NextRequest) {
     },
     { onConflict: "id" }
   );
-
-  // Issue a magic link token. GoTrue verifies it, then redirects to
-  // /auth/callback?code=... which handles session creation via PKCE.
-  const { data: linkData, error: linkError } =
-    await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
-      email: profile.email,
-      options: { redirectTo: `${siteUrl}/auth/callback` },
-    });
-
-  if (linkError || !linkData?.properties?.action_link) {
-    console.error("[linkedin-custom] generateLink error:", linkError);
-    return NextResponse.redirect(`${origin}/auth/signin?error=auth_failed`);
-  }
 
   const finalResponse = NextResponse.redirect(linkData.properties.action_link);
   finalResponse.cookies.delete("li_oauth_state");

@@ -192,6 +192,8 @@ export async function handleSearchJobs(input: SearchJobsInput) {
       lca_count: j.lca_count,
       lca_count_2025: j.lca_count_2025 ? Number(j.lca_count_2025) : null,
       lca_last_filed: j.lca_last_filed ?? null,
+      ats_source: j.ats_source ?? null,
+      ats_job_id: j.ats_job_id ?? null,
     })),
   };
 }

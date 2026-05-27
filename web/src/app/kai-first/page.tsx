@@ -262,11 +262,11 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
 
   return (
     <div
-      className="border border-zinc-200 rounded-xl bg-white px-4 pt-4 pb-3 cursor-pointer hover:bg-zinc-50 active:bg-zinc-100 transition-colors"
+      className="border border-zinc-200 rounded-xl bg-white px-3.5 pt-3 pb-2.5 cursor-pointer hover:bg-zinc-50 active:bg-zinc-100 transition-colors"
       onClick={onClick}
     >
       {/* Logo + company | bookmark + apply */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <CompanyAvatar name={job.company} domain={job.company_domain} />
           <span className="text-sm font-semibold text-zinc-600 truncate">{displayCompany}</span>
@@ -284,11 +284,11 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
       </div>
 
       {/* Title */}
-      <h3 className="text-base font-bold text-zinc-900 leading-snug mb-2">{job.title}</h3>
+      <h3 className="text-base font-bold text-zinc-900 leading-snug mb-1.5">{job.title}</h3>
 
       {/* Location · date posted */}
       {(job.location || posted) && (
-        <div className="flex items-center gap-1 text-xs text-zinc-500 mb-2.5">
+        <div className="flex items-center gap-1 text-xs text-zinc-500 mb-2">
           <MapPin size={10} className="text-zinc-400 flex-shrink-0" />
           <span>{[job.location, posted ? `Posted ${posted}` : null].filter(Boolean).join(" · ")}</span>
         </div>
@@ -296,10 +296,10 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
 
       {/* Tags: salary, level, department, verified */}
       {(job.salary_estimate || level || department || isVerified || isFriendly) && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
           {job.salary_estimate && job.salary_estimate > 50000 && (
             <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-              {formatSalary(job.salary_estimate)}
+              Salary: {formatSalary(job.salary_estimate)}
             </span>
           )}
           {level && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{level}</span>}
@@ -370,10 +370,12 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
             if (text) { setDescText(text); setDescLoading(false); return; }
           }
         }
-        // Fallback: plain text from DB
-        const supabase = createSupabaseBrowser();
-        const { data } = await supabase.from("jobs").select("description_text").eq("id", job.id).single();
-        setDescText(data?.description_text ?? "");
+        // Fallback: server-side DB fetch (avoids browser RLS variability)
+        const res = await fetch(`/api/jobs/description?source=db&id=${job.id}`);
+        if (res.ok) {
+          const { text } = await res.json();
+          setDescText(text ?? "");
+        }
       } catch { /* graceful */ } finally {
         setDescLoading(false);
       }
@@ -453,16 +455,16 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
             )}
           </div>
 
-          {(job.salary_estimate && job.salary_estimate > 50000 || job.lca_count) && (
+          {(job.salary_estimate && job.salary_estimate > 50000 || job.lca_count_2025) && (
             <div className="flex flex-wrap gap-1.5">
               {job.salary_estimate && job.salary_estimate > 50000 && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                  {formatSalary(job.salary_estimate)}
+                  Salary: {formatSalary(job.salary_estimate)}
                 </span>
               )}
-              {job.lca_count && job.lca_count > 0 && (
+              {job.lca_count_2025 && job.lca_count_2025 > 0 && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                  {job.lca_count} LCA filings
+                  {job.lca_count_2025} LCA filings in 2025
                 </span>
               )}
             </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import { Bookmark, MapPin, ExternalLink } from "lucide-react";
 import s from "./kai.module.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -17,6 +18,8 @@ type Job = {
   visa_tier: string | null;
   salary_estimate: number | null;
   lca_count: number | null;
+  lca_count_2025: number | null;
+  lca_last_filed: string | null;
 };
 
 type ChatMessage = {
@@ -129,6 +132,50 @@ function LaurelSVG({ flip }: { flip?: boolean }) {
   );
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function inferDepartment(title: string | null): string | null {
+  if (!title) return null;
+  const t = title.toLowerCase();
+  if (t.includes("product market")) return "product marketing";
+  if (t.includes("growth market") || t.includes("demand gen")) return "growth marketing";
+  if (t.includes("product manager") || t.includes("product owner") || /\bhead of product\b/.test(t) || / pm,| pm$|\bvp product\b/.test(t)) return "product";
+  if (t.includes("machine learning") || / ml | ml,|mlops/.test(t) || t.includes("deep learning") || t.includes("llm") || t.includes("ai engineer")) return "AI / ML";
+  if (t.includes("data scientist") || t.includes("data engineer") || t.includes("data analyst") || t.includes("analytics engineer")) return "data";
+  if (t.includes("software") || t.includes("engineer") || t.includes("developer") || t.includes("backend") || t.includes("frontend") || t.includes("full stack") || t.includes("swe")) return "engineering";
+  if (t.includes("design") || /\bux\b/.test(t) || /\bui\b/.test(t)) return "design";
+  if (t.includes("sales") || t.includes("account executive") || t.includes("bdr") || t.includes("sdr") || t.includes("business development")) return "sales";
+  if (t.includes("marketing")) return "marketing";
+  if (t.includes("finance") || t.includes("financial analyst") || t.includes("accounting") || t.includes("controller")) return "finance";
+  if (t.includes("recruiter") || t.includes("recruiting") || t.includes("talent acquisition") || t.includes("people ops") || /\bhr\b/.test(t)) return "people ops";
+  if (t.includes("customer success") || t.includes("customer support") || t.includes("account manager")) return "customer success";
+  if (t.includes("operations") || t.includes("supply chain") || t.includes("logistics")) return "operations";
+  if (t.includes("security") || t.includes("infosec") || t.includes("cybersecurity")) return "security";
+  if (t.includes("devops") || t.includes("site reliability") || t.includes("platform engineer") || t.includes("infrastructure")) return "platform / devops";
+  if (t.includes("legal") || t.includes("counsel") || t.includes("attorney") || t.includes("compliance")) return "legal";
+  return null;
+}
+
+function inferLevel(title: string): string | null {
+  const t = title.toLowerCase();
+  if (/\b(intern|internship)\b/.test(t)) return "Intern";
+  if (/\b(junior|jr\.?|entry[- ]level|associate(?! director| product))\b/.test(t)) return "Junior";
+  if (/\b(principal|staff engineer|distinguished|fellow)\b/.test(t)) return "Principal / Staff";
+  if (/\b(senior|sr\.?)\b/.test(t)) return "Senior";
+  if (/\b(lead|manager|director|head of|vp\b|vice president)\b/.test(t)) return "Lead / Manager";
+  return null;
+}
+
+function formatLcaDate(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+  const parts = dateStr.split("-");
+  if (parts.length < 2) return null;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${months[month]} ${year}`;
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function CompanyAvatar({ name, domain }: { name: string; domain: string | null }) {
@@ -159,49 +206,82 @@ function JobCard({ job }: { job: Job }) {
   const isFriendly = job.visa_tier === "friendly";
   const posted = timeAgo(job.posted_at);
   const displayCompany = normalizeCompanyName(job.company);
+  const level = inferLevel(job.title);
+  const department = inferDepartment(job.title);
+  const lcaLastFiled = formatLcaDate(job.lca_last_filed);
 
   return (
-    <a
-      href={job.url ?? "#"}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group flex gap-3 px-4 py-4 border border-zinc-200 rounded-xl bg-white hover:bg-zinc-50 transition-colors no-underline"
-    >
-      <CompanyAvatar name={job.company} domain={job.company_domain} />
-      <div className="flex-1 min-w-0">
-        <h3 className="text-sm font-semibold leading-snug text-zinc-900 group-hover:text-blue-600 transition-colors line-clamp-2">
-          {job.title}
-        </h3>
-        <p className="text-xs text-zinc-500 mt-0.5 truncate">
-          {displayCompany}{job.location ? ` · ${job.location}` : ""}
-        </p>
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+    <div className="border border-zinc-200 rounded-xl bg-white px-3.5 pt-3 pb-2.5">
+      {/* Logo + company | bookmark + apply */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <CompanyAvatar name={job.company} domain={job.company_domain} />
+          <span className="text-sm font-semibold text-zinc-600 truncate">{displayCompany}</span>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          <button className="p-1.5 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all" aria-label="Save job">
+            <Bookmark size={14} />
+          </button>
+          {job.url && (
+            <a href={job.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-zinc-900 text-white text-xs font-semibold hover:bg-zinc-700 transition-colors no-underline">
+              Apply <ExternalLink size={11} />
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Title */}
+      <h3 className="text-base font-bold text-zinc-900 leading-snug mb-1.5">{job.title}</h3>
+
+      {/* Location · date posted */}
+      {(job.location || posted) && (
+        <div className="flex items-center gap-1 text-xs text-zinc-500 mb-2">
+          <MapPin size={10} className="text-zinc-400 flex-shrink-0" />
+          <span>{[job.location, posted ? `Posted ${posted}` : null].filter(Boolean).join(" · ")}</span>
+        </div>
+      )}
+
+      {/* Tags: salary, level, department, verified */}
+      {(job.salary_estimate || level || department || isVerified || isFriendly) && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
           {job.salary_estimate && job.salary_estimate > 50000 && (
-            <span className="text-xs text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded">
-              {formatSalary(job.salary_estimate)}
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+              Salary: {formatSalary(job.salary_estimate)}
             </span>
           )}
+          {level && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{level}</span>}
+          {department && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium capitalize">{department}</span>}
           {isVerified && (
-            <span
-              className="inline-flex rounded-full p-[2px]"
-              style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}
-            >
-              <span className="inline-flex items-center rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-zinc-900">
+            <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
+              <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
                 Verified LCA Filings With Similar Job Title
               </span>
             </span>
           )}
           {isFriendly && (
-            <span className="text-xs font-medium text-green-600">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium border border-green-200">
               H-1B Friendly Employer
             </span>
           )}
-          {posted && (
-            <span className="text-xs text-zinc-400 ml-auto">{posted}</span>
+        </div>
+      )}
+
+      {/* LCA stats: last filed + year count */}
+      {(lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0)) && (
+        <div className="flex flex-wrap gap-1.5">
+          {lcaLastFiled && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+              Last LCA filed in {lcaLastFiled}
+            </span>
+          )}
+          {job.lca_count_2025 && job.lca_count_2025 > 0 && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+              {job.lca_count_2025} LCA filings in 2025
+            </span>
           )}
         </div>
-      </div>
-    </a>
+      )}
+    </div>
   );
 }
 

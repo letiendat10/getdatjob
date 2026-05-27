@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 const ALLOWED_WORKDAY = /^([a-z0-9-]+\.)+myworkdayjobs\.com$/i;
 
@@ -9,8 +10,32 @@ export async function GET(req: NextRequest) {
   const jobId = sp.get("job_id") ?? "";
 
   if (source === "amazon") return handleAmazon(jobId);
+  if (source === "db") return handleDb(sp.get("id") ?? "");
   if (url) return handleWorkday(url);
   return Response.json({ error: "missing params" }, { status: 400 });
+}
+
+// ── DB fallback (server-side, bypasses any browser RLS issues) ────────────────
+
+async function handleDb(id: string) {
+  if (!id || isNaN(Number(id))) return Response.json({ text: "" });
+  try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const { data } = await supabase
+      .from("jobs")
+      .select("description_text")
+      .eq("id", Number(id))
+      .single();
+    return Response.json(
+      { text: data?.description_text ?? "" },
+      { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=3600" } }
+    );
+  } catch {
+    return Response.json({ text: "" });
+  }
 }
 
 // ── Amazon ───────────────────────────────────────────────────────────────────

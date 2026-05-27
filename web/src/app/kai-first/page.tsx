@@ -153,14 +153,63 @@ function inferLevel(title: string): string | null {
   return null;
 }
 
-function getTimeGreeting(firstName: string | null): { headline: string; em: string } {
-  const hour = new Date().getHours();
-  const name = firstName ? `, ${firstName}` : "";
-  if (hour >= 22 || hour < 6) return { headline: `Working late${name}?`, em: "We love the hustle." };
-  if (hour < 9) return { headline: "Early bird gets the job", em: `let's find yours${name}.` };
-  if (hour < 12) return { headline: `Good morning${name}.`, em: "Let's get to work." };
-  if (hour < 17) return { headline: `You got this${name}.`, em: "Let's find your next role." };
-  return { headline: `Ready to apply tonight${name}?`, em: "Let's make it count." };
+interface Greeting {
+  headline: string; // may contain {name} placeholder
+  line2: { pre?: string; em: string; post?: string };
+}
+
+const UNIVERSAL_GREETINGS: Greeting[] = [
+  { headline: "It's a numbers game.", line2: { pre: "Let's ", em: "keep going." } },
+  { headline: "Sponsored roles get filled every day.", line2: { pre: "Let's get you ", em: "in front." } },
+];
+
+const DOW_GREETINGS: Partial<Record<number, Greeting[]>> = {
+  1: [{ headline: "New week, new visa-sponsored opportunities.", line2: { pre: "Let's find ", em: "yours." } }],
+  5: [{ headline: "Let's end the week strong.", line2: { em: "A few more", post: " to apply." } }],
+};
+
+const TIME_POOLS: Record<string, Greeting[]> = {
+  late: [
+    { headline: "Working late{name}?", line2: { pre: "We love ", em: "the hustle." } },
+    { headline: "Late nights build futures.", line2: { pre: "Let's find ", em: "your next role." } },
+  ],
+  earlyMorning: [
+    { headline: "Early bird gets the job", line2: { pre: "Let's find ", em: "yours." } },
+    { headline: "Up before everyone.", line2: { pre: "Let's ", em: "stay ahead." } },
+  ],
+  morning: [
+    { headline: "Good morning{name}.", line2: { pre: "Let's ", em: "get to work." } },
+    { headline: "Fresh start today.", line2: { pre: "Your next visa-sponsored opportunity is ", em: "waiting." } },
+  ],
+  afternoon: [
+    { headline: "You got this{name}.", line2: { pre: "Let's find ", em: "your next role." } },
+  ],
+  evening: [
+    { headline: "Ready to apply tonight{name}?", line2: { pre: "Let's ", em: "make it count." } },
+  ],
+};
+
+function getTimeGreeting(firstName: string | null): { headline: string; line2: Greeting["line2"] } {
+  const now = new Date();
+  const hour = now.getHours();
+  const dow = now.getDay();
+
+  let slotKey: string;
+  if (hour >= 22 || hour < 6) slotKey = "late";
+  else if (hour < 9) slotKey = "earlyMorning";
+  else if (hour < 12) slotKey = "morning";
+  else if (hour < 17) slotKey = "afternoon";
+  else slotKey = "evening";
+
+  const dowExtras = DOW_GREETINGS[dow] ?? [];
+  const pool = [...TIME_POOLS[slotKey], ...dowExtras, ...UNIVERSAL_GREETINGS];
+
+  const dateSeed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+  const slotOffset = slotKey.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  const picked = pool[(dateSeed + slotOffset) % pool.length];
+
+  const nameInsert = firstName ? `, ${firstName}` : "";
+  return { headline: picked.headline.replace("{name}", nameInsert), line2: picked.line2 };
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -533,7 +582,7 @@ export default function KaiFirstPage() {
   const [userLoading, setUserLoading] = useState(true);
   const [linkedIn, setLinkedIn] = useState<LinkedInProfile | null>(null);
   const [enriched, setEnriched] = useState<EnrichedProfile | null>(null);
-  const [timeGreeting, setTimeGreeting] = useState<{ headline: string; em: string } | null>(null);
+  const [timeGreeting, setTimeGreeting] = useState<{ headline: string; line2: Greeting["line2"] } | null>(null);
 
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
@@ -686,14 +735,16 @@ export default function KaiFirstPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(450);
       const visaFiller: Record<string, string> = {
-        "H-1B": "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year — the good ones are in here.",
-        "E-3":  "E-3 sponsors are a more specific group — I'll zero in on the ones with a strong Australian hire track record.",
-        "TN":   "TN sponsors are a more specific group — I'll zero in on the ones with a strong Canada/Mexico hire track record.",
-        "OPT":  "Got it — OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
+        "h1b":  "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year — the good ones are in here.",
+        "e3":   "E-3 sponsors are a more specific group — I'll zero in on the ones with a strong Australian hire track record.",
+        "tn":   "TN sponsors are a more specific group — I'll zero in on the ones with a strong Canada/Mexico hire track record.",
+        "opt":  "Got it — OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
+        "o1":   "O-1 is for people with extraordinary ability — and honestly, it's the most flexible work visa out there. Most employers can hire you without going through the H-1B lottery or LCA process. Your options are wider than you might think. I'll pull from our full verified employer list.",
       };
+      const visaKey = visa.toLowerCase().replace(/[-/ ]/g, "");
       setMessages((prev) => [
         ...prev,
-        { id: "k-f2", role: "assistant", content: visaFiller[visa] ?? "Got it — pulling the right sponsors." },
+        { id: "k-f2", role: "assistant", content: visaFiller[visaKey] ?? "Got it — pulling the right sponsors." },
       ]);
       await delay(850);
       // Q3 is now salary
@@ -1045,6 +1096,12 @@ export default function KaiFirstPage() {
       if (!trimmed || isChatStreaming) return;
       setChatInput("");
       if (chatInputRef.current) chatInputRef.current.style.height = "auto";
+
+      if (step === "q2") {
+        await handleTileClick({ label: trimmed, value: trimmed });
+        return;
+      }
+
       setShowPostChips(false);
 
       const userMsgId = `u-${Date.now()}`;
@@ -1126,7 +1183,7 @@ export default function KaiFirstPage() {
         setIsChatStreaming(false);
       }
     },
-    [messages, isChatStreaming, scrollToBottom, user]
+    [messages, isChatStreaming, scrollToBottom, user, step]
   );
 
   const handleChatKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1163,7 +1220,9 @@ export default function KaiFirstPage() {
               <h1 className={s["page-headline"]}>
                 {timeGreeting.headline}
                 <br />
-                <em>{timeGreeting.em}</em>
+                {timeGreeting.line2.pre}
+                <em>{timeGreeting.line2.em}</em>
+                {timeGreeting.line2.post}
               </h1>
             </div>
           )}

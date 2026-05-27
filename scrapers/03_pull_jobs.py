@@ -384,13 +384,20 @@ def fetch_amazon(_slug: str) -> list[dict]:
             break
         for j in batch:
             path = j.get("job_path", "")
+            desc_parts = [j.get("description", "")]
+            basic = strip_html(j.get("basic_qualifications", ""))
+            preferred = strip_html(j.get("preferred_qualifications", ""))
+            if basic:
+                desc_parts.append(f"Basic Qualifications\n{basic}")
+            if preferred:
+                desc_parts.append(f"Preferred Qualifications\n{preferred}")
             jobs.append({
                 "ats_job_id": str(j.get("id_icims", j.get("id", ""))),
                 "title": j.get("title", ""),
                 "location": j.get("location", ""),
                 "url": f"{base}{path}" if path else "",
                 "posted_at": parse_iso(j.get("posted_date")) or datetime.now(timezone.utc).isoformat(),
-                "description_text": j.get("description_short", ""),
+                "description_text": "\n\n".join(p for p in desc_parts if p)[:8000],
             })
         if len(batch) < limit:
             break

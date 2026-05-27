@@ -94,7 +94,7 @@ function formatSalary(n: number): string {
 function extractPostedSalary(html: string): string | null {
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   // $X,XXX – $Y,XXX (standard, with optional decimals)
-  const dollarRange = text.match(/\$[\d,]+(?:\.\d+)?K?\s*[–—\-]+\s*\$[\d,]+(?:\.\d+)?K?/i);
+  const dollarRange = text.match(/\$[\d,]+(?:\.\d+)?K?\s*(?:[–—\-]+|to)\s*\$[\d,]+(?:\.\d+)?K?/i);
   if (dollarRange) return dollarRange[0].replace(/\s+/g, " ").trim();
   // X,XXX – Y,XXX USD (Amazon format, no dollar sign)
   const usdRange = text.match(/([\d,]+(?:\.\d+)?)\s*[-–—]\s*([\d,]+(?:\.\d+)?)\s*USD/i);

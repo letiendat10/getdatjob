@@ -109,7 +109,7 @@ function formatSalary(n: number): string {
 
 function extractPostedSalary(html: string): string | null {
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  const dollarRange = text.match(/\$[\d,]+(?:\.\d+)?K?\s*[–—\-]+\s*\$[\d,]+(?:\.\d+)?K?/i);
+  const dollarRange = text.match(/\$[\d,]+(?:\.\d+)?K?\s*(?:[–—\-]+|to)\s*\$[\d,]+(?:\.\d+)?K?/i);
   if (dollarRange) return dollarRange[0].replace(/\s+/g, " ").trim();
   const usdRange = text.match(/([\d,]+(?:\.\d+)?)\s*[-–—]\s*([\d,]+(?:\.\d+)?)\s*USD/i);
   if (usdRange) {

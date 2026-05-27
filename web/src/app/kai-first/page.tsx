@@ -926,7 +926,7 @@ export default function KaiFirstPage() {
         updatedIntake.locationMode === "anywhere" ? "anywhere in the US" :
         updatedIntake.location ?? "all locations";
 
-      const filterTokens = [dept, locStr, salaryStr, levelStr, "last 14 days"].filter(Boolean);
+      const filterTokens = [dept, locStr, salaryStr, levelStr, "last 7 days"].filter(Boolean);
 
       setMessages((prev) => [
         ...prev,

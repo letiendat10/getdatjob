@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     if (visa && visa !== "Other") params.visa_category = visa;
     if (salary_min && salary_min > 0) params.salary_min = salary_min;
-    params.posted_within = intent === "laid_off" ? "7d" : "30d";
+    params.posted_within = "7d";
 
     if (locationMode === "remote") {
       params.location = "remote";

@@ -99,12 +99,11 @@ export async function handleSearchJobs(input: SearchJobsInput) {
 
   let q = supabaseServer.from("jobs_kai_view").select("*");
 
-  // Date filter
-  if (input.posted_within) {
-    const days = POSTED_DAYS[input.posted_within];
-    const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
-    q = q.gte("posted_at", cutoff);
-  }
+  // Date filter — default to 7d if not specified
+  const postedWithin = input.posted_within ?? "7d";
+  const days = POSTED_DAYS[postedWithin];
+  const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+  q = q.gte("posted_at", cutoff);
 
   // Visa category
   if (input.visa_category) {
@@ -148,10 +147,11 @@ export async function handleSearchJobs(input: SearchJobsInput) {
   // Industry — keyword match on company (best effort without industry column)
   // For now skip — industry data not in jobs_kai_view
 
-  // Fetch more than needed so re-sorting by tier doesn't lose recent verified jobs
+  // Fetch a large window so one prolific employer can't crowd out all others.
+  // (e.g. a single company posting 200 jobs would exhaust limit*4=24 rows.)
   q = q
     .order("posted_at", { ascending: false, nullsFirst: false })
-    .limit(limit * 4);
+    .limit(1000);
 
   const { data, error } = await q;
   if (error) return { error: error.message, jobs: [] };
@@ -190,6 +190,8 @@ export async function handleSearchJobs(input: SearchJobsInput) {
       visa_class: j.visa_class,
       salary_estimate: j.salary_estimate ? Number(j.salary_estimate) : null,
       lca_count: j.lca_count,
+      lca_count_2025: j.lca_count_2025 ? Number(j.lca_count_2025) : null,
+      lca_last_filed: j.lca_last_filed ?? null,
     })),
   };
 }

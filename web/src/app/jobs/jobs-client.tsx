@@ -936,6 +936,32 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
           setDescCache((c) => ({ ...c, [sid]: { html: "", text: data?.description_text ?? "" } }));
           setDescLoading(false);
         });
+    } else if (job.ats_source === "workday" && job.url) {
+      const sid = selectedJobId;
+      const jobUrl = job.url;
+      (async () => {
+        try {
+          const res = await fetch(`/api/jobs/description?url=${encodeURIComponent(jobUrl)}`);
+          const json = res.ok ? await res.json() : {};
+          setDescCache((c) => ({ ...c, [sid]: { html: json.html ?? "", text: json.text ?? "" } }));
+        } catch {
+          setDescCache((c) => ({ ...c, [sid]: { html: "", text: "" } }));
+        }
+        setDescLoading(false);
+      })();
+    } else if (job.ats_source === "amazon" && job.ats_job_id) {
+      const sid = selectedJobId;
+      const jobId = job.ats_job_id;
+      (async () => {
+        try {
+          const res = await fetch(`/api/jobs/description?source=amazon&job_id=${encodeURIComponent(jobId)}`);
+          const json = res.ok ? await res.json() : {};
+          setDescCache((c) => ({ ...c, [sid]: { html: json.html ?? "", text: json.text ?? "" } }));
+        } catch {
+          setDescCache((c) => ({ ...c, [sid]: { html: "", text: "" } }));
+        }
+        setDescLoading(false);
+      })();
     } else {
       const sid = selectedJobId;
       supabase.from("jobs").select("description_text").eq("id", sid).single().then(({ data }) => {

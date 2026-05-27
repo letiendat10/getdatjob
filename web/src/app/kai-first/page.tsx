@@ -672,10 +672,10 @@ export default function KaiFirstPage() {
         { id: "k-q2", role: "assistant", content: "To match you with the right sponsors — what visa are you working with?" },
       ]);
       setQuickReplies([
-        { label: "H-1B",     value: "H-1B"   },
-        { label: "OPT",      value: "OPT"    },
-        { label: "E-3 / TN", value: "E-3/TN" },
-        { label: "Other",    value: "Other"  },
+        { label: "H-1B", value: "H-1B" },
+        { label: "E-3",  value: "E-3"  },
+        { label: "TN",   value: "TN"   },
+        { label: "OPT",  value: "OPT"  },
       ]);
       setStep("q2");
 
@@ -686,10 +686,10 @@ export default function KaiFirstPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(450);
       const visaFiller: Record<string, string> = {
-        "H-1B":   "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year — the good ones are in here.",
-        "OPT":    "Got it — OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
-        "E-3/TN": "E-3 and TN sponsors are a more specific group — I'll zero in on them.",
-        "Other":  "Got it — I'll cast a wide net across our verified sponsor list.",
+        "H-1B": "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year — the good ones are in here.",
+        "E-3":  "E-3 sponsors are a more specific group — I'll zero in on the ones with a strong Australian hire track record.",
+        "TN":   "TN sponsors are a more specific group — I'll zero in on the ones with a strong Canada/Mexico hire track record.",
+        "OPT":  "Got it — OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
       };
       setMessages((prev) => [
         ...prev,
@@ -964,10 +964,10 @@ export default function KaiFirstPage() {
     await delay(900);
     setMessages((prev) => [...prev, { id: "k-q2", role: "assistant", content: "To match you with the right sponsors — what visa are you working with?" }]);
     setQuickReplies([
-      { label: "H-1B",     value: "H-1B"   },
-      { label: "OPT",      value: "OPT"    },
-      { label: "E-3 / TN", value: "E-3/TN" },
-      { label: "Other",    value: "Other"  },
+      { label: "H-1B", value: "H-1B" },
+      { label: "E-3",  value: "E-3"  },
+      { label: "TN",   value: "TN"   },
+      { label: "OPT",  value: "OPT"  },
     ]);
     setStep("q2");
   };
@@ -1241,6 +1241,27 @@ export default function KaiFirstPage() {
             </div>
           )}
 
+          {/* Inline quick-reply chips — tree connector style, anchored to last Kai question */}
+          {quickReplies.length > 0 && (
+            <div className={s["inline-replies"]}>
+              <div className={s["inline-stem"]} />
+              <div className={s["inline-tree"]}>
+                {quickReplies.map((qr, i) => (
+                  <div
+                    key={qr.value}
+                    className={i === quickReplies.length - 1
+                      ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}`
+                      : s["inline-tree-item"]}
+                  >
+                    <button className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>
+                      {qr.label}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Post-result chips in free-chat mode */}
           {showPostChips && step === "done" && (
             <div className={s.chips} style={{ justifyContent: "flex-start", paddingLeft: 50 }}>
@@ -1251,43 +1272,6 @@ export default function KaiFirstPage() {
           )}
         </div>
       </div>
-
-      {/* Quick-reply tiles + text input (shown during intake + email opt-in) */}
-      {quickReplies.length > 0 && (
-        <div className={s["bottom-bar"]}>
-          <div className={s["bottom-bar-chips"]}>
-            {quickReplies.map((qr) => (
-              <button key={qr.value} className={s.tile} onClick={() => handleTileClick(qr)}>
-                {qr.label}
-              </button>
-            ))}
-          </div>
-          <div className={s["input-bar-inner"]}>
-            <div className={s["input-wrap"]}>
-              <textarea
-                ref={chatInputRef}
-                className={s.input}
-                placeholder="Or type your answer..."
-                value={chatInput}
-                onChange={handleChatInputChange}
-                onKeyDown={handleChatKeyDown}
-                rows={1}
-                disabled={isChatStreaming}
-              />
-            </div>
-            <button
-              className={s["send-btn"]}
-              onClick={() => sendChatMessage(chatInput)}
-              disabled={!chatInput.trim() || isChatStreaming}
-              aria-label="Send"
-            >
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 8H2M8 2l6 6-6 6" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Date input bar (layoff date step) */}
       {step === "q1_layoff_date" && (
@@ -1321,15 +1305,15 @@ export default function KaiFirstPage() {
         </div>
       )}
 
-      {/* Free-chat input bar (only after onboarding completes) */}
-      {step === "done" && quickReplies.length === 0 && (
+      {/* Input bar — visible throughout conversation except init/scanning/date-entry */}
+      {step !== "init" && step !== "scanning" && step !== "q1_layoff_date" && (
         <div className={s["input-bar"]}>
           <div className={s["input-bar-inner"]}>
             <div className={s["input-wrap"]}>
               <textarea
                 ref={chatInputRef}
                 className={s.input}
-                placeholder="Ask Kai anything..."
+                placeholder="Send Kai a message..."
                 value={chatInput}
                 onChange={handleChatInputChange}
                 onKeyDown={handleChatKeyDown}

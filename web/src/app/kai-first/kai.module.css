@@ -584,6 +584,84 @@
   justify-content: center;
 }
 
+/* ── Inline reply chips — folder/tree connector style ────────────────────── */
+.inline-replies {
+  padding-left: 50px; /* align with bubble left edge (40px avatar + 10px gap) */
+  display: flex;
+  flex-direction: column;
+  margin-top: -20px; /* cancel thread-inner gap so spacing = stem(5) + item-padding(5) = 10px */
+}
+.inline-stem {
+  width: 1.5px;
+  height: 5px;
+  background: var(--line);
+  border-radius: 1px 1px 0 0;
+}
+.inline-tree {
+  display: flex;
+  flex-direction: column;
+}
+/* Each answer option row */
+.inline-tree-item {
+  position: relative;
+  padding-left: 20px; /* room for the connector lines */
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+/* Non-last items: full vertical line (├ shape) */
+.inline-tree-item:not(.inline-tree-item-last)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1.5px;
+  background: var(--line);
+}
+.inline-tree-item:not(.inline-tree-item-last)::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 14px;
+  height: 1.5px;
+  background: var(--line);
+  transform: translateY(-50%);
+}
+/* Last item: └ shape with rounded corner */
+.inline-tree-item-last::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 13px;
+  height: calc(50% + 0.75px);
+  border-left: 1.5px solid var(--line);
+  border-bottom: 1.5px solid var(--line);
+  border-bottom-left-radius: 4px;
+}
+.inline-chip {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  width: fit-content;
+  max-width: min(360px, 80vw);
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.1s ease;
+}
+.inline-chip:hover {
+  background: var(--bg-2);
+  border-color: rgba(0, 0, 0, 0.18);
+  transform: translateY(-1px);
+}
+.inline-chip:active { transform: translateY(0); }
+
 /* ── Combined bottom bar: chips + text input ─────────────────────────────── */
 .bottom-bar {
   flex-shrink: 0;

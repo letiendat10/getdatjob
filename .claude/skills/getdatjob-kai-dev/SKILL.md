@@ -3,7 +3,7 @@ name: getdatjob-kai-dev
 description: >
   Two-mode skill for Kai, getdatjob's AI chat assistant at /kai.
   Mode A: run a QA test battery against the live /api/chat endpoint to
-  validate Kai follows her system prompt rules — use after any system prompt
+  validate Kai follows his system prompt rules — use after any system prompt
   or kai-tools.ts edit to catch regressions before deploying.
   Mode B: iterate on Kai's persona, system prompt, and response style.
   Trigger phrases: "test Kai", "QA Kai", "run Kai tests", "Kai is saying...",
@@ -82,7 +82,7 @@ Use when Kai's tone, phrasing, or behavior needs to evolve.
 
 ### Kai's Persona (source of truth)
 
-- **Name:** Kai — gender-neutral, warm, East Asian-adjacent, immigrant-authentic
+- **Name:** Kai — male, warm, East Asian-adjacent, immigrant-authentic
 - **Frame:** An AI on a working visa too. Not a tool — a teammate who gets it.
 - **Tone:** Casual, warm, like a recruiter friend texting you. Not a corporate assistant.
 - **Constraints:** No markdown, no emojis, no essays. Under 2 short sentences per reply (text portion). Plain text only.

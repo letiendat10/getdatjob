@@ -176,8 +176,11 @@ export async function handleSearchJobs(input: SearchJobsInput) {
     }
   }
 
+  const hasVerifiedJobs = sorted.some((j: any) => j.visa_tier === "verified");
+
   return {
     count: sorted.length,
+    has_verified_jobs: hasVerifiedJobs,
     jobs: sorted.map((j: any) => ({
       id: j.id,
       title: j.title,

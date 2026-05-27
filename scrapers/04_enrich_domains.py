@@ -116,7 +116,7 @@ def build_rows() -> list[dict]:
     # Top N employers
     employers = (
         sb.table("employers")
-        .select("id,name,lca_count,domain")
+        .select("id,name,lca_count,company_domain_url")
         .order("lca_count", desc=True)
         .limit(TOP_N)
         .execute()
@@ -132,7 +132,7 @@ def build_rows() -> list[dict]:
         eid   = emp["id"]
         name  = emp["name"]
         lca   = emp.get("lca_count", 0)
-        existing_domain = emp.get("domain") or ""
+        existing_domain = emp.get("company_domain_url") or ""
 
         ats   = ats_map.get(eid, {})
         ats_type = ats.get("ats_type", "")

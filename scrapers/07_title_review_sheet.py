@@ -60,17 +60,17 @@ def get_gc() -> gspread.Client:
 # ── Generate ──────────────────────────────────────────────────────────────────
 
 def populate_lca_title_clean():
-    """Backfill title_clean on all lca_filings rows that don't have it yet."""
-    print("Fetching LCA filings missing title_clean …")
+    """Backfill job_title_clean on all lca_filings rows that don't have it yet."""
+    print("Fetching LCA filings missing job_title_clean …")
     rows = (
         sb.table("lca_filings")
         .select("id,job_title")
-        .is_("title_clean", "null")
+        .is_("job_title_clean", "null")
         .execute()
         .data
     )
     print(f"  {len(rows):,} rows to update")
-    updates = [{"id": r["id"], "title_clean": clean_title(r["job_title"] or "")} for r in rows]
+    updates = [{"id": r["id"], "job_title_clean": clean_title(r["job_title"] or "")} for r in rows]
     for i in range(0, len(updates), 500):
         batch = updates[i : i + 500]
         sb.table("lca_filings").upsert(batch).execute()
@@ -82,12 +82,12 @@ def build_review_data() -> list[dict]:
     print("Querying distinct LCA job titles …")
     rows = (
         sb.table("lca_filings")
-        .select("job_title,title_clean")
+        .select("job_title,job_title_clean")
         .execute()
         .data
     )
     counts: Counter = Counter(r["job_title"] for r in rows if r["job_title"])
-    clean_map: dict[str, str] = {r["job_title"]: r["title_clean"] for r in rows if r["job_title"]}
+    clean_map: dict[str, str] = {r["job_title"]: r["job_title_clean"] for r in rows if r["job_title"]}
 
     ranked = counts.most_common()
     top500 = ranked[:500]
@@ -156,10 +156,10 @@ def apply_overrides():
 
     print(f"{len(overrides)} overrides to apply …")
     for original, corrected in overrides.items():
-        sb.table("lca_filings").update({"title_clean": corrected}).eq("job_title", original).execute()
+        sb.table("lca_filings").update({"job_title_clean": corrected}).eq("job_title", original).execute()
 
     # Recompute job_signals for affected jobs
-    # (re-run score_job logic inline: update title_clean, then recount)
+    # (re-run score_job logic inline: update job_title_clean, then recount)
     print("Recomputing job_signals.title_clean for affected jobs …")
     affected_clean_titles = set(overrides.values())
 
@@ -174,8 +174,8 @@ def apply_overrides():
         # Recompute title_employer_lca_count for each affected signal
         lca_rows = (
             sb.table("lca_filings")
-            .select("employer_id,title_clean")
-            .eq("title_clean", tc)
+            .select("employer_id,job_title_clean")
+            .eq("job_title_clean", tc)
             .execute()
             .data
         )

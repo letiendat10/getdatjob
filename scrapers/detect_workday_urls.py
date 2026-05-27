@@ -272,7 +272,7 @@ if __name__ == "__main__":
     found = 0
     for i, emp in enumerate(to_check):
         name = emp["name"]
-        domain = emp.get("domain")
+        domain = emp.get("company_domain_url")
         print(f"[{i+1}/{len(to_check)}] {name[:50]}", end=" ... ", flush=True)
 
         # Try domain-based redirect detection first (faster, more accurate)

@@ -275,19 +275,19 @@ def cmd_list_targets(args):
     mapped = {r["employer_id"] for r in
               sb.table("employer_ats").select("employer_id").execute().data}
     emps = (sb.table("employers")
-              .select("id,name,fein,domain,lca_count")
+              .select("id,name,fein,company_domain_url,lca_count")
               .order("lca_count", desc=True).execute().data)
     targets = []
     for e in emps:
         if e["id"] in mapped:
             continue
-        if not e.get("domain"):
+        if not e.get("company_domain_url"):
             continue
         targets.append({
             "id": e["id"],
             "name": e["name"],
             "fein": e.get("fein"),
-            "domain": e["domain"],
+            "company_domain_url": e["company_domain_url"],
             "lca_count": e.get("lca_count") or 0,
         })
         if len(targets) >= args.limit:

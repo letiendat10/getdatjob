@@ -540,7 +540,7 @@ function JobCard({ job, isSelected, isViewed, isFilled, onClick }: {
       } ${isSelected ? "bg-blue-50" : "hover:bg-zinc-50"}`}
     >
       {isSelected && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-600 rounded-r-sm" />}
-      <CompanyAvatar name={job._normCompany} domain={job.domain} size="md" />
+      <CompanyAvatar name={job._normCompany} domain={job.company_domain_url} size="md" />
       <div className="flex-1 min-w-0">
         <div className="flex items-start gap-2">
           <h3 className={`flex-1 min-w-0 text-sm font-semibold leading-snug transition-colors ${
@@ -597,7 +597,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
       <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-zinc-100">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5 min-w-0">
-            <CompanyAvatar name={job._normCompany} domain={job.domain} size="md" />
+            <CompanyAvatar name={job._normCompany} domain={job.company_domain_url} size="md" />
             <span className="text-sm font-semibold text-zinc-600 truncate">{job._normCompany}</span>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">

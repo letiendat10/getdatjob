@@ -76,7 +76,7 @@ export type JobRow = {
   ats_job_id:        string;
   ats_slug:          string | null;
   company:           string;
-  domain:            string | null;
+  company_domain_url: string | null;
   lca_count_2025:    number;
   last_filing_date:  string | null;
   confidence_tier:   string | null;
@@ -104,7 +104,7 @@ export async function queryJobs(params: {
     .select(
       // P1: explicit field list — visa_types excluded from payload, used only for filtering.
       "id,title,location,url,posted_at,ats_source,ats_job_id,ats_slug," +
-      "company,domain,lca_count_2025,last_filing_date,confidence_tier,is_active,salary_range",
+      "company,company_domain_url,lca_count_2025,last_filing_date,confidence_tier,is_active,salary_range",
       { count: "planned" }
     );
 

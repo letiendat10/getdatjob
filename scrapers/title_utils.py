@@ -166,16 +166,16 @@ def build_lca_index(sb, employer_id: int) -> tuple[set[str], dict[str, int]]:
     cutoff = (date.today() - timedelta(days=365 * 3)).isoformat()
     rows = (
         sb.table("lca_filings")
-        .select("title_clean")
+        .select("job_title_clean")
         .eq("employer_id", employer_id)
-        .gte("filing_date", cutoff)
-        .not_.is_("title_clean", "null")
+        .gte("received_date", cutoff)
+        .not_.is_("job_title_clean", "null")
         .execute()
         .data
     )
     counts: dict[str, int] = {}
     for r in rows:
-        tc = r["title_clean"]
+        tc = r["job_title_clean"]
         if tc:
             counts[tc] = counts.get(tc, 0) + 1
     return set(counts.keys()), counts

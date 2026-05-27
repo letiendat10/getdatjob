@@ -77,7 +77,7 @@ def apply(records: list[dict]) -> None:
             skipped += 1
             continue
 
-        sb.table("employers").update({"domain": domain}).eq("id", eid).execute()
+        sb.table("employers").update({"company_domain_url": domain}).eq("id", eid).execute()
         print(f"  ✓  id={eid:>5}  {r['company'][:40]:<40}  →  {domain}")
         updated += 1
 

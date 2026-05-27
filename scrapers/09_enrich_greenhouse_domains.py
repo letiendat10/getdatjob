@@ -59,7 +59,7 @@ def clean_name(name: str) -> str:
 def find_employer(company_name: str, domain: str) -> Optional[dict]:
     """Try domain match first (when available), then name match."""
     if domain:
-        res = sb.table("employers").select("id,name").ilike("domain", f"%{domain}%").limit(1).execute()
+        res = sb.table("employers").select("id,name").ilike("company_domain_url", f"%{domain}%").limit(1).execute()
         if res.data:
             return res.data[0]
 

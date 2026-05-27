@@ -6,25 +6,29 @@ create table if not exists employers (
   name          text not null,
   name_clean    text unique,             -- lowercased, normalized for matching
   fein          text,
-  domain        text,                    -- derived from poc_email (everything after @)
+  employer_city  text,                   -- most common city across filings
+  employer_state text,                   -- most common state across filings
+  company_domain_url text,               -- company website domain (email-derived or enriched)
   poc_first_name text,
   poc_last_name  text,
   poc_job_title  text,
   poc_email      text,                   -- latest POC email from LCA filing (by received_date)
   lca_count      int default 0,           -- cumulative across all loaded quarters
-  lca_fy2026     int default 0,
-  lca_fy2026_q1  int default 0,          -- Oct–Dec 2025
-  lca_fy2026_q2  int default 0,          -- Jan–Mar 2026
-  lca_fy2025     int default 0,
-  lca_fy2025_q1  int default 0,          -- Oct–Dec 2024
-  lca_fy2025_q2  int default 0,          -- Jan–Mar 2025
-  lca_fy2025_q3  int default 0,          -- Apr–Jun 2025
-  lca_fy2025_q4  int default 0,          -- Jul–Sep 2025
-  lca_fy2024     int default 0,
-  lca_fy2024_q1  int default 0,          -- Oct–Dec 2023
-  lca_fy2024_q2  int default 0,          -- Jan–Mar 2024
-  lca_fy2024_q3  int default 0,          -- Apr–Jun 2024
-  lca_fy2024_q4  int default 0,          -- Jul–Sep 2024
+  lca_fy2026     int default 0,           -- calendar year 2026 total
+  lca_fy2026_q1  int default 0,          -- Jan–Mar 2026
+  lca_fy2026_q2  int default 0,          -- Apr–Jun 2026
+  lca_fy2026_q3  int default 0,          -- Jul–Sep 2026
+  lca_fy2026_q4  int default 0,          -- Oct–Dec 2026
+  lca_fy2025     int default 0,           -- calendar year 2025 total
+  lca_fy2025_q1  int default 0,          -- Jan–Mar 2025
+  lca_fy2025_q2  int default 0,          -- Apr–Jun 2025
+  lca_fy2025_q3  int default 0,          -- Jul–Sep 2025
+  lca_fy2025_q4  int default 0,          -- Oct–Dec 2025
+  lca_fy2024     int default 0,           -- calendar year 2024 total
+  lca_fy2024_q1  int default 0,          -- Jan–Mar 2024
+  lca_fy2024_q2  int default 0,          -- Apr–Jun 2024
+  lca_fy2024_q3  int default 0,          -- Jul–Sep 2024
+  lca_fy2024_q4  int default 0,          -- Oct–Dec 2024
   lca_count_2025 int default 0,          -- legacy calendar-year 2025 (used by web app)
   visa_types     text[],                 -- all visa types filed, e.g. {H-1B,E-3}
   e3_lca_count   int not null default 0, -- count of E-3 filings (E-3 Australian)
@@ -52,11 +56,10 @@ create table if not exists lca_filings (
   wage_level    text,                   -- I | II | III | IV
   city          text,
   state         text,
-  filing_date   date,
   received_date date,
   visa_class    text,                   -- H-1B | H-1B1 | E-3 | TN
-  case_status   text,                   -- Certified | Withdrawn | Denied
-  title_clean   text,
+  case_status     text,                  -- Certified | Withdrawn | Denied
+  job_title_clean text,
   created_at    timestamptz default now()
 );
 
@@ -89,7 +92,7 @@ create table if not exists job_signals (
 
 -- Indexes for common queries
 create index if not exists idx_employers_name_clean on employers(name_clean);
-create index if not exists idx_lca_employer_date on lca_filings(employer_id, filing_date desc);
+create index if not exists idx_lca_employer_date on lca_filings(employer_id, received_date desc);
 create index if not exists idx_lca_title on lca_filings(job_title);
 create index if not exists idx_jobs_employer on jobs(employer_id);
 create index if not exists idx_jobs_active on jobs(is_active, posted_at desc);

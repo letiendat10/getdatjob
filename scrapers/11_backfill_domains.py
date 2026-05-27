@@ -150,7 +150,7 @@ def main():
     employers = (
         sb.table("employers")
         .select("id,name")
-        .is_("domain", "null")
+        .is_("company_domain_url", "null")
         .execute()
         .data
     )
@@ -165,13 +165,13 @@ def main():
         eid    = emp["id"]
         domain = domain_for_employer(emp, ats_map.get(eid))
         if domain:
-            updates.append({"id": eid, "name": emp["name"], "domain": domain})
+            updates.append({"id": eid, "name": emp["name"], "company_domain_url": domain})
 
     # Print preview
     print(f"{'ID':>6}  {'Domain':30s}  Company")
     print("-" * 80)
     for u in updates:
-        print(f"  {u['id']:>4}  {u['domain']:30s}  {u['name'][:45]}")
+        print(f"  {u['id']:>4}  {u['company_domain_url']:30s}  {u['name'][:45]}")
 
     print(f"\n{len(updates)} rows to update.")
     answer = input("Apply to database? [y/N] ").strip().lower()
@@ -182,7 +182,7 @@ def main():
     print("\nApplying …")
     ok = 0
     for u in updates:
-        sb.table("employers").update({"domain": u["domain"]}).eq("id", u["id"]).execute()
+        sb.table("employers").update({"company_domain_url": u["company_domain_url"]}).eq("id", u["id"]).execute()
         ok += 1
         if ok % 50 == 0:
             print(f"  {ok}/{len(updates)} …")

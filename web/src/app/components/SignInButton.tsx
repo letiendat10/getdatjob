@@ -5,7 +5,7 @@ import { createSupabaseBrowser } from "@/lib/supabase-browser";
 // Toggle: set to true once LINKEDIN_CLIENT_ID + LINKEDIN_CLIENT_SECRET are in
 // env and the callback URL is registered in LinkedIn Developer Portal.
 // Custom OAuth requests r_liteprofile → gets headline + vanityName from /v2/me.
-const USE_CUSTOM_LINKEDIN_OAUTH = false;
+const USE_CUSTOM_LINKEDIN_OAUTH = true;
 
 export default function SignInButton({
   className,

@@ -1,5 +1,7 @@
+import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase-admin";
+import { enrichUser } from "@/lib/enrich-apollo";
 
 const LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken";
 const LINKEDIN_ME_URL =
@@ -125,6 +127,12 @@ export async function GET(request: NextRequest) {
   // generateLink finds-or-creates the user by email in one call.
   // This avoids the createUser "already registered" error for users who signed
   // in previously via Supabase OIDC but don't yet have a linkedin.profiles row.
+  // redirectTo is /auth/callback — definitely in Supabase's allowed-URL list.
+  // generateLink has no PKCE challenge, so GoTrue uses implicit flow and
+  // appends #access_token=... to /auth/callback. The /auth/callback route
+  // handler detects the missing ?code= and 302-redirects to
+  // /auth/linkedin/session; browsers preserve the fragment through same-origin
+  // redirects, so the client-side session page receives the tokens.
   const { data: linkData, error: linkError } =
     await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
@@ -154,9 +162,7 @@ export async function GET(request: NextRequest) {
     user_metadata: profileMeta,
   });
 
-  // Store LinkedIn profile data now — before the magic link bounce — so that
-  // /auth/callback can read headline + linkedinUrl from user_metadata and skip
-  // the provider_token call entirely.
+  // Store LinkedIn profile data before the magic link bounce.
   await supabaseAdmin.schema("linkedin").from("profiles").upsert(
     {
       id: userId,
@@ -169,6 +175,25 @@ export async function GET(request: NextRequest) {
     },
     { onConflict: "id" }
   );
+
+  // Plant pending enrichment row, then kick off background enrichment.
+  // We do this here (not in /auth/callback) because the custom OAuth flow
+  // bypasses /auth/callback entirely.
+  await supabaseAdmin
+    .schema("enriched")
+    .from("profiles")
+    .upsert({ user_id: userId, enrich_status: "pending" }, { onConflict: "user_id" });
+
+  after(async () => {
+    await enrichUser(
+      userId,
+      profile.email,
+      profile.firstName,
+      profile.lastName,
+      profile.linkedinUrl,
+      null
+    );
+  });
 
   const finalResponse = NextResponse.redirect(linkData.properties.action_link);
   finalResponse.cookies.delete("li_oauth_state");

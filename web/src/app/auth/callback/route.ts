@@ -45,7 +45,13 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/auth/signin?error=cancelled`);
+    // No ?code= means GoTrue used implicit flow and put #access_token=... in the
+    // fragment (happens when generateLink() is called server-side — no PKCE
+    // challenge). Fragments aren't sent to the server, so we can't process them
+    // here. Redirect to the client-side session page; browsers preserve the
+    // original fragment through same-origin 302 redirects, so the page will
+    // receive #access_token=... and call setSession() to establish the session.
+    return NextResponse.redirect(`${origin}/auth/linkedin/session`);
   }
 
   const cookieStore = await cookies();

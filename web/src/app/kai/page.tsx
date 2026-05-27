@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { Bookmark, MapPin, ExternalLink, Share2, X } from "lucide-react";
 import s from "./kai.module.css";
@@ -89,6 +89,21 @@ function getOrCreateDeviceId(): string {
 
 function formatSalary(n: number): string {
   return "~$" + Math.round(n / 1000) + "K";
+}
+
+function extractPostedSalary(html: string): string | null {
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  // $X,XXX – $Y,XXX (standard, with optional decimals)
+  const dollarRange = text.match(/\$[\d,]+(?:\.\d+)?K?\s*[–—\-]+\s*\$[\d,]+(?:\.\d+)?K?/i);
+  if (dollarRange) return dollarRange[0].replace(/\s+/g, " ").trim();
+  // X,XXX – Y,XXX USD (Amazon format, no dollar sign)
+  const usdRange = text.match(/([\d,]+(?:\.\d+)?)\s*[-–—]\s*([\d,]+(?:\.\d+)?)\s*USD/i);
+  if (usdRange) {
+    const lo = Math.round(parseFloat(usdRange[1].replace(/,/g, "")));
+    const hi = Math.round(parseFloat(usdRange[2].replace(/,/g, "")));
+    if (lo > 10000 && hi > lo) return `$${lo.toLocaleString()} – $${hi.toLocaleString()}`;
+  }
+  return null;
 }
 
 function timeAgo(dateStr: string | null): string | null {
@@ -282,7 +297,7 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
         <div className="flex flex-wrap gap-1.5 mb-1.5">
           {job.salary_estimate && job.salary_estimate > 50000 && (
             <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-              Salary: {formatSalary(job.salary_estimate)}
+              LCA Est.: {formatSalary(job.salary_estimate)}
             </span>
           )}
           {isVerified && (
@@ -330,6 +345,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const isVerified = job.visa_tier === "verified";
   const isFriendly = job.visa_tier === "friendly";
   const lcaLastFiled = formatLcaDate(job.lca_last_filed);
+  const postedSalary = useMemo(() => extractPostedSalary(descHtml), [descHtml]);
   const [saved, setSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -370,8 +386,8 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
         }
         const res = await fetch(`/api/jobs/description?source=db&id=${job.id}`);
         if (res.ok) {
-          const { text } = await res.json();
-          setDescText(text ?? "");
+          const { html, text } = await res.json();
+          if (html) { setDescHtml(html); } else { setDescText(text ?? ""); }
         }
       } catch { /* graceful */ } finally {
         setDescLoading(false);
@@ -476,13 +492,17 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
             )}
           </div>
 
-          {(job.salary_estimate && job.salary_estimate > 50000 || job.lca_count_2025 || lcaLastFiled) && (
+          {(postedSalary || (job.salary_estimate && job.salary_estimate > 50000) || job.lca_count_2025 || lcaLastFiled) && (
             <div className="flex flex-wrap gap-1.5">
-              {job.salary_estimate && job.salary_estimate > 50000 && (
+              {postedSalary ? (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                  Salary: {formatSalary(job.salary_estimate)}
+                  Salary: {postedSalary}
                 </span>
-              )}
+              ) : job.salary_estimate && job.salary_estimate > 50000 ? (
+                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                  LCA Est.: {formatSalary(job.salary_estimate)}
+                </span>
+              ) : null}
               {job.lca_count_2025 && job.lca_count_2025 > 0 && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
                   {job.lca_count_2025} LCA filings in 2025

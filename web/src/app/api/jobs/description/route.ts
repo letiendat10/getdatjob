@@ -29,8 +29,11 @@ async function handleDb(id: string) {
       .select("description_text")
       .eq("id", Number(id))
       .single();
+    const raw: string = data?.description_text ?? "";
+    const isHtml = /<[a-z][^>]*>/i.test(raw);
+    const payload = isHtml ? { html: raw.slice(0, 20000) } : { text: raw };
     return Response.json(
-      { text: data?.description_text ?? "" },
+      payload,
       { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=3600" } }
     );
   } catch {

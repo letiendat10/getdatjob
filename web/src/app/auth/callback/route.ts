@@ -3,6 +3,43 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { enrichUser } from "@/lib/enrich-apollo";
 
+// Attempt to fetch headline + vanityName from LinkedIn's REST API using the
+// provider access token Supabase gives us after OIDC exchange. Works when the
+// LinkedIn app has r_liteprofile scope approved (requested in SignInButton).
+async function tryLinkedInV2Me(providerToken: string): Promise<{
+  headline: string | null;
+  vanityName: string | null;
+}> {
+  try {
+    const res = await fetch(
+      "https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName,headline,vanityName)",
+      {
+        headers: {
+          Authorization: `Bearer ${providerToken}`,
+          "X-Restli-Protocol-Version": "2.0.0",
+        },
+        signal: AbortSignal.timeout(5000),
+      }
+    );
+    if (res.ok) {
+      const profile = (await res.json()) as {
+        headline?: string;
+        vanityName?: string;
+      };
+      console.log("[linkedin-v2me] ok — headline:", profile.headline, "vanityName:", profile.vanityName);
+      return {
+        headline: profile.headline ?? null,
+        vanityName: profile.vanityName ?? null,
+      };
+    }
+    const body = await res.text();
+    console.log("[linkedin-v2me] failed:", res.status, body.slice(0, 200));
+  } catch (err) {
+    console.error("[linkedin-v2me] error:", err);
+  }
+  return { headline: null, vanityName: null };
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -38,12 +75,27 @@ export async function GET(request: NextRequest) {
   const meta = data.user.user_metadata ?? {};
   const fullName = meta.full_name ?? meta.name ?? null;
 
-  // LinkedIn OIDC (Supabase linkedin_oidc provider) only returns standard OIDC
-  // claims: sub (member ID), name, email, picture. It does NOT expose vanityName
-  // or headline — those require LinkedIn Partner API access. Both fields stay null
-  // and enrichment falls back to email+name via PDL/Apollo.
-  const linkedinUrl: string | null = null;
-  const headline: string | null = null;
+  // Option 2: try provider_token → /v2/me to get headline + vanityName.
+  // LinkedIn OIDC alone only returns OIDC standard claims (no headline).
+  // If r_liteprofile scope was granted (requested in SignInButton), this call
+  // returns the full liteprofile including headline and the vanity URL slug.
+  let headline: string | null = (meta.headline as string | null) ?? null;
+  let vanityName: string | null = (meta.vanity_name as string | null) ?? (meta.linkedin_vanity as string | null) ?? null;
+
+  const providerToken = data.session?.provider_token ?? null;
+  if (providerToken && !headline) {
+    const v2me = await tryLinkedInV2Me(providerToken);
+    headline = v2me.headline;
+    vanityName = v2me.vanityName ?? vanityName;
+  }
+
+  const linkedinUrl: string | null = vanityName
+    ? `https://www.linkedin.com/in/${vanityName}`
+    : null;
+
+  if (linkedinUrl) {
+    console.log("[auth-callback] linkedinUrl resolved:", linkedinUrl);
+  }
 
   await supabase.schema("linkedin").from("profiles").upsert(
     {
@@ -64,11 +116,11 @@ export async function GET(request: NextRequest) {
     .from("profiles")
     .upsert({ user_id: data.user.id, enrich_status: "pending" }, { onConflict: "user_id" });
 
-  // Enrich via Apollo after the redirect is sent — non-blocking
   const userId = data.user.id;
   const email = data.user.email ?? null;
   const firstName = (meta.given_name ?? null) as string | null;
   const lastName = (meta.family_name ?? null) as string | null;
+
   after(async () => {
     await enrichUser(userId, email, firstName, lastName, linkedinUrl, meta.locale ?? null);
   });

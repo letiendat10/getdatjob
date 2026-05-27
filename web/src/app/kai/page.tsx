@@ -340,7 +340,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const isVerified = job.visa_tier === "verified";
   const isFriendly = job.visa_tier === "friendly";
   const lcaLastFiled = formatLcaDate(job.lca_last_filed);
-  const postedSalary = useMemo(() => extractPostedSalary(descHtml), [descHtml]);
+  const postedSalary = useMemo(() => extractPostedSalary(descHtml || descText), [descHtml, descText]);
   const [saved, setSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [copied, setCopied] = useState(false);

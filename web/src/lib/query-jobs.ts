@@ -65,7 +65,7 @@ const LEVEL_PATTERNS: Record<string, string[]> = {
 // P1: Lean type — only fields actually rendered in the UI.
 // Fields removed: employer_id, lca_count (base), title_clean,
 //                 title_employer_lca_count, no_sponsor_in_desc_flag
-// top_visa_class kept in the DB view (used in WHERE filter) but excluded from type.
+// visa_types kept in the DB view (used in WHERE filter) but excluded from type.
 export type JobRow = {
   id:                number;
   title:             string;
@@ -102,8 +102,7 @@ export async function queryJobs(params: {
   let dbq = supabase
     .from("jobs_with_details")
     .select(
-      // P1: explicit field list — excludes top_visa_class from response payload
-      // but the view still exposes it for the ilike filter below.
+      // P1: explicit field list — visa_types excluded from payload, used only for filtering.
       "id,title,location,url,posted_at,ats_source,ats_job_id,ats_slug," +
       "company,domain,lca_count_2025,last_filing_date,confidence_tier,is_active,salary_range",
       { count: "planned" }
@@ -124,7 +123,13 @@ export async function queryJobs(params: {
   if (signal && signal !== "all") dbq = dbq.eq("confidence_tier", signal);
 
   const visaPrefix = visa && VISA_PATTERNS[visa];
-  if (visaPrefix) dbq = dbq.ilike("top_visa_class", `${visaPrefix}%`);
+  if (visaPrefix === "H-1B") {
+    dbq = dbq.contains("visa_types", ["H-1B"]);
+  } else if (visaPrefix === "E-3") {
+    dbq = dbq.gt("e3_lca_count", 0);
+  } else if (visaPrefix === "TN") {
+    dbq = dbq.gt("tn_lca_count", 0);
+  }
 
   if (location !== "all") {
     const patterns = LOC_PATTERNS[location];

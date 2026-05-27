@@ -13,18 +13,22 @@ from title_utils import clean_title
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 COLS = {
-    "EMPLOYER_NAME": "employer_name",
-    "EMPLOYER_FEIN": "fein",
-    "JOB_TITLE": "job_title",
-    "SOC_CODE": "soc_code",
-    "WAGE_RATE_OF_PAY_FROM": "wage_offered",
-    "PW_WAGE_LEVEL": "wage_level",
-    "WORKSITE_CITY": "city",
-    "WORKSITE_STATE": "state",
-    "BEGIN_DATE": "filing_date",
-    "RECEIVED_DATE": "received_date",
-    "VISA_CLASS": "visa_class",
-    "CASE_STATUS": "case_status",
+    "EMPLOYER_NAME":            "employer_name",
+    "EMPLOYER_FEIN":            "fein",
+    "JOB_TITLE":                "job_title",
+    "SOC_CODE":                 "soc_code",
+    "WAGE_RATE_OF_PAY_FROM":    "wage_offered",
+    "PW_WAGE_LEVEL":            "wage_level",
+    "WORKSITE_CITY":            "city",
+    "WORKSITE_STATE":           "state",
+    "BEGIN_DATE":               "filing_date",
+    "RECEIVED_DATE":            "received_date",
+    "VISA_CLASS":               "visa_class",
+    "CASE_STATUS":              "case_status",
+    "EMPLOYER_POC_FIRST_NAME":  "poc_first_name",
+    "EMPLOYER_POC_LAST_NAME":   "poc_last_name",
+    "EMPLOYER_POC_JOB_TITLE":   "poc_job_title",
+    "EMPLOYER_POC_EMAIL":       "poc_email",
 }
 
 def clean_name(name: str) -> str:
@@ -75,33 +79,64 @@ def upsert_employers(df: pd.DataFrame) -> dict[str, int]:
         .size()
         .reset_index(name="lca_count_2025")
     )
+    e3_counts = (
+        df[df["visa_class"].str.upper().str.startswith("E-3", na=False)]
+        .groupby("name_clean").size().reset_index(name="e3_lca_count")
+    )
+    tn_counts = (
+        df[df["visa_class"].str.upper().str.startswith("TN", na=False)]
+        .groupby("name_clean").size().reset_index(name="tn_lca_count")
+    )
     counts = (
         counts
         .merge(top_visa, on="name_clean")
         .merge(last_filing, on="name_clean")
         .merge(count_2025, on="name_clean", how="left")
+        .merge(e3_counts, on="name_clean", how="left")
+        .merge(tn_counts, on="name_clean", how="left")
     )
     counts["lca_count_2025"] = counts["lca_count_2025"].fillna(0).astype(int)
+    counts["e3_lca_count"] = counts["e3_lca_count"].fillna(0).astype(int)
+    counts["tn_lca_count"] = counts["tn_lca_count"].fillna(0).astype(int)
+
+    # POC: for each employer, pick the filing with the latest received_date that has a non-null email.
+    # Domain is derived from that email (everything after @).
+    poc_df = df[df["poc_email"].notna() & (df["poc_email"].str.strip() != "")].copy()
+    poc_latest = (
+        poc_df
+        .sort_values("received_date", ascending=False)
+        .drop_duplicates("name_clean")
+        [["name_clean", "poc_first_name", "poc_last_name", "poc_job_title", "poc_email"]]
+    )
+    poc_latest["domain"] = (
+        poc_latest["poc_email"]
+        .str.lower().str.strip()
+        .apply(lambda e: e.split("@", 1)[1] if "@" in e else None)
+    )
+    counts = counts.merge(poc_latest, on="name_clean", how="left")
 
     rows = []
     for _, r in counts.iterrows():
         rows.append({
-            "name": r["employer_name"],
-            "name_clean": r["name_clean"],
-            "fein": r["fein"] if pd.notna(r["fein"]) else None,
-            "lca_count": int(r["lca_count"]),
-            "lca_count_2025": int(r["lca_count_2025"]),
-            "top_visa_class": r["top_visa_class"],
+            "name":             r["employer_name"],
+            "name_clean":       r["name_clean"],
+            "fein":             r["fein"]             if pd.notna(r["fein"])             else None,
+            "lca_count":        int(r["lca_count"]),
+            "lca_count_2025":   int(r["lca_count_2025"]),
+            "e3_lca_count":     int(r["e3_lca_count"]),
+            "tn_lca_count":     int(r["tn_lca_count"]),
+            "top_visa_class":   r["top_visa_class"],
             "last_filing_date": str(r["last_filing_date"]) if pd.notna(r["last_filing_date"]) else None,
+            "poc_first_name":   r["poc_first_name"]  if pd.notna(r.get("poc_first_name")) else None,
+            "poc_last_name":    r["poc_last_name"]   if pd.notna(r.get("poc_last_name"))  else None,
+            "poc_job_title":    r["poc_job_title"]   if pd.notna(r.get("poc_job_title"))  else None,
+            "poc_email":        r["poc_email"]       if pd.notna(r.get("poc_email"))      else None,
+            "domain":           r["domain"]          if pd.notna(r.get("domain"))         else None,
         })
 
     print(f"Inserting {len(rows)} employers (full refresh) …")
-    # Full refresh — delete all dependent data first, then employers
-    sb.table("job_signals").delete().neq("id", 0).execute()
-    sb.table("jobs").delete().neq("id", 0).execute()
-    sb.table("lca_filings").delete().neq("id", 0).execute()
-    sb.table("employer_ats").delete().neq("id", 0).execute()
-    sb.table("employers").delete().neq("id", 0).execute()
+    # Full refresh — truncate all dependent tables in one server-side call (avoids REST timeout)
+    sb.rpc("truncate_lca_data", {}).execute()
 
     for i in range(0, len(rows), 100):
         sb.table("employers").insert(rows[i:i+100]).execute()

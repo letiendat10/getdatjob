@@ -830,17 +830,23 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
       const useInit = useInitEndpointRef.current && !append;
       if (useInit) useInitEndpointRef.current = false;
       const url  = useInit ? `/api/jobs/init?${qs}` : `/api/jobs?${qs}`;
-      const data = await fetch(url).then((r) => r.json());
-      const rawJobs: JobRow[] = data.jobs;
-      const total: number     = data.total;
-
-      const normalized = rawJobs.map(toJobWithNorm);
-      setJobs((prev) => (append ? [...prev, ...normalized] : normalized));
-      setTotal(total);
-      setPage(pageNum);
-
-      if (!append) setLoading(false);
-      else setLoadingMore(false);
+      try {
+        const res  = await fetch(url);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        const rawJobs: JobRow[] = data.jobs ?? [];
+        const total: number     = data.total ?? 0;
+        const normalized = rawJobs.map(toJobWithNorm);
+        setJobs((prev) => (append ? [...prev, ...normalized] : normalized));
+        setTotal(total);
+        setPage(pageNum);
+      } catch (err) {
+        console.error("[jobs] fetch failed:", err);
+        if (!append) { setJobs([]); setTotal(0); }
+      } finally {
+        if (!append) setLoading(false);
+        else setLoadingMore(false);
+      }
     },
     []
   );

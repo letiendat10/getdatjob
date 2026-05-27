@@ -6,18 +6,36 @@ create table if not exists employers (
   name          text not null,
   name_clean    text unique,             -- lowercased, normalized for matching
   fein          text,
-  domain        text,                    -- verified website domain (e.g. block.xyz) — populated by 04_enrich_domains.py
-  lca_count     int default 0,
-  lca_count_2025 int default 0,
-  lca_2025_by_quarter jsonb default '{}'::jsonb,
-  top_visa_class text,                   -- H-1B | E-3 | TN
+  domain        text,                    -- derived from poc_email (everything after @)
+  poc_first_name text,
+  poc_last_name  text,
+  poc_job_title  text,
+  poc_email      text,                   -- latest POC email from LCA filing (by received_date)
+  lca_count      int default 0,           -- cumulative across all loaded quarters
+  lca_fy2026     int default 0,
+  lca_fy2026_q1  int default 0,          -- Oct–Dec 2025
+  lca_fy2026_q2  int default 0,          -- Jan–Mar 2026
+  lca_fy2025     int default 0,
+  lca_fy2025_q1  int default 0,          -- Oct–Dec 2024
+  lca_fy2025_q2  int default 0,          -- Jan–Mar 2025
+  lca_fy2025_q3  int default 0,          -- Apr–Jun 2025
+  lca_fy2025_q4  int default 0,          -- Jul–Sep 2025
+  lca_fy2024     int default 0,
+  lca_fy2024_q1  int default 0,          -- Oct–Dec 2023
+  lca_fy2024_q2  int default 0,          -- Jan–Mar 2024
+  lca_fy2024_q3  int default 0,          -- Apr–Jun 2024
+  lca_fy2024_q4  int default 0,          -- Jul–Sep 2024
+  lca_count_2025 int default 0,          -- legacy calendar-year 2025 (used by web app)
+  visa_types     text[],                 -- all visa types filed, e.g. {H-1B,E-3}
+  e3_lca_count   int not null default 0, -- count of E-3 filings (E-3 Australian)
+  tn_lca_count   int not null default 0, -- count of TN filings
   last_filing_date date,
   created_at    timestamptz default now()
 );
 
 create table if not exists employer_ats (
   id            bigint primary key generated always as identity,
-  employer_id   bigint references employers(id) on delete cascade,
+  employer_id   bigint references employers(id),
   ats_type      text not null,           -- greenhouse | lever | ashby
   slug          text not null,
   verified_at   timestamptz,            -- null = auto-guessed, not yet confirmed
@@ -27,7 +45,7 @@ create table if not exists employer_ats (
 
 create table if not exists lca_filings (
   id            bigint primary key generated always as identity,
-  employer_id   bigint references employers(id) on delete cascade,
+  employer_id   bigint references employers(id),
   job_title     text,
   soc_code      text,
   wage_offered  numeric,
@@ -44,7 +62,7 @@ create table if not exists lca_filings (
 
 create table if not exists jobs (
   id            bigint primary key generated always as identity,
-  employer_id   bigint references employers(id) on delete cascade,
+  employer_id   bigint references employers(id),
   title         text,
   location      text,
   url           text,
@@ -60,7 +78,7 @@ create table if not exists jobs (
 
 create table if not exists job_signals (
   id                  bigint primary key generated always as identity,
-  job_id              bigint references jobs(id) on delete cascade unique,
+  job_id              bigint references jobs(id) unique,
   confidence_tier          text,         -- verified | friendly | excluded
   no_sponsor_in_desc_flag  text,         -- sponsors | no_sponsor | null
   title_clean              text,

@@ -163,7 +163,7 @@ def build_lca_index(sb, employer_id: int) -> tuple[set[str], dict[str, int]]:
         counts   – {clean_title: filing_count}
     """
     from datetime import date, timedelta
-    cutoff = (date.today() - timedelta(days=365)).isoformat()
+    cutoff = (date.today() - timedelta(days=365 * 3)).isoformat()
     rows = (
         sb.table("lca_filings")
         .select("title_clean")

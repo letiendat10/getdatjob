@@ -31,7 +31,7 @@ export default function SignInButton({
       provider: "linkedin_oidc",
       options: {
         redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-        scopes: "openid profile email r_liteprofile",
+        scopes: "openid profile email",
       },
     });
   }

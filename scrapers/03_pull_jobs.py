@@ -488,6 +488,48 @@ def fetch_bamboohr(slug: str) -> list[dict]:
     return jobs
 
 
+def fetch_jibe(slug: str) -> list[dict]:
+    """Jibe-powered careers sites. slug = base URL, e.g. https://careers.amd.com"""
+    base_url = slug.rstrip("/")
+    jobs = []
+    limit = 100
+    offset = 0
+    while True:
+        r = requests.get(
+            f"{base_url}/api/jobs",
+            params={"limit": limit, "offset": offset},
+            headers=HEADERS, timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json()
+        batch = data.get("jobs", [])
+        if not batch:
+            break
+        for j in batch:
+            d = j.get("data", {})
+            if d.get("country_code") != "US":
+                continue
+            req_id = d.get("req_id") or d.get("slug", "")
+            title = d.get("title", "")
+            location = d.get("full_location") or d.get("location_name", "")
+            desc = strip_html(d.get("description", ""))
+            posted = d.get("posted_date")
+            job_url = f"{base_url}/careers-home/jobs/{req_id}"
+            jobs.append({
+                "ats_job_id": str(req_id),
+                "title": title,
+                "location": location,
+                "url": job_url,
+                "posted_at": parse_iso(posted) if posted else None,
+                "description_text": desc[:8000],
+            })
+        if len(batch) < limit:
+            break
+        offset += limit
+        time.sleep(0.3)
+    return jobs
+
+
 FETCHERS = {
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
@@ -498,6 +540,7 @@ FETCHERS = {
     "bamboohr": fetch_bamboohr,
     "amazon": fetch_amazon,
     "smartrecruiters": fetch_smartrecruiters,
+    "jibe": fetch_jibe,
 }
 
 

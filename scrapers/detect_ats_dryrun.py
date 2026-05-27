@@ -303,7 +303,7 @@ SLUG_OVERRIDES = {
     "citadel americas services": ("greenhouse", "citadel"),
     "sony interactive":          ("greenhouse", "sonyinteractiveentertainment"),
     "applied intuition":         ("greenhouse", "appliedintuition"),
-    "advanced micro devices":    None,
+    "advanced micro devices":    ("jibe", "https://careers.amd.com"),
     "synopsys":                  None,
     "paypal, inc":               ("workday", "paypal.wd1/jobs"),
     "ebay inc":                  None,                                               # Workday via Phenom, jobsite unknown

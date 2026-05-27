@@ -84,10 +84,10 @@ ATS_PATTERNS = [
     # Lever
     (r"jobs\.lever\.co/([a-z0-9_-]+)", "lever", 1),
     (r"api\.lever\.co/v0/postings/([a-z0-9_-]+)", "lever", 1),
-    # Workday — tenant subdomain
-    (r"([a-z0-9_-]+)\.wd[0-9]+\.myworkdayjobs\.com", "workday", 1),
-    (r"([a-z0-9_-]+)\.myworkdayjobs\.com", "workday", 1),
-    (r"([a-z0-9_-]+)\.myworkdaysite\.com", "workday", 1),
+    # Workday — captures host(/jobsite)? so slug becomes "host/jobsite" after normalization
+    (r"([a-z0-9_-]+\.wd[0-9]+\.myworkdayjobs\.com(?:/[A-Za-z0-9_-]+)?)", "workday", 1),
+    (r"([a-z0-9_-]+\.myworkdayjobs\.com(?:/[A-Za-z0-9_-]+)?)", "workday", 1),
+    (r"([a-z0-9_-]+\.myworkdaysite\.com(?:/[A-Za-z0-9_-]+)?)", "workday", 1),
     # iCIMS
     (r"careers-([a-z0-9_-]+)\.icims\.com", "icims", 1),
     (r"([a-z0-9_-]+)\.icims\.com", "icims", 1),
@@ -142,6 +142,10 @@ def match_ats(text: str) -> list[dict]:
                 continue
             if re.fullmatch(r"wd\d+", slug):  # Workday infra subdomain
                 continue
+            if ats_type == "workday":
+                slug = re.sub(r"\.(myworkdayjobs|myworkdaysite)\.com", "", slug)
+                if re.match(r"wd\d+/", slug):  # artifact: wd5 subdomain captured by fallback pattern
+                    continue
             key = (ats_type, slug)
             if key in seen:
                 continue
@@ -379,7 +383,7 @@ def cmd_write(args):
                 "name_match_score": None,
                 "needs_review": False,
             }
-            sb.table("employer_ats").upsert(row, on_conflict="employer_id").execute()
+            sb.table("employer_ats").upsert(row, on_conflict="employer_id,ats_type").execute()
             print(json.dumps({"ok": True, "via": "override", "row": row}))
             return
 
@@ -399,7 +403,7 @@ def cmd_write(args):
                 "name_match_score": s.get("name_match_score"),
                 "needs_review": s.get("needs_review", False),
             }
-            sb.table("employer_ats").upsert(row, on_conflict="employer_id").execute()
+            sb.table("employer_ats").upsert(row, on_conflict="employer_id,ats_type").execute()
             print(json.dumps({"ok": True, "via": "fein_dedup", "row": row}))
             return
 
@@ -412,7 +416,7 @@ def cmd_write(args):
         "name_match_score": args.score,
         "needs_review": bool(args.needs_review),
     }
-    sb.table("employer_ats").upsert(row, on_conflict="employer_id").execute()
+    sb.table("employer_ats").upsert(row, on_conflict="employer_id,ats_type").execute()
 
     # Log to findings file for cross-reference / report
     FINDINGS_PATH.parent.mkdir(parents=True, exist_ok=True)

@@ -42,7 +42,20 @@ type Meta = {
 
 const LOGO_DEV_TOKEN = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN ?? "";
 
-const DOMAIN_OVERRIDES: Record<string, string> = { block: "block.xyz" };
+const DOMAIN_OVERRIDES: Record<string, string> = {
+  block: "block.xyz",
+  // Amazon — many legal entities, all resolve to amazon.com
+  amazoncomservices: "amazon.com",
+  amazonadvertising: "amazon.com",
+  amazondataservices: "amazon.com",
+  amazondevelopmentcenterus: "amazon.com",
+  amazonwebservices: "amazon.com",
+  // Subsidiaries / alternate legal names whose stem ≠ real domain
+  metaplatforms: "meta.com",
+  ubertechnologies: "uber.com",
+  ciscosystems: "cisco.com",
+  oracleamerica: "oracle.com",
+};
 function normalizeCompanyName(name: string): string {
   const cleaned = name
     .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|corporation|corp\.?|limited|ltd\.?|co\.|l\.p\.?|\blp\b|pbc|p\.c\.|pllc)\.?\s*$/i, "")

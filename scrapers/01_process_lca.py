@@ -1,13 +1,13 @@
 """
 01_process_lca.py
-Reads DOL LCA xlsx → writes top N employers + all their filings to Supabase.
+Reads DOL LCA xlsx → writes all employers + all their filings to Supabase.
 Run once per quarter when DOL publishes new data.
 """
 
 import re
 import pandas as pd
 from supabase import create_client
-from config import SUPABASE_URL, SUPABASE_KEY, LCA_FILE, TOP_N_EMPLOYERS
+from config import SUPABASE_URL, SUPABASE_KEY, LCA_FILE
 from title_utils import clean_title
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -50,22 +50,21 @@ def load_lca(path: str) -> pd.DataFrame:
     return df
 
 def upsert_employers(df: pd.DataFrame) -> dict[str, int]:
-    """Insert top N employers, return {name_clean: id}."""
+    """Insert all employers, return {name_clean: id}."""
     counts = (
         df.groupby(["employer_name", "name_clean", "fein"])
         .size()
         .reset_index(name="lca_count")
         .sort_values("lca_count", ascending=False)
         .drop_duplicates("name_clean")
-        .head(TOP_N_EMPLOYERS)
     )
 
-    # Most common visa class per employer
+    # All visa types per employer as a list
     top_visa = (
         df.groupby("name_clean")["visa_class"]
-        .agg(lambda s: s.value_counts().index[0] if len(s) else None)
+        .agg(lambda s: sorted(s.dropna().unique().tolist()))
         .reset_index()
-        .rename(columns={"visa_class": "top_visa_class"})
+        .rename(columns={"visa_class": "visa_types"})
     )
     last_filing = (
         df.groupby("name_clean")["received_date"]
@@ -89,7 +88,7 @@ def upsert_employers(df: pd.DataFrame) -> dict[str, int]:
     )
     counts = (
         counts
-        .merge(top_visa, on="name_clean")
+        .merge(top_visa, on="name_clean", how="left")
         .merge(last_filing, on="name_clean")
         .merge(count_2025, on="name_clean", how="left")
         .merge(e3_counts, on="name_clean", how="left")
@@ -146,7 +145,7 @@ def upsert_employers(df: pd.DataFrame) -> dict[str, int]:
             "lca_count_2025":   int(r["lca_count_2025"]),
             "e3_lca_count":     int(r["e3_lca_count"]),
             "tn_lca_count":     int(r["tn_lca_count"]),
-            "top_visa_class":   r["top_visa_class"],
+            "visa_types":       r["visa_types"] if r.get("visa_types") else None,
             "last_filing_date": str(r["last_filing_date"]) if pd.notna(r["last_filing_date"]) else None,
             "poc_first_name":   r["poc_first_name"]  if pd.notna(r.get("poc_first_name")) else None,
             "poc_last_name":    r["poc_last_name"]   if pd.notna(r.get("poc_last_name"))  else None,

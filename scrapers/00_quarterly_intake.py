@@ -236,8 +236,8 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
             .merge(poc_df, on="name_clean", how="left")
         )
 
-        # Fetch existing employers (with last_filing_date for recency check)
-        existing_result = sb.table("employers").select("id,name_clean,last_filing_date").execute()
+        # Fetch existing employers (with last_filing_date, domain, poc_email for recency check + null-preservation)
+        existing_result = sb.table("employers").select("id,name_clean,last_filing_date,company_domain_url,poc_email").execute()
         existing_by_name = {e["name_clean"]: e for e in existing_result.data}
 
         # Build batched upsert lists — avoids per-row HTTP calls that exhaust HTTP/2 streams
@@ -246,6 +246,7 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
         for _, r in counts.iterrows():
             nc = r["name_clean"]
             new_last = str(r["last_filing_date"]) if pd.notna(r["last_filing_date"]) else None
+            existing = existing_by_name.get(nc, {})
             meta = {
                 "visa_types":       r["visa_types"] if r.get("visa_types") else None,
                 "last_filing_date": new_last,
@@ -254,8 +255,11 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
                 "poc_first_name":   r["poc_first_name"]  if pd.notna(r.get("poc_first_name"))  else None,
                 "poc_last_name":    r["poc_last_name"]   if pd.notna(r.get("poc_last_name"))   else None,
                 "poc_job_title":    r["poc_job_title"]   if pd.notna(r.get("poc_job_title"))   else None,
-                "poc_email":        r["poc_email"]       if pd.notna(r.get("poc_email"))       else None,
-                "company_domain_url": r["company_domain_url"] if pd.notna(r.get("company_domain_url")) else None,
+                # Preserve existing non-null values — never overwrite a good value with None.
+                # A quarterly file with no POC email for this employer must not wipe previously
+                # enriched poc_email / company_domain_url fields.
+                "poc_email":          r["poc_email"]         if pd.notna(r.get("poc_email"))         else existing.get("poc_email"),
+                "company_domain_url": r["company_domain_url"] if pd.notna(r.get("company_domain_url")) else existing.get("company_domain_url"),
             }
             if nc in existing_by_name:
                 existing_last = existing_by_name[nc].get("last_filing_date")

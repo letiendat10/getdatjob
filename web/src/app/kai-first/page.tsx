@@ -19,6 +19,8 @@ type Job = {
   visa_tier: string | null;
   salary_estimate: number | null;
   lca_count: number | null;
+  ats_source: string | null;
+  ats_job_id: string | null;
 };
 
 type ChatMessage = {
@@ -309,6 +311,7 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
 }
 
 function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
+  const [descHtml, setDescHtml] = useState("");
   const [descText, setDescText] = useState("");
   const [descLoading, setDescLoading] = useState(true);
   const displayCompany = normalizeCompanyName(job.company);
@@ -320,17 +323,34 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
 
   useEffect(() => {
     setDescLoading(true);
+    setDescHtml("");
     setDescText("");
-    const supabase = createSupabaseBrowser();
     (async () => {
       try {
+        // Amazon + Workday: fetch live via proxy for full, formatted description
+        if (job.ats_source === "amazon" && job.ats_job_id) {
+          const res = await fetch(`/api/jobs/description?source=amazon&job_id=${encodeURIComponent(job.ats_job_id)}`);
+          if (res.ok) {
+            const { html } = await res.json();
+            if (html) { setDescHtml(html); setDescLoading(false); return; }
+          }
+        } else if (job.ats_source === "workday" && job.url) {
+          const res = await fetch(`/api/jobs/description?url=${encodeURIComponent(job.url)}`);
+          if (res.ok) {
+            const { html, text } = await res.json();
+            if (html) { setDescHtml(html); setDescLoading(false); return; }
+            if (text) { setDescText(text); setDescLoading(false); return; }
+          }
+        }
+        // Fallback: plain text from DB
+        const supabase = createSupabaseBrowser();
         const { data } = await supabase.from("jobs").select("description_text").eq("id", job.id).single();
         setDescText(data?.description_text ?? "");
       } catch { /* graceful */ } finally {
         setDescLoading(false);
       }
     })();
-  }, [job.id]);
+  }, [job.id, job.ats_source, job.ats_job_id, job.url]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -430,6 +450,8 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
                 <div key={i} className="h-3 bg-zinc-100 rounded animate-pulse" style={{ width: `${w}%` }} />
               ))}
             </div>
+          ) : descHtml ? (
+            <div className="text-xs text-zinc-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: descHtml }} />
           ) : descText ? (
             <p className="text-xs text-zinc-600 leading-relaxed whitespace-pre-wrap">{descText}</p>
           ) : (

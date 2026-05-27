@@ -332,12 +332,18 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
     })();
   }, [job.id]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl max-h-[88vh] flex flex-col" style={{ boxShadow: "0 -8px 40px rgba(0,0,0,0.18)" }}>
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+      <div className={s["job-overlay"]} onClick={onClose} />
+      <div className={s["job-panel"]}>
+        {/* Drag handle — mobile only */}
+        <div className={s["job-drag-handle"]}>
           <div className="w-10 h-1 rounded-full bg-zinc-200" />
         </div>
 

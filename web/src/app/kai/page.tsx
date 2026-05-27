@@ -492,17 +492,13 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
             )}
           </div>
 
-          {(postedSalary || (job.salary_estimate && job.salary_estimate > 50000) || job.lca_count_2025 || lcaLastFiled) && (
+          {(postedSalary || job.lca_count_2025 || lcaLastFiled) && (
             <div className="flex flex-wrap gap-1.5">
-              {postedSalary ? (
+              {postedSalary && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
                   Salary: {postedSalary}
                 </span>
-              ) : job.salary_estimate && job.salary_estimate > 50000 ? (
-                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                  LCA Est.: {formatSalary(job.salary_estimate)}
-                </span>
-              ) : null}
+              )}
               {job.lca_count_2025 && job.lca_count_2025 > 0 && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
                   {job.lca_count_2025} LCA filings in 2025

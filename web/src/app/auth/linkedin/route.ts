@@ -25,8 +25,10 @@ export async function GET() {
     client_id: clientId,
     redirect_uri: redirectUri,
     // openid + profile + email = OIDC claims (name, picture, locale)
-    // r_liteprofile = LinkedIn REST /v2/me headline + vanityName
-    scope: "openid profile email r_liteprofile",
+    // Note: r_liteprofile requires LinkedIn's legacy "Sign In with LinkedIn"
+    // product — app only has OIDC product, so we use OIDC scopes only.
+    // We still call /v2/me in the callback to test what the OIDC token returns.
+    scope: "openid profile email",
     state,
   });
 

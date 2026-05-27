@@ -933,7 +933,9 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
         })
         .catch(async () => {
           const { data } = await supabase.from("jobs").select("description_text").eq("id", sid).single();
-          setDescCache((c) => ({ ...c, [sid]: { html: "", text: data?.description_text ?? "" } }));
+          const raw = data?.description_text ?? "";
+          const isHtml = /<[a-z][^>]*>/i.test(raw);
+          setDescCache((c) => ({ ...c, [sid]: isHtml ? { html: raw, text: "" } : { html: "", text: raw } }));
           setDescLoading(false);
         });
     } else if (job.ats_source === "workday" && job.url) {
@@ -965,7 +967,9 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
     } else {
       const sid = selectedJobId;
       supabase.from("jobs").select("description_text").eq("id", sid).single().then(({ data }) => {
-        setDescCache((c) => ({ ...c, [sid]: { html: "", text: data?.description_text ?? "" } }));
+        const raw = data?.description_text ?? "";
+        const isHtml = /<[a-z][^>]*>/i.test(raw);
+        setDescCache((c) => ({ ...c, [sid]: isHtml ? { html: raw, text: "" } : { html: "", text: raw } }));
         setDescLoading(false);
       });
     }

@@ -14,6 +14,12 @@ type Profile = {
   email: string | null;
   avatar_url: string | null;
   is_supporter: boolean;
+  preferences: {
+    visa_type: string | null;
+    salary_floor: number | null;
+    job_level: string | null;
+    location: string | null;
+  } | null;
 };
 
 type Job = {
@@ -543,12 +549,46 @@ function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () 
             <h3 className={s["profile-card-title"]}>Job Preferences</h3>
           </div>
           <div className={s["profile-card-body"]}>
-            <p className={s["profile-empty"]}>
-              Tell Kai your visa status, target roles, salary floor, and location to personalize your matches.
-            </p>
-            <button className={s["profile-kai-cta"]} onClick={onGoToChat}>
-              Update via Kai →
-            </button>
+            {profile.preferences && (profile.preferences.visa_type || profile.preferences.location || profile.preferences.salary_floor || profile.preferences.job_level) ? (
+              <>
+                {profile.preferences.visa_type && (
+                  <div className={s["profile-row"]}>
+                    <span className={s["profile-label"]}>Visa</span>
+                    <span className={s["profile-value"]}>{profile.preferences.visa_type}</span>
+                  </div>
+                )}
+                {profile.preferences.location && (
+                  <div className={s["profile-row"]}>
+                    <span className={s["profile-label"]}>Location</span>
+                    <span className={s["profile-value"]}>{profile.preferences.location}</span>
+                  </div>
+                )}
+                {profile.preferences.salary_floor && (
+                  <div className={s["profile-row"]}>
+                    <span className={s["profile-label"]}>Salary floor</span>
+                    <span className={s["profile-value"]}>${Math.round(profile.preferences.salary_floor / 1000)}K+</span>
+                  </div>
+                )}
+                {profile.preferences.job_level && (
+                  <div className={s["profile-row"]}>
+                    <span className={s["profile-label"]}>Level</span>
+                    <span className={s["profile-value"]}>{profile.preferences.job_level}</span>
+                  </div>
+                )}
+                <button className={s["profile-kai-cta"]} onClick={onGoToChat}>
+                  Update via Kai →
+                </button>
+              </>
+            ) : (
+              <>
+                <p className={s["profile-empty"]}>
+                  Tell Kai your visa status, target roles, salary floor, and location to personalize your matches.
+                </p>
+                <button className={s["profile-kai-cta"]} onClick={onGoToChat}>
+                  Update via Kai →
+                </button>
+              </>
+            )}
           </div>
         </div>
 

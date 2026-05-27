@@ -696,6 +696,7 @@ function SupportScreen({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const POST_RESULT_CHIPS = ["Show more", "Change location", "Higher salary only", "Posted this week"];
+const KAI_FIRST_HISTORY_KEY = "kai_first_chat_history";
 
 export default function KaiFirstPage() {
   const [step, setStep] = useState<OnboardingStep>("init");
@@ -726,6 +727,7 @@ export default function KaiFirstPage() {
   const threadRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
+  const historyLoadedRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
     if (threadRef.current) {
@@ -734,6 +736,37 @@ export default function KaiFirstPage() {
   }, []);
 
   useEffect(() => { scrollToBottom(); }, [messages, scanPhase, step, scrollToBottom]);
+
+  // Load persisted chat history (only restore if onboarding was fully completed)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(KAI_FIRST_HISTORY_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { step: OnboardingStep; messages: ChatMessage[] };
+        if (saved.step === "done" && saved.messages?.length > 0) {
+          const clean = saved.messages.filter((m) => !m.isThinking && !m.isStreaming && !m.isRateLimited);
+          if (clean.length > 0) {
+            setMessages(clean);
+            setStep("done");
+          }
+        }
+      }
+    } catch { /* ignore parse/storage errors */ }
+    historyLoadedRef.current = true;
+  }, []);
+
+  // Persist chat history whenever messages settle (only after onboarding completes)
+  useEffect(() => {
+    if (!historyLoadedRef.current || step !== "done") return;
+    const stable = messages.filter((m) => !m.isThinking && !m.isStreaming);
+    try {
+      if (stable.length === 0) {
+        localStorage.removeItem(KAI_FIRST_HISTORY_KEY);
+      } else {
+        localStorage.setItem(KAI_FIRST_HISTORY_KEY, JSON.stringify({ step, messages: stable }));
+      }
+    } catch { /* storage full – silently skip */ }
+  }, [messages, step]);
 
   // Load auth user + enriched profile in parallel
   useEffect(() => {
@@ -1012,6 +1045,40 @@ export default function KaiFirstPage() {
         },
       ]);
       setStep("scanning");
+
+      // Fire-and-forget: persist intake preferences to enriched.profiles
+      createSupabaseBrowser().auth.getUser().then(({ data }) => {
+        if (!data.user) return;
+        const levelMap: Record<string, string> = {
+          senior_ic: "Senior IC",
+          manager: "Manager/Lead",
+          either: "Either",
+        };
+        const visaMap: Record<string, string> = {
+          "H-1B": "H-1B",
+          "OPT": "OPT",
+          "E-3": "E-3/TN",
+        };
+        const prefLocStr =
+          updatedIntake.locationMode === "remote" ? "Remote" :
+          updatedIntake.locationMode === "anywhere" ? null :
+          updatedIntake.location;
+        createSupabaseBrowser()
+          .schema("enriched")
+          .from("profiles")
+          .upsert(
+            {
+              user_id: data.user.id,
+              visa_type: visaMap[updatedIntake.visa ?? ""] ?? "Other",
+              salary_floor: updatedIntake.salaryMin ?? null,
+              job_level: levelMap[updatedIntake.level ?? ""] ?? null,
+              location: prefLocStr ?? null,
+              onboarding_complete: true,
+            },
+            { onConflict: "user_id" }
+          )
+          .then(() => {});
+      });
 
       // Animate checklist concurrently with API call
       const jobsPromise: Promise<Job[]> = fetch("/api/onboarding/jobs", {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { Bookmark, MapPin, ExternalLink } from "lucide-react";
+import { Bookmark, MapPin, ExternalLink, Share2, X } from "lucide-react";
 import s from "./kai.module.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -20,6 +20,8 @@ type Job = {
   lca_count: number | null;
   lca_count_2025: number | null;
   lca_last_filed: string | null;
+  ats_source: string | null;
+  ats_job_id: string | null;
 };
 
 type ChatMessage = {
@@ -214,7 +216,7 @@ function CompanyAvatar({ name, domain }: { name: string; domain: string | null }
   );
 }
 
-function JobCard({ job }: { job: Job }) {
+function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
   const [saved, setSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
 
@@ -234,14 +236,14 @@ function JobCard({ job }: { job: Job }) {
   const lcaLastFiled = formatLcaDate(job.lca_last_filed);
 
   return (
-    <div className="border border-zinc-200 rounded-xl bg-white px-3.5 pt-3 pb-2.5">
+    <div className="border border-zinc-200 rounded-xl bg-white px-3.5 pt-3 pb-2.5 cursor-pointer hover:bg-zinc-50 active:bg-zinc-100 transition-colors" onClick={onClick}>
       {/* Logo + company | bookmark + apply */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <CompanyAvatar name={job.company} domain={job.company_domain} />
           <span className="text-sm font-semibold text-zinc-600 truncate">{displayCompany}</span>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2" onClick={e => e.stopPropagation()}>
           <div className="relative">
             {showToast && (
               <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none animate-fade-out">
@@ -319,6 +321,207 @@ function JobCard({ job }: { job: Job }) {
   );
 }
 
+function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
+  const [descHtml, setDescHtml] = useState("");
+  const [descText, setDescText] = useState("");
+  const [descLoading, setDescLoading] = useState(true);
+  const displayCompany = normalizeCompanyName(job.company);
+  const posted = timeAgo(job.posted_at);
+  const level = inferLevel(job.title);
+  const department = inferDepartment(job.title);
+  const isVerified = job.visa_tier === "verified";
+  const isFriendly = job.visa_tier === "friendly";
+  const lcaLastFiled = formatLcaDate(job.lca_last_filed);
+  const [saved, setSaved] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [copied, setCopied] = useState(false);
+  function handleSave() {
+    if (!saved) {
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 1500);
+    }
+    setSaved(v => !v);
+  }
+  function handleShare() {
+    const url = job.url ?? window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }
+
+  useEffect(() => {
+    setDescLoading(true);
+    setDescHtml("");
+    setDescText("");
+    (async () => {
+      try {
+        if (job.ats_source === "amazon" && job.ats_job_id) {
+          const res = await fetch(`/api/jobs/description?source=amazon&job_id=${encodeURIComponent(job.ats_job_id)}`);
+          if (res.ok) {
+            const { html } = await res.json();
+            if (html) { setDescHtml(html); setDescLoading(false); return; }
+          }
+        } else if (job.ats_source === "workday" && job.url) {
+          const res = await fetch(`/api/jobs/description?url=${encodeURIComponent(job.url)}`);
+          if (res.ok) {
+            const { html, text } = await res.json();
+            if (html) { setDescHtml(html); setDescLoading(false); return; }
+            if (text) { setDescText(text); setDescLoading(false); return; }
+          }
+        }
+        const res = await fetch(`/api/jobs/description?source=db&id=${job.id}`);
+        if (res.ok) {
+          const { text } = await res.json();
+          setDescText(text ?? "");
+        }
+      } catch { /* graceful */ } finally {
+        setDescLoading(false);
+      }
+    })();
+  }, [job.id, job.ats_source, job.ats_job_id, job.url]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <>
+      <div className={s["job-overlay"]} onClick={onClose} />
+      <div className={s["job-panel"]}>
+        <div className={s["job-drag-handle"]}>
+          <div className="w-10 h-1 rounded-full bg-zinc-200" />
+        </div>
+
+        <div className="flex-shrink-0 px-5 pt-3 pb-4 border-b border-zinc-100">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <CompanyAvatar name={job.company} domain={job.company_domain} />
+              <span className="text-sm font-semibold text-zinc-600 truncate">{displayCompany}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+              {posted && <span className="text-xs text-zinc-400">{posted}</span>}
+              <div className="relative">
+                {copied && (
+                  <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none">
+                    Copied!
+                  </span>
+                )}
+                <button
+                  onClick={handleShare}
+                  className="p-2 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all"
+                  aria-label="Share job"
+                >
+                  <Share2 size={14} />
+                </button>
+              </div>
+              <div className="relative">
+                {showToast && (
+                  <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none">
+                    Saved
+                  </span>
+                )}
+                <button
+                  onClick={handleSave}
+                  className={`p-2 rounded-full border transition-all ${saved ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`}
+                  aria-label={saved ? "Unsave job" : "Save job"}
+                >
+                  <Bookmark size={14} className={saved ? "fill-current" : ""} />
+                </button>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-2 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all"
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-4 mb-3">
+            <h2 className="flex-1 text-xl font-bold text-zinc-900 leading-snug">{job.title}</h2>
+            {job.url && (
+              <a
+                href={job.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-semibold rounded-lg transition-colors no-underline"
+              >
+                Apply <ExternalLink size={12} />
+              </a>
+            )}
+          </div>
+
+          {job.location && (
+            <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-3">
+              <MapPin size={11} className="flex-shrink-0 text-zinc-400" />
+              <span>{job.location}</span>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {level && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{level}</span>}
+            {department && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium capitalize">{department}</span>}
+            {isVerified && (
+              <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
+                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
+                  Verified LCA Filings With Similar Job Title
+                </span>
+              </span>
+            )}
+            {isFriendly && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium border border-green-200">
+                H-1B Friendly Employer
+              </span>
+            )}
+          </div>
+
+          {(job.salary_estimate && job.salary_estimate > 50000 || job.lca_count_2025 || lcaLastFiled) && (
+            <div className="flex flex-wrap gap-1.5">
+              {job.salary_estimate && job.salary_estimate > 50000 && (
+                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                  Salary: {formatSalary(job.salary_estimate)}
+                </span>
+              )}
+              {job.lca_count_2025 && job.lca_count_2025 > 0 && (
+                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                  {job.lca_count_2025} LCA filings in 2025
+                </span>
+              )}
+              {lcaLastFiled && (
+                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                  Last LCA filed in {lcaLastFiled}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-5 py-4">
+          <div className="text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">Job Description</div>
+          {descLoading ? (
+            <div className="space-y-2">
+              {[80, 60, 90, 50, 70, 85, 45].map((w, i) => (
+                <div key={i} className="h-3 bg-zinc-100 rounded animate-pulse" style={{ width: `${w}%` }} />
+              ))}
+            </div>
+          ) : descHtml ? (
+            <div className="text-xs text-zinc-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: descHtml }} />
+          ) : descText ? (
+            <p className="text-xs text-zinc-600 leading-relaxed whitespace-pre-wrap">{descText}</p>
+          ) : (
+            <p className="text-xs text-zinc-400 italic">Description unavailable – view full posting on company site.</p>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function ThinkingBubble() {
   return (
     <div className={s["msg-row"]}>
@@ -374,16 +577,20 @@ const POST_RESULT_CHIPS = [
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+const CHAT_HISTORY_KEY = "kai_chat_history";
+
 export default function KaiPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [showPostChips, setShowPostChips] = useState(false);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const deviceIdRef = useRef<string>("");
+  const historyLoadedRef = useRef(false);
 
   const isEmpty = messages.length === 0;
 
@@ -406,10 +613,32 @@ export default function KaiPage() {
       .catch(() => {});
   }, []);
 
-  // Device ID
+  // Device ID + load persisted chat history
   useEffect(() => {
     deviceIdRef.current = getOrCreateDeviceId();
+    try {
+      const raw = localStorage.getItem(CHAT_HISTORY_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as ChatMessage[];
+        const clean = saved.filter((m) => !m.isThinking && !m.isStreaming && !m.isRateLimited);
+        if (clean.length > 0) setMessages(clean);
+      }
+    } catch { /* ignore parse/storage errors */ }
+    historyLoadedRef.current = true;
   }, []);
+
+  // Persist chat history whenever messages settle
+  useEffect(() => {
+    if (!historyLoadedRef.current) return;
+    const stable = messages.filter((m) => !m.isThinking && !m.isStreaming);
+    try {
+      if (stable.length === 0) {
+        localStorage.removeItem(CHAT_HISTORY_KEY);
+      } else {
+        localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(stable));
+      }
+    } catch { /* storage full – silently skip */ }
+  }, [messages]);
 
   // Auto-resize textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -714,7 +943,7 @@ export default function KaiPage() {
                   <div className={s["msg-row"]} style={{ paddingLeft: 38 }}>
                     <div className={s["jobs-wrap"]}>
                       {msg.jobs.map((job) => (
-                        <JobCard key={job.id} job={job} />
+                        <JobCard key={job.id} job={job} onClick={() => setSelectedJob(job)} />
                       ))}
                     </div>
                   </div>
@@ -764,6 +993,10 @@ export default function KaiPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {selectedJob && (
+        <JobDetailModal job={selectedJob} onClose={() => setSelectedJob(null)} />
       )}
     </div>
   );

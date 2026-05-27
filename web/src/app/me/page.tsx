@@ -18,11 +18,15 @@ export default async function MePage() {
     redirect("/auth/signin");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile }, { data: enrichedPrefs }] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user.id).single(),
+    supabase
+      .schema("enriched")
+      .from("profiles")
+      .select("visa_type, salary_floor, job_level, location, is_supporter")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
 
   const profileData = {
     id: user.id,
@@ -37,7 +41,18 @@ export default async function MePage() {
       user.user_metadata?.avatar_url ??
       user.user_metadata?.picture ??
       null,
-    is_supporter: (profile as { is_supporter?: boolean } | null)?.is_supporter ?? false,
+    is_supporter:
+      (enrichedPrefs as { is_supporter?: boolean } | null)?.is_supporter ??
+      (profile as { is_supporter?: boolean } | null)?.is_supporter ??
+      false,
+    preferences: enrichedPrefs
+      ? {
+          visa_type: (enrichedPrefs as { visa_type?: string | null }).visa_type ?? null,
+          salary_floor: (enrichedPrefs as { salary_floor?: number | null }).salary_floor ?? null,
+          job_level: (enrichedPrefs as { job_level?: string | null }).job_level ?? null,
+          location: (enrichedPrefs as { location?: string | null }).location ?? null,
+        }
+      : null,
   };
 
   return <MeClient profile={profileData} />;

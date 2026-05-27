@@ -513,6 +513,57 @@
 .send-btn:disabled { background: #000; color: #fff; cursor: not-allowed; }
 .send-btn svg { width: 16px; height: 16px; }
 
+/* ── Job detail modal ────────────────────────────────────────────────────── */
+.job-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 40;
+}
+.job-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.18);
+}
+.job-drag-handle {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 4px;
+  flex-shrink: 0;
+}
+@media (min-width: 768px) {
+  .job-overlay {
+    background: rgba(0, 0, 0, 0.3);
+  }
+  .job-panel {
+    bottom: auto;
+    left: 50%;
+    right: auto;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 20px;
+    width: min(760px, 90vw);
+    max-height: 82vh;
+    box-shadow: 0 8px 48px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
+    animation: jobPopIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .job-drag-handle {
+    display: none;
+  }
+}
+@keyframes jobPopIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
 /* ── Mobile ──────────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .greeting { padding: 0 16px 40px; }

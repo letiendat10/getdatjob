@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import s from "./kai.module.css";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
-import { Bookmark, MapPin, ExternalLink, X } from "lucide-react";
+import { Bookmark, MapPin, ExternalLink, X, Share2 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -370,6 +370,24 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const department = inferDepartment(job.title);
   const isVerified = job.visa_tier === "verified";
   const isFriendly = job.visa_tier === "friendly";
+  const lcaLastFiled = formatLcaDate(job.lca_last_filed);
+  const [saved, setSaved] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [copied, setCopied] = useState(false);
+  function handleSave() {
+    if (!saved) {
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 1500);
+    }
+    setSaved(v => !v);
+  }
+  function handleShare() {
+    const url = job.url ?? window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }
 
   useEffect(() => {
     setDescLoading(true);
@@ -428,6 +446,34 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 ml-3">
               {posted && <span className="text-xs text-zinc-400">{posted}</span>}
+              <div className="relative">
+                {copied && (
+                  <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none">
+                    Copied!
+                  </span>
+                )}
+                <button
+                  onClick={handleShare}
+                  className="p-2 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all"
+                  aria-label="Share job"
+                >
+                  <Share2 size={14} />
+                </button>
+              </div>
+              <div className="relative">
+                {showToast && (
+                  <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none">
+                    Saved
+                  </span>
+                )}
+                <button
+                  onClick={handleSave}
+                  className={`p-2 rounded-full border transition-all ${saved ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`}
+                  aria-label={saved ? "Unsave job" : "Save job"}
+                >
+                  <Bookmark size={14} className={saved ? "fill-current" : ""} />
+                </button>
+              </div>
               <button
                 onClick={onClose}
                 className="p-2 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all"
@@ -477,7 +523,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
             )}
           </div>
 
-          {(job.salary_estimate && job.salary_estimate > 50000 || job.lca_count_2025) && (
+          {(job.salary_estimate && job.salary_estimate > 50000 || job.lca_count_2025 || lcaLastFiled) && (
             <div className="flex flex-wrap gap-1.5">
               {job.salary_estimate && job.salary_estimate > 50000 && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
@@ -487,6 +533,11 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
               {job.lca_count_2025 && job.lca_count_2025 > 0 && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
                   {job.lca_count_2025} LCA filings in 2025
+                </span>
+              )}
+              {lcaLastFiled && (
+                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                  Last LCA filed in {lcaLastFiled}
                 </span>
               )}
             </div>
@@ -950,7 +1001,7 @@ export default function KaiFirstPage() {
         updatedIntake.locationMode === "anywhere" ? "anywhere in the US" :
         updatedIntake.location ?? "all locations";
 
-      const filterTokens = [dept, locStr, salaryStr, levelStr, "last 7 days"].filter(Boolean);
+      const filterTokens = [dept, locStr, salaryStr, levelStr, "last 3 days"].filter(Boolean);
 
       setMessages((prev) => [
         ...prev,

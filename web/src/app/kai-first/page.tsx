@@ -759,7 +759,7 @@ export default function KaiFirstPage() {
       await delay(450);
 
       if (intent === "laid_off") {
-        setMessages((prev) => [...prev, { id: `k-f1`, role: "assistant", content: "I'm sorry to hear that. Let's turn on code red — we'll find you something fast." }]);
+        setMessages((prev) => [...prev, { id: `k-f1`, role: "assistant", content: "I'm sorry for this." }]);
         await delay(900);
         setMessages((prev) => [...prev, { id: "k-q1b", role: "assistant", content: "When did it happen? (MM/DD/YY)" }]);
         setStep("q1_layoff_date");
@@ -769,8 +769,8 @@ export default function KaiFirstPage() {
 
       const filler =
         intent === "active"
-          ? "Gotcha. I'm here to fast-track your search — I'll pull only from employers with a real visa sponsorship track record. No ghost jobs, no companies that quietly stopped filing."
-          : "Yeah, I feel you. That's basically life on a working visa. Aren't we all running a plan B in this economy?";
+          ? "Got it. I'm here to fast-track your search — visa sponsoring opportunities only, so you're not wasting time on companies that won't work for you."
+          : "That's the immigrant mindset. Aren't we all running a plan B in this economy?";
       setMessages((prev) => [...prev, { id: `k-f1`, role: "assistant", content: filler }]);
       await delay(900);
       // Q2 is now visa
@@ -980,8 +980,9 @@ export default function KaiFirstPage() {
         return true;
       }).slice(0, 3);
       const count = batch1.length;
+      const hasVerified = batch1.some((j) => j.visa_tier === "verified");
       const revealText = count > 0
-        ? `Okay, found ${count} job${count !== 1 ? "s" : ""} worth your time.`
+        ? `Okay, found ${count} job${count !== 1 ? "s" : ""} worth your time.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before — so the sponsorship signal is extremely high." : ""}`
         : "Hmm, nothing matching exactly right now — this changes daily. Come back tomorrow for fresh picks.";
       setMessages((prev) => [
         ...prev,
@@ -1069,7 +1070,7 @@ export default function KaiFirstPage() {
       }
     } catch { /* graceful */ }
     await delay(500);
-    setMessages((prev) => [...prev, { id: `k-f1b`, role: "assistant", content: "Got it. We'll prioritize companies that can move quickly — and have a strong LCA filing history." }]);
+    setMessages((prev) => [...prev, { id: `k-f1b`, role: "assistant", content: "Okay — 30, 60, 90 days matters here. I'm pulling for roles that can move fast." }]);
     await delay(900);
     setMessages((prev) => [...prev, { id: "k-q2", role: "assistant", content: "To match you with the right sponsors — what visa are you working with?" }]);
     setQuickReplies([

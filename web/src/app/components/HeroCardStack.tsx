@@ -132,13 +132,6 @@ export default function HeroCardStack() {
 
   return (
     <div className={s.wrap} ref={wrapRef}>
-      {/* Mobile: static screenshot */}
-      <div className={s.mobileHero}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/hero-mobile.png" alt="getdatjob job card preview" className={s.mobileHeroImg} />
-      </div>
-
-      {/* Desktop: animated card stack */}
       <div className={s.hero}>
         <div className={s.heroScale} ref={scaleRef}>
           {/* Back-left: Anthropic */}

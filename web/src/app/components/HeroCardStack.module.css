@@ -168,26 +168,3 @@
   pointer-events: none;
 }
 
-/* ── Mobile image (hidden on desktop) ── */
-.mobileHero {
-  display: none;
-  background: #F4F0E8;
-}
-.mobileHeroImg {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-/* ── Mobile: swap card stack for screenshot ── */
-@container (max-width: 639px) {
-  .wrap {
-    height: auto;
-  }
-  .hero {
-    display: none;
-  }
-  .mobileHero {
-    display: block;
-  }
-}

@@ -5,6 +5,7 @@ import {
   handleSearchJobs,
   handleGetJob,
 } from "@/lib/kai-tools";
+import { createSupabaseServer } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -43,6 +44,59 @@ You have access to real job listings with verified H-1B/E-3/TN sponsor history f
 
 type Message = { role: "user" | "assistant"; content: string };
 
+// Pulls a short user-context block from linkedin.profiles + user_work_history
+// so Kai knows who it's talking to. Returns null if the user isn't signed in
+// or hasn't been imported yet — caller falls back to the userName-only path.
+async function buildUserContext(): Promise<string | null> {
+  try {
+    const supabase = await createSupabaseServer();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const [{ data: profile }, { data: history }] = await Promise.all([
+      supabase
+        .schema("linkedin")
+        .from("profiles")
+        .select("full_name, headline, location")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("user_work_history")
+        .select("title, company, start_date, end_date, is_current")
+        .eq("user_id", user.id)
+        .order("start_date", { ascending: false, nullsFirst: false })
+        .limit(5),
+    ]);
+
+    if (!profile && !history?.length) return null;
+
+    const lines: string[] = ["About the user:"];
+    if (profile?.full_name) lines.push(`- Name: ${profile.full_name}`);
+    if (profile?.headline) lines.push(`- Headline: ${profile.headline}`);
+    if (profile?.location) lines.push(`- Location: ${profile.location}`);
+
+    if (history?.length) {
+      lines.push("- Recent roles:");
+      for (const h of history) {
+        const start = h.start_date?.slice(0, 4) ?? "?";
+        const end = h.is_current ? "present" : h.end_date?.slice(0, 4) ?? "?";
+        lines.push(`    • ${h.title} at ${h.company} (${start}–${end})`);
+      }
+    }
+
+    lines.push(
+      "",
+      "Use this to personalize — match location, role type, and seniority when searching. Never read it back verbatim."
+    );
+    return lines.join("\n");
+  } catch (err) {
+    console.error("[kai] buildUserContext error:", err);
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -52,6 +106,10 @@ export async function POST(req: NextRequest) {
     if (!messages.length) {
       return Response.json({ error: "No messages" }, { status: 400 });
     }
+
+    // Per-user context block (LinkedIn data). Runs once per request, not
+    // per loop iteration, so it's cheap.
+    const userContext = await buildUserContext();
 
     // Stream response
     const encoder = new TextEncoder();
@@ -71,19 +129,29 @@ export async function POST(req: NextRequest) {
           }));
 
           while (true) {
+            // System prompt has two blocks: static (cached) + per-user.
+            // Splitting keeps the static block's cache hits intact across users.
+            const systemBlocks: Anthropic.Messages.TextBlockParam[] = [
+              {
+                type: "text",
+                text: SYSTEM_PROMPT,
+                cache_control: { type: "ephemeral" },
+              },
+            ];
+            const perUserParts: string[] = [];
+            if (userName) perUserParts.push(`The user's name is ${userName}.`);
+            if (userContext) perUserParts.push(userContext);
+            if (perUserParts.length) {
+              systemBlocks.push({
+                type: "text",
+                text: perUserParts.join("\n\n"),
+              });
+            }
+
             const response = await anthropic.messages.create({
               model: "claude-sonnet-4-6",
               max_tokens: 1024,
-              system: [
-                {
-                  type: "text",
-                  text: userName
-                    ? `${SYSTEM_PROMPT}\n\nThe user's name is ${userName}.`
-                    : SYSTEM_PROMPT,
-                  // Prompt caching — system prompt is static, cache it
-                  cache_control: { type: "ephemeral" },
-                },
-              ],
+              system: systemBlocks,
               tools: KAI_TOOLS,
               messages: currentMessages,
               stream: true,

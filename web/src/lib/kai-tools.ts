@@ -93,112 +93,93 @@ const DEPT_KEYWORDS: Record<string, string[]> = {
   security:    ["security", "infosec", "cybersecurity", "soc "],
 };
 
+// Industry → company name keyword map.
+// Normalized key = input.industry lowercased, non-alphanumeric stripped
+// (e.g. "Healthcare" → "healthcare", "AI/ML" → "aiml", "E-commerce" → "ecommerce")
+const INDUSTRY_COMPANY_KEYWORDS: Record<string, string[]> = {
+  healthcare:  ["health", "hospital", "medical", "clinic", "care", "pharma",
+                "surgical", "rehab", "dental", "optum", "cigna", "anthem",
+                "humana", "aetna", "kaiser", "cvs", "walgreen"],
+  fintech:     ["financial", "finance", "bank", "capital", "payment", "credit",
+                "lending", "invest", "wealth", "trading", "insurance", "mortgage"],
+  aiml:        ["intelligence", "neural", "cognitive", "deepmind", "openai"],
+  saas:        ["software", "cloud", "solutions"],
+  ecommerce:   ["commerce", "retail", "marketplace", "shopify"],
+  govtech:     ["government", "federal", "defense", "aerospace", "lockheed",
+                "raytheon", "booz", "leidos", "saic", "caci"],
+  edtech:      ["education", "learning", "school", "university", "academy", "tutoring"],
+};
+
 export async function handleSearchJobs(input: SearchJobsInput) {
   const limit = Math.min(input.limit ?? 5, 10);
   const POSTED_DAYS: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30 };
 
-  let q = supabaseServer.from("jobs_kai_view").select("*");
-
-  // Date filter — default to 3d if not specified
-  const postedWithin = input.posted_within ?? "3d";
+  const postedWithin = input.posted_within ?? "7d";
   const days = POSTED_DAYS[postedWithin];
   const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
-  q = q.gte("posted_at", cutoff);
 
-  // Visa category
+  // Visa filters — visa_class is not populated in jobs_kai_view so all visa
+  // types fall back to the verified/friendly tier (H-1B sponsors also
+  // sponsor E-3/TN/OPT in practice).
+  let visaTiers: string[] | null = null;
+  const visaClass: string | null = null;
   if (input.visa_category) {
-    const v = input.visa_category.toUpperCase();
-    if (v === "H-1B" || v === "H1B") {
-      q = q.in("visa_tier", ["verified", "friendly"]);
-    } else {
-      q = q.ilike("visa_class", `%${input.visa_category}%`);
-    }
+    visaTiers = ["verified", "friendly"];
   }
 
-  // Salary filter (against estimate)
-  if (input.salary_min) {
-    q = q.gte("salary_estimate", input.salary_min);
-  }
+  // Department → title keyword list
+  const titleKeywords: string[] | null = input.department
+    ? (DEPT_KEYWORDS[input.department.toLowerCase()] ?? [input.department.toLowerCase()])
+    : null;
 
-  // Location
-  if (input.location) {
-    const loc = input.location.toLowerCase().trim();
-    if (loc === "remote") {
-      q = q.ilike("location", "%remote%");
-    } else {
-      q = q.ilike("location", `%${loc}%`);
-    }
-  }
+  // Industry → company keyword list
+  const companyKeywords: string[] | null = input.industry
+    ? (INDUSTRY_COMPANY_KEYWORDS[input.industry.toLowerCase().replace(/[^a-z0-9]/g, "")] ?? [input.industry.toLowerCase()])
+    : null;
 
-  // Free-text keyword — title or company
-  if (input.query) {
-    const safe = input.query.trim().replace(/[%_]/g, "\\$&");
-    q = q.or(`title.ilike.%${safe}%,company.ilike.%${safe}%`);
-  }
+  // Location — "remote" stays as-is; everything else is passed through
+  const location = input.location ? input.location.toLowerCase().trim() : null;
 
-  // Department — keyword match on title
-  if (input.department) {
-    const deptKey = input.department.toLowerCase();
-    const keywords = DEPT_KEYWORDS[deptKey] ?? [deptKey];
-    const orClause = keywords.map((k) => `title.ilike.%${k}%`).join(",");
-    q = q.or(orClause);
-  }
+  // search_jobs_kai RPC deduplicates by company at the SQL level, so a single
+  // bulk-posting employer (e.g. Lowe's 19K jobs, Amazon 10K jobs) can't crowd
+  // out all other companies when we fetch the top-N.
+  const { data, error } = await supabaseServer.rpc("search_jobs_kai", {
+    p_cutoff:           cutoff,
+    p_location:         location,
+    p_query:            input.query?.trim() ?? null,
+    p_title_keywords:   titleKeywords,
+    p_company_keywords: companyKeywords,
+    p_visa_tiers:       visaTiers,
+    p_visa_class:       visaClass,
+    p_salary_min:       input.salary_min ?? null,
+    p_result_limit:     limit,
+  });
 
-  // Industry — keyword match on company (best effort without industry column)
-  // For now skip — industry data not in jobs_kai_view
-
-  // Fetch a large window so one prolific employer can't crowd out all others.
-  // (e.g. a single company posting 200 jobs would exhaust limit*4=24 rows.)
-  q = q
-    .order("posted_at", { ascending: false, nullsFirst: false })
-    .limit(1000);
-
-  const { data, error } = await q;
   if (error) return { error: error.message, jobs: [] };
 
-  const tierRank = (tier: string) => (tier === "verified" ? 0 : 1);
-  const allSorted = (data ?? [])
-    .sort((a: any, b: any) => {
-      const tierDiff = tierRank(a.visa_tier) - tierRank(b.visa_tier);
-      if (tierDiff !== 0) return tierDiff;
-      return new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime();
-    });
-
-  // One job per company — keeps results visually diverse
-  const seenCompanies = new Set<string>();
-  const sorted: typeof allSorted = [];
-  for (const job of allSorted) {
-    const key = (job.company as string).toLowerCase().trim();
-    if (!seenCompanies.has(key)) {
-      seenCompanies.add(key);
-      sorted.push(job);
-      if (sorted.length >= limit) break;
-    }
-  }
-
-  const hasVerifiedJobs = sorted.some((j: any) => j.visa_tier === "verified");
+  const jobs = (data ?? []).map((j: any) => ({
+    id:             j.id,
+    title:          j.title,
+    company:        j.company,
+    company_domain: j.company_domain,
+    location:       j.location,
+    url:            j.url,
+    posted_at:      j.posted_at,
+    visa_tier:      j.visa_tier,
+    visa_class:     j.visa_class,
+    salary_range:   j.salary_range ?? null,
+    salary_estimate: j.salary_estimate ? Number(j.salary_estimate) : null,
+    lca_count:      j.lca_count,
+    lca_count_2025: j.lca_count_2025 ? Number(j.lca_count_2025) : null,
+    lca_last_filed: j.lca_last_filed ?? null,
+    ats_source:     j.ats_source ?? null,
+    ats_job_id:     j.ats_job_id ?? null,
+  }));
 
   return {
-    count: sorted.length,
-    has_verified_jobs: hasVerifiedJobs,
-    jobs: sorted.map((j: any) => ({
-      id: j.id,
-      title: j.title,
-      company: j.company,
-      company_domain: j.company_domain,
-      location: j.location,
-      url: j.url,
-      posted_at: j.posted_at,
-      visa_tier: j.visa_tier,
-      visa_class: j.visa_class,
-      salary_range: j.salary_range ?? null,
-      salary_estimate: j.salary_estimate ? Number(j.salary_estimate) : null,
-      lca_count: j.lca_count,
-      lca_count_2025: j.lca_count_2025 ? Number(j.lca_count_2025) : null,
-      lca_last_filed: j.lca_last_filed ?? null,
-      ats_source: j.ats_source ?? null,
-      ats_job_id: j.ats_job_id ?? null,
-    })),
+    count:            jobs.length,
+    has_verified_jobs: jobs.some((j: any) => j.visa_tier === "verified"),
+    jobs,
   };
 }
 

@@ -40,10 +40,11 @@ const MANAGER_LEVELS = new Set([
 ]);
 
 type EnrichResult = {
-  p_location:      string | null;
-  p_current_title: string | null;
-  p_job_function:  string;
-  p_job_level:     "Senior IC" | "Manager/Lead";
+  p_location:       string | null;
+  p_current_title:  string | null;
+  p_job_function:   string;
+  p_job_level:      "Senior IC" | "Manager/Lead";
+  resolved_linkedin_url?: string | null;
 };
 
 // ── PDL ───────────────────────────────────────────────────────────────────────
@@ -192,11 +193,12 @@ async function tryApollo(
 
     const { person } = await res.json() as {
       person?: {
-        title?:       string;
-        city?:        string;
-        state?:       string;
-        seniority?:   string;
-        departments?: string[];
+        title?:        string;
+        city?:         string;
+        state?:        string;
+        seniority?:    string;
+        departments?:  string[];
+        linkedin_url?: string;
       };
     };
 
@@ -206,16 +208,17 @@ async function tryApollo(
       person.city && person.state ? `${person.city}, ${person.state}` :
       person.city ?? null;
 
-    const dept     = (person.departments?.[0] ?? "").toLowerCase();
+    const dept      = (person.departments?.[0] ?? "").toLowerCase();
     const seniority = (person.seniority ?? "").toLowerCase();
 
-    console.log(`[apollo] matched`, { title: person.title, location });
+    console.log(`[apollo] matched`, { title: person.title, location, linkedin_url: person.linkedin_url });
 
     return {
-      p_location:      location,
-      p_current_title: person.title ?? null,
-      p_job_function:  FUNCTION_MAP[dept] ?? "Other",
-      p_job_level:     MANAGER_LEVELS.has(seniority) ? "Manager/Lead" : "Senior IC",
+      p_location:            location,
+      p_current_title:       person.title ?? null,
+      p_job_function:        FUNCTION_MAP[dept] ?? "Other",
+      p_job_level:           MANAGER_LEVELS.has(seniority) ? "Manager/Lead" : "Senior IC",
+      resolved_linkedin_url: person.linkedin_url ?? null,
     };
   } catch (err) {
     console.error("[apollo] fetch error:", err);
@@ -235,7 +238,7 @@ export async function enrichUser(
 ): Promise<void> {
   const supabase = createSupabaseAdmin();
 
-  // If no LinkedIn URL, try Google CSE to discover one from name + country
+  // If no LinkedIn URL, try SerpAPI to discover one from name + country
   let resolvedUrl = linkedinUrl;
   if (!resolvedUrl) {
     const fullName = [firstName, lastName].filter(Boolean).join(" ");
@@ -252,14 +255,37 @@ export async function enrichUser(
     }
   }
 
-  const result =
-    (await tryPDL(resolvedUrl, email, firstName, lastName)) ??
-    (await tryApollo(resolvedUrl, email, firstName, lastName));
+  const pdlResult   = await tryPDL(resolvedUrl, email, firstName, lastName);
+  const apolloResult = pdlResult ? null : await tryApollo(resolvedUrl, email, firstName, lastName);
+  const result      = pdlResult ?? apolloResult;
+
+  // Apollo may have resolved a LinkedIn URL we didn't have yet — save + use it
+  if (!resolvedUrl && apolloResult?.resolved_linkedin_url) {
+    resolvedUrl = apolloResult.resolved_linkedin_url;
+    await supabase
+      .schema("linkedin")
+      .from("profiles")
+      .update({ linkedin_url: resolvedUrl })
+      .eq("id", userId);
+    console.log(`[enrich] apollo resolved linkedin url: ${resolvedUrl}`);
+  }
+
+  // Fire ScrapingDog in the background once we have any LinkedIn URL.
+  // This populates headline + work history in linkedin.profiles even when
+  // PDL/Apollo only returned title/location — no user action needed.
+  if (resolvedUrl) {
+    import("./enrich-scrapingdog")
+      .then(({ importLinkedInFromUrl }) => importLinkedInFromUrl(userId, resolvedUrl!))
+      .then((r) => console.log(`[enrich] scrapingdog: ${r.status}`))
+      .catch((err) => console.error("[enrich] scrapingdog error:", err));
+  }
 
   if (result) {
+    // Strip our internal field before passing to the RPC
+    const { resolved_linkedin_url: _, ...rpcPayload } = result;
     const { error } = await supabase.rpc("enrich_set_result", {
       p_user_id: userId,
-      ...result,
+      ...rpcPayload,
     });
     if (error) console.error("[enrich] enrich_set_result RPC error:", error);
     return;

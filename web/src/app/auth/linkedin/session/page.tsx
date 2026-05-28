@@ -4,14 +4,17 @@
 // generateLink() server-side has no PKCE challenge, so GoTrue uses implicit
 // flow and appends #access_token=...&refresh_token=... to the redirect URL.
 // Fragments never reach the server, so we handle them here client-side:
-// parse the hash, call setSession(), then send the user to /kai-first.
+// parse the hash, call setSession(), then send the user to the next destination
+// (default /kai-first; /onboarding when coming via /grace).
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 
-export default function LinkedInSessionPage() {
+function SessionHandler() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") ?? "/kai-first";
 
   useEffect(() => {
     const supabase = createSupabaseBrowser();
@@ -29,22 +32,20 @@ export default function LinkedInSessionPage() {
             console.error("[linkedin-session] setSession error:", error.message);
             router.replace("/auth/signin?error=session_failed");
           } else {
-            // Clear the tokens from the URL bar before navigating away.
             window.history.replaceState(null, "", window.location.pathname);
-            router.replace("/kai-first");
+            router.replace(next);
           }
         });
     } else {
-      // No hash tokens — maybe already signed in, maybe a stale link.
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-          router.replace("/kai-first");
+          router.replace(next);
         } else {
           router.replace("/auth/signin?error=session_missing");
         }
       });
     }
-  }, [router]);
+  }, [router, next]);
 
   return (
     <div
@@ -59,5 +60,28 @@ export default function LinkedInSessionPage() {
     >
       Signing you in…
     </div>
+  );
+}
+
+export default function LinkedInSessionPage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            height: "100vh",
+            fontFamily: "sans-serif",
+            color: "var(--ink-3, #888)",
+          }}
+        >
+          Signing you in…
+        </div>
+      }
+    >
+      <SessionHandler />
+    </Suspense>
   );
 }

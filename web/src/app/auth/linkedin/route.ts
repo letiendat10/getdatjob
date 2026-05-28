@@ -8,7 +8,10 @@ import { NextResponse } from "next/server";
 //
 // To activate: update SignInButton to use window.location.href = "/auth/linkedin"
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const next = searchParams.get("next") ?? "/kai-first";
+
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
@@ -36,13 +39,15 @@ export async function GET() {
     `https://www.linkedin.com/oauth/v2/authorization?${params}`
   );
 
-  response.cookies.set("li_oauth_state", state, {
+  const cookieOpts = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "lax" as const,
     maxAge: 600,
     path: "/",
-  });
+  };
+  response.cookies.set("li_oauth_state", state, cookieOpts);
+  response.cookies.set("li_oauth_next", next, cookieOpts);
 
   return response;
 }

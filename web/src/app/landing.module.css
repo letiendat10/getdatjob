@@ -63,8 +63,8 @@
 .laurel-svg { color: var(--gold); width: 16px; height: 32px; flex-shrink: 0; display: block; }
 .r { transform: scaleX(-1); }
 .laurel-content { text-align: center; line-height: 1.2; min-width: 0; }
-.laurel-b { display: block; font-family: var(--font-instrument-serif), Georgia, serif; font-size: 16px; font-weight: 400; color: var(--ink); letter-spacing: -.01em; line-height: 1.05; }
-.laurel-lbl { color: var(--ink-3); font-size: 11px; display: block; line-height: 1.2; margin-top: 2px; }
+.laurel-b { display: block; font-family: var(--font-instrument-serif), Georgia, serif; font-size: 18px; font-weight: 400; color: var(--ink); letter-spacing: -.01em; line-height: 1.05; }
+.laurel-lbl { color: var(--ink-3); font-size: 14px; display: block; line-height: 1.2; margin-top: 2px; }
 .laurel-stars { color: var(--gold); letter-spacing: 1.5px; font-size: 9.5px; display: block; line-height: 1; margin-top: 3px; }
 
 .hero-title {
@@ -92,10 +92,7 @@
   margin: 0 auto;
   max-width: 1040px;
   width: 100%;
-  aspect-ratio: 920 / 406;
-  max-height: min(460px, calc(100svh - 460px));
   overflow: hidden;
-  background: transparent;
   position: relative;
 }
 /* ── Visa swap animation (variant D) ─────────────────────────────────────── */
@@ -392,8 +389,8 @@
   .hero-laurel { order: 5; gap: 10px 20px; padding: 0; margin: 0; }
   .laurel-svg { width: 13px; height: 26px; }
   .laurel-item { gap: 5px; }
-  .laurel-b { font-size: 14px; }
-  .laurel-lbl { font-size: 10.5px; }
+  .laurel-b { font-size: 16px; }
+  .laurel-lbl { font-size: 12px; }
   .hero-media { margin-left: 0; margin-right: 0; width: 100%; }
   .trusted { padding: 40px 0 16px; }
   .marquee { mask-image: none; -webkit-mask-image: none; }

@@ -8,7 +8,7 @@ const supabase = createClient(
 export async function loadMeta() {
   const [{ data: companyRows }, { data: statsRow }] = await Promise.all([
     supabase.rpc("get_active_companies"),
-    supabase.from("job_stats").select("total_count,week_count").single(),
+    supabase.from("job_stats").select("total_count,week_count,three_day_count").single(),
   ]);
 
   const companies = (companyRows ?? [])
@@ -17,7 +17,7 @@ export async function loadMeta() {
 
   return {
     companies,
-    weekCount:  statsRow?.week_count  ?? 0,
-    totalCount: statsRow?.total_count ?? 0,
+    threeDayCount: statsRow?.three_day_count ?? 0,
+    totalCount:    statsRow?.total_count     ?? 0,
   };
 }

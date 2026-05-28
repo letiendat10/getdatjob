@@ -588,6 +588,9 @@ if __name__ == "__main__":
         else:
             print(f"  SKIP duplicate slug {r['ats_type']}:{r['slug']} (employer_id={r['employer_id']})", flush=True)
     ats_rows = unique_rows
+    # Pull Amazon last: its job volume is large enough to hit Supabase statement
+    # timeouts, so a mid-run crash there must not block every later employer.
+    ats_rows.sort(key=lambda r: r["ats_type"] == "amazon")
     print(f"Pulling jobs for {len(ats_rows)} employer-ATS mappings …", flush=True)
 
     total_jobs = 0
@@ -629,9 +632,11 @@ if __name__ == "__main__":
         # Dedup within the batch by ats_job_id (e.g. Amazon returns same job across entities)
         job_rows = list({r["ats_job_id"]: r for r in job_rows}.values())
 
-        # Upsert in chunks of 500 to stay within Supabase payload limits
-        for i in range(0, len(job_rows), 500):
-            sb.table("jobs").upsert(job_rows[i:i+500], on_conflict="ats_source,ats_job_id").execute()
+        # Upsert in chunks of 100. Small batches keep each statement under Supabase's
+        # statement timeout — 500-row batches of Amazon rows (large description_text +
+        # on-conflict index maintenance) were timing out.
+        for i in range(0, len(job_rows), 100):
+            sb.table("jobs").upsert(job_rows[i:i+100], on_conflict="ats_source,ats_job_id").execute()
 
         # Mark jobs removed from ATS as inactive
         fresh_ids = {j["ats_job_id"] for j in raw_jobs}
@@ -651,17 +656,24 @@ if __name__ == "__main__":
             sb.table("jobs").update({"is_active": False}).in_("id", stale_ids).execute()
             print(f"  Marked {len(stale_ids)} jobs inactive for {slug} ({ats})", flush=True)
 
-        # Fetch IDs back for signal computation
+        # Fetch IDs back for signal computation. Pull only id+ats_job_id (small);
+        # title/description_text are already in job_rows, so join locally instead of
+        # re-fetching the heavy description_text column for every job (Amazon's volume
+        # made that SELECT exceed Supabase's statement timeout).
         ids_result = (
             sb.table("jobs")
-            .select("id,ats_job_id,title,description_text")
+            .select("id,ats_job_id")
             .eq("employer_id", emp_id)
             .eq("ats_source", ats)
             .execute()
         )
+        rows_by_ats_id = {r["ats_job_id"]: r for r in job_rows}
         for rec in ids_result.data:
+            row = rows_by_ats_id.get(rec["ats_job_id"])
+            if row is None:
+                continue
             tier, flag, tc, lca_count = score_job(
-                rec["title"], rec["description_text"] or "", lca_titles, lca_counts
+                row["title"], row["description_text"] or "", lca_titles, lca_counts
             )
             signal_rows.append({
                 "job_id": rec["id"],
@@ -681,19 +693,19 @@ if __name__ == "__main__":
     print(f"\nDone. {total_jobs} jobs synced.", flush=True)
 
     # Update pre-aggregated counts so /api/jobs/meta reads instantly
-    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    three_days_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
     total_res = sb.table("jobs").select("id", count="exact").eq("is_active", True).execute()
-    week_res = (
+    three_day_res = (
         sb.table("jobs")
         .select("id", count="exact")
-        .eq("is_active", True)
-        .or_(f"posted_at.gte.{week_ago},posted_at.is.null")
+        .gte("created_at", three_days_ago)
         .execute()
     )
     sb.table("job_stats").upsert({
         "id": 1,
         "total_count": total_res.count or 0,
-        "week_count": week_res.count or 0,
+        "week_count": 0,
+        "three_day_count": three_day_res.count or 0,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).execute()
-    print(f"job_stats updated — total: {total_res.count}, week: {week_res.count}", flush=True)
+    print(f"job_stats updated — total: {total_res.count}, 3-day: {three_day_res.count}", flush=True)

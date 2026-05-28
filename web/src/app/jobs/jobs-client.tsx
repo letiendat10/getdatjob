@@ -189,8 +189,12 @@ function decodeHtmlEntities(s: string): string {
 }
 function extractSalary(html: string): string | null {
   const text = decodeHtmlEntities(html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  const range = text.match(/\$[\d,]+(?:\.\d+)?K?\s*[–—\-]+\s*\$[\d,]+(?:\.\d+)?K?/i);
-  if (range) return range[0].replace(/\s+/g, " ").trim();
+  // $NNN,NNN – $NNN,NNN
+  const dollarRange = text.match(/\$[\d,]+(?:\.\d+)?K?\s*[–—\-]+\s*\$[\d,]+(?:\.\d+)?K?/i);
+  if (dollarRange) return dollarRange[0].replace(/\s+/g, " ").trim();
+  // NNN,NNN USD – NNN,NNN USD (Workday/Nvidia style)
+  const usdRange = text.match(/([\d,]{6,}(?:\.\d+)?)\s*USD\s*[–—\-]+\s*([\d,]{6,}(?:\.\d+)?)\s*USD/i);
+  if (usdRange) return `$${usdRange[1]} – $${usdRange[2]}`;
   const single = text.match(/\$\d{2,3},\d{3}/);
   return single ? single[0] : null;
 }
@@ -733,7 +737,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   // P2: lazy-loaded — see loadMetaOnce() below. Fires on first filter-bar
   // interaction OR via requestIdleCallback after first paint, whichever wins.
   const [allCompanies, setAllCompanies] = useState<string[]>([]);
-  const [weekCount, setWeekCount] = useState(0);
+  const [threeDayCount, setThreeDayCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [metaLoaded, setMetaLoaded] = useState(false);
   const metaInflightRef = useRef(false);
@@ -764,7 +768,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
       .then((r) => r.json())
       .then((data) => {
         setAllCompanies(data.companies ?? []);
-        setWeekCount(data.weekCount ?? 0);
+        setThreeDayCount(data.threeDayCount ?? 0);
         setTotalCount(data.totalCount ?? 0);
         setMetaLoaded(true);
       })
@@ -1094,7 +1098,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
               line of height so there's no layout shift when the numbers arrive. */}
           {metaLoaded ? (
             <>
-              <span className="font-semibold text-zinc-700">{weekCount.toLocaleString()} new jobs this week</span>
+              <span className="font-semibold text-zinc-700">{threeDayCount.toLocaleString()} new jobs last 3 days</span>
               {" · "}
               <span className="font-semibold text-zinc-700">{totalCount.toLocaleString()} total jobs</span>
               {" · "}

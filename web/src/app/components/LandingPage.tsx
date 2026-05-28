@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import TestimonialsCarousel from "./TestimonialsCarousel";
-import HeroMedia from "./HeroMedia";
+import HeroCardStack from "./HeroCardStack";
 import s from "../landing.module.css";
 import { getStats, formatStat } from "@/lib/stats";
 
@@ -161,9 +161,10 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
             </Link>
           </div>
 
-          <div className={s["hero-spacer"]} />
-          <HeroMedia />
-          <div className={s["hero-spacer"]} />
+          {/* Hero media */}
+          <div className={s["hero-media"]}>
+            <HeroCardStack />
+          </div>
 
         </div>
       </section>

@@ -1,0 +1,193 @@
+/* ── Container context ── */
+.wrap {
+  container-type: inline-size;
+  position: absolute;
+  inset: 0;
+}
+
+/* ── Hero frame ── */
+.hero {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #F4F0E8;
+  overflow: hidden;
+  min-height: 220px;
+}
+
+/* ── Scale container — fills .hero, scaled by ResizeObserver ── */
+.heroScale {
+  position: absolute;
+  inset: 0;
+  transform-origin: center center;
+}
+
+/* ── Card shell — all cards absolutely centered ── */
+.card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: #fff;
+  border-radius: 16px;
+  padding: 14px 14px 12px;
+  border: 1px solid #E4DDCB;
+  width: 340px;
+  opacity: 0; /* hidden until animation plays in */
+}
+
+/* ── Card positions ── */
+.backLeft {
+  transform: translateX(calc(-50% - 22px)) translateY(-50%) rotate(-4deg) scale(0.88);
+  z-index: 1;
+  box-shadow: 6px 8px 20px rgba(23,22,20,.09);
+}
+.backRight {
+  transform: translateX(calc(-50% + 22px)) translateY(-50%) rotate(4deg) scale(0.88);
+  z-index: 2;
+  box-shadow: 6px 8px 20px rgba(23,22,20,.09);
+}
+.front {
+  transform: translateX(-50%) translateY(-50%) scale(0.9);
+  z-index: 3;
+  box-shadow: 0 10px 36px rgba(23,22,20,.16);
+}
+
+/* ── Card internals ── */
+.cardHdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+.cardHdrL {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.coLogo {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.coLogo img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  display: block;
+}
+.coName {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: #0E0E0E;
+  letter-spacing: -0.01em;
+}
+.applyBtn {
+  flex-shrink: 0;
+  background: #0E0E0E;
+  color: #F4F0E8;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-family: var(--font-geist-sans), sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+.jobTitle {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 14.5px;
+  line-height: 1.3;
+  color: #0E0E0E;
+  letter-spacing: -0.015em;
+  margin-bottom: 6px;
+}
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 11px;
+  color: #6B6862;
+  margin-bottom: 8px;
+}
+.chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.chips:last-child {
+  margin-bottom: 0;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  background: #f4f4f4;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: #3B3A36;
+  white-space: nowrap;
+}
+
+/* Rainbow pill — gradient stroke */
+.rpill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 10.5px;
+  color: #0E0E0E;
+  background: transparent;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.rpill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  padding: 1.5px;
+  background: linear-gradient(90deg, #E64A2E 0%, #E89B2A 20%, #C9A030 38%, #4FA15F 55%, #3A7DD9 72%, #7A4FC4 88%, #C44A8A 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Mobile image (hidden on desktop) ── */
+.mobileHero {
+  display: none;
+  background: #F4F0E8;
+}
+.mobileHeroImg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ── Mobile: swap card stack for screenshot ── */
+@container (max-width: 639px) {
+  .wrap {
+    height: auto;
+  }
+  .hero {
+    display: none;
+  }
+  .mobileHero {
+    display: block;
+  }
+}

@@ -97,6 +97,8 @@
   overflow: hidden;
   background: #F4F0E8;
   position: relative;
+  cursor: pointer;
+  display: block;
 }
 /* ── Visa swap animation (variant D) ─────────────────────────────────────── */
 .visa-swap { display: inline-block; transition: opacity 0.3s ease; }

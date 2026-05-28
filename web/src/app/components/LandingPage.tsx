@@ -161,10 +161,10 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
             </Link>
           </div>
 
-          {/* Hero media */}
-          <div className={s["hero-media"]}>
+          {/* Hero media — click goes to sign-in */}
+          <Link href={primaryCtaHref} className={s["hero-media"]}>
             <HeroCardStack />
-          </div>
+          </Link>
 
         </div>
       </section>

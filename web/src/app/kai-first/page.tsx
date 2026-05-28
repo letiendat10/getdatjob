@@ -140,6 +140,15 @@ function timeAgo(dateStr: string | null): string | null {
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+function postedWithin(jobs: { posted_at: string | null }[]): string | null {
+  const dates = jobs.map((j) => j.posted_at ? new Date(j.posted_at).getTime() : null).filter(Boolean) as number[];
+  if (dates.length === 0) return null;
+  const oldestHours = Math.floor((Date.now() - Math.min(...dates)) / 3600000);
+  if (oldestHours < 24) return "the last 24 hours";
+  if (oldestHours < 48) return "the last 2 days";
+  return "the last 3 days";
+}
+
 // Infer a human-readable department label from a LinkedIn job title.
 // Returns lowercase, suitable for inline use: "product marketing", "engineering", etc.
 // Returns null when the title is ambiguous or missing.
@@ -1137,8 +1146,10 @@ export default function KaiFirstPage() {
       }).slice(0, 3);
       const count = batch1.length;
       const hasVerified = batch1.some((j) => j.visa_tier === "verified");
+      const freshLabel = postedWithin(batch1);
+      const jobsDesc = freshLabel ? `posted within ${freshLabel}` : "worth your time";
       const revealText = count > 0
-        ? `Okay, found ${count} job${count !== 1 ? "s" : ""} worth your time.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before – so the sponsorship signal is extremely high." : ""}`
+        ? `Okay, found ${count} job${count !== 1 ? "s" : ""} ${jobsDesc}.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before – so the sponsorship signal is extremely high." : ""}`
         : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks.";
       setMessages((prev) => [
         ...prev,

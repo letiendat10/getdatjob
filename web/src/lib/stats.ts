@@ -3,21 +3,25 @@ import { supabase } from "./supabase";
 
 export const getStats = unstable_cache(
   async () => {
-    const [{ count: totalJobs }, { count: employerCount }] = await Promise.all([
+    const [jobsRes, employersRes] = await Promise.all([
       supabase
-        .from("jobs_with_details")
-        .select("id", { count: "exact", head: true }),
+        .from("jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("is_active", true),
       supabase
         .from("employers")
         .select("id", { count: "exact", head: true }),
     ]);
 
+    if (jobsRes.error) console.error("[stats] jobs count error:", jobsRes.error);
+    if (employersRes.error) console.error("[stats] employers count error:", employersRes.error);
+
     return {
-      totalJobs: totalJobs ?? 0,
-      employerCount: employerCount ?? 0,
+      totalJobs: jobsRes.count ?? 0,
+      employerCount: employersRes.count ?? 0,
     };
   },
-  ["site-stats-v1"],
+  ["site-stats-v2"],
   { revalidate: 3600 }
 );
 

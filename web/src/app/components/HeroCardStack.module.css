@@ -33,6 +33,7 @@
   border: 1px solid #E4DDCB;
   width: 340px;
   opacity: 0; /* hidden until animation plays in */
+  text-align: left;
 }
 
 /* ── Card positions ── */

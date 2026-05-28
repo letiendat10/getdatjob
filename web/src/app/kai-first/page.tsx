@@ -678,6 +678,7 @@ function SupportScreen({
 
   const handleVenmoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
+    onSent();
     // Try deep link; fall back to web after 1.5s if page stays visible
     const fallback = setTimeout(() => {
       window.open(venmoWeb, "_blank");
@@ -693,26 +694,25 @@ function SupportScreen({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className={s["support-sheet"]}>
+        <p className={s["support-eyebrow"]}>Unlock the rest with $10 support</p>
         <p className={s["support-hook"]}>
-          <span className={s["support-count"]}>{jobCount} new jobs today</span>{" "}
-          match your profile.
-        </p>
-        <p className={s["support-body"]}>
-          Tip $10 to unlock the rest – that&apos;s your daily limit.
+          <em className={s["support-count"]}>{jobCount}</em>{" "}
+          new jobs in the last 3 days match your profile.
         </p>
         <p className={s["support-story"]}>
-          I&apos;m Dat, solo founder of getdatjob. I&apos;m on a working visa too.
-          No VC, no team – I build this on weeknights and weekends.
+          I&apos;m Dat, a solo founder of getdatjob. I&apos;m also on a working visa.
+          I&apos;ve been building this on weeknights and weekends on top of a 60-hour
+          startup work week. No VC yet — your support is greatly appreciated.
         </p>
         <a href={venmoDeepLink} onClick={handleVenmoClick} className={s["support-cta"]}>
-          Support on Venmo – $10 👊
+          Support with $10
         </a>
-        <button className={s["support-sent"]} onClick={onSent}>
-          I sent it ✓
+        <button className={s["support-sent"]} onClick={onClose}>
+          I&apos;m not a supporter
         </button>
-        <button className={s["support-skip"]} onClick={onClose}>
-          No pressure – come back tomorrow
-        </button>
+        <p className={s["support-skip"]}>
+          No pressure. Come back tomorrow for {jobCount} more matches.
+        </p>
       </div>
     </div>
   );
@@ -1186,7 +1186,7 @@ export default function KaiFirstPage() {
       if (batch2.length > 0) {
         setMessages((prev) => [
           ...prev,
-          { id: "k-reveal2", role: "assistant", content: `Here are ${batch2.length} more worth a look.`, jobs: batch2 },
+          { id: "k-reveal2", role: "assistant", content: (() => { const fl = postedWithin(batch2); return fl ? `Here are ${batch2.length} more, posted within ${fl}.` : `Here are ${batch2.length} more worth a look.`; })(), jobs: batch2 },
         ]);
         setStep("batch2");
       } else {

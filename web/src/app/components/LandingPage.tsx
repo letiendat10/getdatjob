@@ -80,9 +80,10 @@ interface LandingPageProps {
   headline: ReactNode;
   body: string;
   ctaHref?: string;
+  primaryCtaHref?: string;
 }
 
-export default async function LandingPage({ headline, body, ctaHref = "/jobs" }: LandingPageProps) {
+export default async function LandingPage({ headline, body, ctaHref = "/jobs", primaryCtaHref = "/auth/signin" }: LandingPageProps) {
   let totalJobs = 93000;
   let employerCount = 149;
   try {
@@ -149,7 +150,7 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs" }:
           <h1 className={s["hero-title"]}>{headline}</h1>
           <p className={s["hero-sub"]}>{body}</p>
           <div className={s["hero-cta"]}>
-            <Link href={ctaHref} className={s["btn-primary"]}>
+            <Link href={primaryCtaHref} className={s["btn-primary"]}>
               Get dat job{" "}
               <span className={s.arr}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

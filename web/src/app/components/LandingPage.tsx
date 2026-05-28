@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import TestimonialsCarousel from "./TestimonialsCarousel";
+import HeroMedia from "./HeroMedia";
 import s from "../landing.module.css";
 import { getStats, formatStat } from "@/lib/stats";
 
@@ -153,12 +154,9 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs" }:
             </Link>
           </div>
 
-          {/* Hero media placeholder */}
-          <div className={s["hero-media"]}>
-            <div className={s["placeholder-overlay"]}>
-              <span className={s["placeholder-label"]}>▷ horizontal image / video</span>
-            </div>
-          </div>
+          <div className={s["hero-spacer"]} />
+          <HeroMedia />
+          <div className={s["hero-spacer"]} />
 
         </div>
       </section>

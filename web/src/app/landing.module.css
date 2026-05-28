@@ -46,16 +46,17 @@
   padding: 28px 0 20px;
   text-align: center;
   position: relative;
-  min-height: calc(100svh - 40px - 62px);
+  height: calc(100svh - 40px - 62px);
   display: flex;
   flex-direction: column;
 }
 
 .hero-wrap { flex: 1; display: flex; flex-direction: column; }
+.hero-spacer { flex: 1; min-height: 0; }
 
 .hero-laurel {
   display: flex; justify-content: center; align-items: center;
-  gap: 22px; margin: 28px auto 0; flex-wrap: wrap; max-width: 920px;
+  gap: 22px; margin: 0 auto; flex-wrap: wrap; max-width: 920px;
   order: 5;
 }
 .laurel-item { display: flex; align-items: center; gap: 7px; }
@@ -88,34 +89,14 @@
 .arr { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; }
 
 .hero-media {
-  margin: 26px auto 0;
+  margin: 0 auto;
   max-width: 1040px;
   width: 100%;
-  flex: 1;
-  min-height: 220px;
-  border-radius: 22px;
+  aspect-ratio: 920 / 406;
+  max-height: min(460px, calc(100svh - 460px));
   overflow: hidden;
-  background: linear-gradient(180deg, #243a52 0%, #0c1521 75%);
-  box-shadow: 0 30px 80px -30px rgba(20,40,60,.35);
+  background: transparent;
   position: relative;
-}
-.placeholder-overlay {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; color: #E9E5DA;
-  pointer-events: none; text-align: center; padding: 20px;
-}
-.placeholder-overlay::before {
-  content: "";
-  position: absolute; inset: 0;
-  background:
-    radial-gradient(60% 50% at 50% 110%, rgba(255,255,255,.18), transparent 60%),
-    radial-gradient(40% 30% at 80% 10%, rgba(255,255,255,.07), transparent 60%);
-}
-.placeholder-overlay::after {
-  content: "";
-  position: absolute; bottom: 0; left: -2%; right: -2%; height: 120px;
-  background: #0a0f17;
-  clip-path: polygon(0% 100%, 0% 65%, 8% 50%, 16% 70%, 24% 40%, 36% 60%, 48% 30%, 60% 55%, 70% 35%, 82% 60%, 92% 45%, 100% 60%, 100% 100%);
 }
 /* ── Visa swap animation (variant D) ─────────────────────────────────────── */
 .visa-swap { display: inline-block; transition: opacity 0.3s ease; }
@@ -402,18 +383,18 @@
 
 @media (max-width: 640px) {
   .wrap { padding: 0 20px; }
-  .hero { padding: 56px 0 20px; min-height: calc(100svh - 36px - 56px); display: flex; flex-direction: column; }
+  .hero { padding: 56px 0 20px; height: calc(100svh - 36px - 56px); display: flex; flex-direction: column; }
   .hero-wrap { flex: 1; display: flex; flex-direction: column; }
   .hero-title { font-size: clamp(36px, 8vw, 42px); }
   .hero-sub { font-size: 14px; margin: 14px auto 22px; padding: 0 4px; max-width: 440px; }
   .btn-primary { padding: 15px 28px; font-size: 16px; }
   /* Laurel moves below media on mobile via order */
-  .hero-laurel { order: 5; gap: 10px 20px; padding: 0; margin: 20px 0 0; }
+  .hero-laurel { order: 5; gap: 10px 20px; padding: 0; margin: 0; }
   .laurel-svg { width: 13px; height: 26px; }
   .laurel-item { gap: 5px; }
   .laurel-b { font-size: 14px; }
   .laurel-lbl { font-size: 10.5px; }
-  .hero-media { flex: 1; min-height: 0; margin-top: 28px; margin-left: 0; margin-right: 0; width: 100%; height: auto; border-radius: 16px; }
+  .hero-media { margin-left: 0; margin-right: 0; width: 100%; }
   .trusted { padding: 40px 0 16px; }
   .marquee { mask-image: none; -webkit-mask-image: none; }
   .marquee:hover .marquee-track { animation-play-state: running; }

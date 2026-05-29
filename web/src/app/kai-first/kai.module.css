@@ -762,7 +762,7 @@
   background: rgba(17, 16, 14, 0.55);
   z-index: 100;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   animation: fadeIn 0.2s ease;
 }
@@ -774,42 +774,55 @@
   width: 100%;
   max-width: 480px;
   background: var(--bg);
-  border-radius: 24px 24px 0 0;
-  padding: 28px 28px 36px;
+  border-radius: 24px;
+  padding: 28px 28px 32px;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 14px;
-  animation: slideUp 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  text-align: center;
+  animation: popIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
 }
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
 }
+.support-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0;
+}
 .support-hook {
   font-family: var(--font-instrument-serif), Georgia, serif;
-  font-size: 22px;
+  font-size: 30px;
   font-weight: 400;
-  line-height: 1.25;
+  line-height: 1.2;
   color: var(--ink);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  margin: 0;
 }
 .support-count {
-  color: var(--accent);
+  color: var(--ink);
   font-style: italic;
-}
-.support-body {
-  font-size: 15px;
-  color: var(--ink-2);
-  line-height: 1.5;
-  margin: 0;
+  font-weight: 700;
 }
 .support-story {
   font-size: 13.5px;
-  color: var(--ink-3);
+  color: var(--ink-2);
   line-height: 1.55;
   margin: 0;
+  width: 80%;
+}
+.support-story-first {
   border-top: 1px solid var(--line);
-  padding-top: 12px;
+  padding-top: 14px;
 }
 .support-cta {
   display: flex;
@@ -827,6 +840,7 @@
   cursor: pointer;
   transition: background 0.15s ease, transform 0.1s ease;
   border: none;
+  width: 100%;
 }
 .support-cta:hover { background: #005fa3; transform: translateY(-1px); }
 .support-cta:active { transform: translateY(0); }
@@ -844,20 +858,17 @@
   font-family: var(--font-geist-sans), sans-serif;
   cursor: pointer;
   transition: background 0.14s ease;
+  width: 100%;
 }
 .support-sent:hover { background: var(--bg-2); }
 .support-skip {
-  background: none;
-  border: none;
   color: var(--ink-3);
-  font-size: 13px;
+  font-size: 10px;
   font-family: var(--font-geist-sans), sans-serif;
-  cursor: pointer;
-  padding: 4px 0;
+  margin: 0;
   text-align: center;
-  transition: color 0.14s ease;
+  line-height: 1.5;
 }
-.support-skip:hover { color: var(--ink-2); }
 
 /* ── Job detail modal ────────────────────────────────────────────────────── */
 .job-overlay {
@@ -921,6 +932,7 @@
   .tiles-bar { padding: 12px 16px 20px; }
   .tile { min-width: 0; flex: 1 1 calc(50% - 5px); }
   .bottom-bar { padding: 10px 16px 16px; }
-  .support-sheet { border-radius: 20px 20px 0 0; padding: 24px 20px 32px; }
+  .support-overlay { align-items: flex-end; }
+  .support-sheet { border-radius: 20px 20px 0 0; padding: 24px 20px 32px; animation-name: slideUp; }
   .scan-bubble { font-size: 12px; }
 }

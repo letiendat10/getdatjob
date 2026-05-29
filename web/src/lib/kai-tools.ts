@@ -183,6 +183,35 @@ export async function handleSearchJobs(input: SearchJobsInput) {
   };
 }
 
+export async function countMatchingJobs3d(params: {
+  visa_category?: string;
+  salary_min?: number;
+  location?: string;
+}): Promise<number> {
+  const cutoff = new Date(Date.now() - 3 * 86_400_000).toISOString();
+
+  let query = supabaseServer
+    .from("jobs_kai_view")
+    .select("*", { count: "exact", head: true })
+    .gte("posted_at", cutoff);
+
+  if (params.visa_category) {
+    query = query.in("visa_tier", ["verified", "friendly"]);
+  }
+  if (params.salary_min && params.salary_min > 0) {
+    query = query.gte("salary_estimate", params.salary_min);
+  }
+  if (params.location === "remote") {
+    query = query.ilike("location", "%remote%");
+  } else if (params.location) {
+    query = query.ilike("location", `%${params.location}%`);
+  }
+
+  const { count, error } = await query;
+  if (error) return 0;
+  return count ?? 0;
+}
+
 export async function handleGetJob(input: { id: number }) {
   const { data, error } = await supabaseServer
     .from("jobs_kai_view")

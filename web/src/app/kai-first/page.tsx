@@ -697,12 +697,15 @@ function SupportScreen({
         <p className={s["support-eyebrow"]}>Unlock the rest with $10 support</p>
         <p className={s["support-hook"]}>
           <em className={s["support-count"]}>{jobCount}</em>{" "}
-          new jobs in the last 3 days match your profile.
+          jobs match your search<br />in the last 3 days
+        </p>
+        <p className={`${s["support-story"]} ${s["support-story-first"]}`}>
+          Hi there, I&apos;m Dat, a solo founder of getdatjob. I&apos;m also on a working visa.
+          I&apos;ve been building this on weeknights and weekends, on top of a
+          60-hour startup work week.
         </p>
         <p className={s["support-story"]}>
-          I&apos;m Dat, a solo founder of getdatjob. I&apos;m also on a working visa.
-          I&apos;ve been building this on weeknights and weekends on top of a 60-hour
-          startup work week. No VC yet — your support is greatly appreciated.
+          No VC, no team — your support of this LGBT-owned project means everything.
         </p>
         <a href={venmoDeepLink} onClick={handleVenmoClick} className={s["support-cta"]}>
           Support with $10
@@ -711,7 +714,7 @@ function SupportScreen({
           I&apos;m not a supporter
         </button>
         <p className={s["support-skip"]}>
-          No pressure. Come back tomorrow for {jobCount} more matches.
+          No pressure. Come back tomorrow for 6 more — that&apos;s your daily limit.
         </p>
       </div>
     </div>
@@ -732,6 +735,7 @@ export default function KaiFirstPage() {
     visa: null, salaryMin: null, level: null,
   });
   const [allJobs, setAllJobs] = useState<Job[]>([]);
+  const [total3dCount, setTotal3dCount] = useState<number>(0);
   const [scanPhase, setScanPhase] = useState(0);
   const [scanJobCount, setScanJobCount] = useState<number | null>(null);
   const [showSupport, setShowSupport] = useState(false);
@@ -1106,7 +1110,7 @@ export default function KaiFirstPage() {
       });
 
       // Animate checklist concurrently with API call
-      const jobsPromise: Promise<Job[]> = fetch("/api/onboarding/jobs", {
+      const jobsPromise: Promise<{ jobs: Job[]; total_3d_count: number }> = fetch("/api/onboarding/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1119,8 +1123,8 @@ export default function KaiFirstPage() {
         }),
       })
         .then((r) => r.json())
-        .then((d) => d.jobs ?? [])
-        .catch(() => []);
+        .then((d) => ({ jobs: d.jobs ?? [], total_3d_count: d.total_3d_count ?? 0 }))
+        .catch(() => ({ jobs: [], total_3d_count: 0 }));
 
       setScanPhase(1);
       await delay(1100);
@@ -1129,8 +1133,9 @@ export default function KaiFirstPage() {
       setScanPhase(3);
       await delay(1000);
 
-      const jobs: Job[] = await jobsPromise;
+      const { jobs, total_3d_count } = await jobsPromise;
       setAllJobs(jobs);
+      setTotal3dCount(total_3d_count);
       setScanJobCount(jobs.length);
       setScanPhase(4);
       await delay(1300);
@@ -1624,7 +1629,7 @@ export default function KaiFirstPage() {
       {showSupport && (
         <SupportScreen
           email={user?.email ?? null}
-          jobCount={allJobs.length}
+          jobCount={total3dCount || allJobs.length}
           onClose={handleSupportClose}
           onSent={handleISentIt}
         />

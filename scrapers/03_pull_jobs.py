@@ -636,55 +636,63 @@ if __name__ == "__main__":
         # statement timeout — 500-row batches of Amazon rows (large description_text +
         # on-conflict index maintenance) were timing out.
         for i in range(0, len(job_rows), 100):
-            sb.table("jobs").upsert(job_rows[i:i+100], on_conflict="ats_source,ats_job_id").execute()
+            try:
+                sb.table("jobs").upsert(job_rows[i:i+100], on_conflict="ats_source,ats_job_id").execute()
+            except Exception as e:
+                print(f"  ERROR upsert {ats}:{slug} chunk {i//100 + 1} — {e}", flush=True)
 
         # Mark jobs removed from ATS as inactive
-        fresh_ids = {j["ats_job_id"] for j in raw_jobs}
-        active_result = (
-            sb.table("jobs")
-            .select("id,ats_job_id")
-            .eq("employer_id", emp_id)
-            .eq("ats_source", ats)
-            .eq("is_active", True)
-            .execute()
-        )
-        stale_ids = [
-            row["id"] for row in active_result.data
-            if row["ats_job_id"] not in fresh_ids
-        ]
-        if stale_ids:
-            sb.table("jobs").update({"is_active": False}).in_("id", stale_ids).execute()
-            print(f"  Marked {len(stale_ids)} jobs inactive for {slug} ({ats})", flush=True)
+        try:
+            fresh_ids = {j["ats_job_id"] for j in raw_jobs}
+            active_result = (
+                sb.table("jobs")
+                .select("id,ats_job_id")
+                .eq("employer_id", emp_id)
+                .eq("ats_source", ats)
+                .eq("is_active", True)
+                .execute()
+            )
+            stale_ids = [
+                row["id"] for row in active_result.data
+                if row["ats_job_id"] not in fresh_ids
+            ]
+            if stale_ids:
+                sb.table("jobs").update({"is_active": False}).in_("id", stale_ids).execute()
+                print(f"  Marked {len(stale_ids)} jobs inactive for {slug} ({ats})", flush=True)
+        except Exception as e:
+            print(f"  ERROR stale-mark {ats}:{slug} — {e}", flush=True)
 
         # Fetch IDs back for signal computation. Pull only id+ats_job_id (small);
         # title/description_text are already in job_rows, so join locally instead of
         # re-fetching the heavy description_text column for every job (Amazon's volume
         # made that SELECT exceed Supabase's statement timeout).
-        ids_result = (
-            sb.table("jobs")
-            .select("id,ats_job_id")
-            .eq("employer_id", emp_id)
-            .eq("ats_source", ats)
-            .execute()
-        )
-        rows_by_ats_id = {r["ats_job_id"]: r for r in job_rows}
-        for rec in ids_result.data:
-            row = rows_by_ats_id.get(rec["ats_job_id"])
-            if row is None:
-                continue
-            tier, flag, tc, lca_count = score_job(
-                row["title"], row["description_text"] or "", lca_titles, lca_counts
+        try:
+            ids_result = (
+                sb.table("jobs")
+                .select("id,ats_job_id")
+                .eq("employer_id", emp_id)
+                .eq("ats_source", ats)
+                .execute()
             )
-            signal_rows.append({
-                "job_id": rec["id"],
-                "confidence_tier": tier,
-                "no_sponsor_in_desc_flag": flag,
-                "title_clean": tc,
-                "title_employer_lca_count": lca_count,
-            })
-
-        if signal_rows:
-            sb.table("job_signals").upsert(signal_rows, on_conflict="job_id").execute()
+            rows_by_ats_id = {r["ats_job_id"]: r for r in job_rows}
+            for rec in ids_result.data:
+                row = rows_by_ats_id.get(rec["ats_job_id"])
+                if row is None:
+                    continue
+                tier, flag, tc, lca_count = score_job(
+                    row["title"], row["description_text"] or "", lca_titles, lca_counts
+                )
+                signal_rows.append({
+                    "job_id": rec["id"],
+                    "confidence_tier": tier,
+                    "no_sponsor_in_desc_flag": flag,
+                    "title_clean": tc,
+                    "title_employer_lca_count": lca_count,
+                })
+            if signal_rows:
+                sb.table("job_signals").upsert(signal_rows, on_conflict="job_id").execute()
+        except Exception as e:
+            print(f"  ERROR signals {ats}:{slug} — {e}", flush=True)
 
         total_jobs += len(job_rows)
         print(f"  {ats}:{slug} → {len(job_rows)} jobs", flush=True)

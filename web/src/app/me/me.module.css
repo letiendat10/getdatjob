@@ -664,7 +664,7 @@
   padding: 3px 9px;
   border-radius: 999px;
   background: #d1fae5;
-  color: #065f46;
+  color: var(--ink-2);
   letter-spacing: 0.01em;
   white-space: nowrap;
 }

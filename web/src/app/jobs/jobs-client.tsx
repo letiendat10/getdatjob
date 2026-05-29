@@ -574,7 +574,7 @@ function JobCard({ job, isSelected, isViewed, isFilled, onClick }: {
             </span>
           )}
           {isFriendly && (
-            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-green-600">
+            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-[var(--ink-2)]">
               H-1B Friendly Employer
             </span>
           )}
@@ -655,7 +655,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
             </span>
           )}
           {job.confidence_tier === "friendly" && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium border border-green-200">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
               H-1B Friendly Employer
             </span>
           )}

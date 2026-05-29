@@ -175,7 +175,7 @@ function JobCard({ job }: { job: Job }) {
             </span>
           )}
           {isFriendly && (
-            <span className="text-xs font-medium text-green-600">
+            <span className="text-xs font-medium text-[var(--ink-2)]">
               H-1B Friendly Employer
             </span>
           )}

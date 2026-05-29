@@ -359,7 +359,7 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
             </span>
           )}
           {isFriendly && (
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium border border-green-200">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
               H-1B Friendly Employer
             </span>
           )}
@@ -542,7 +542,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
               </span>
             )}
             {isFriendly && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium border border-green-200">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
                 H-1B Friendly Employer
               </span>
             )}

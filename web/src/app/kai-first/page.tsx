@@ -62,8 +62,9 @@ type OnboardingStep =
   | "q1_layoff_date"
   | "q2"          // visa
   | "q3"          // salary
-  | "q4"          // level (pre-confirm if headline available)
-  | "q5"          // location (PDL/Apollo pre-confirm or ask)
+  | "q4"          // job function (pre-confirm if headline available)
+  | "q5"          // job level (pre-confirm if headline available)
+  | "q6"          // location (pre-confirm if extension scraped)
   | "scanning"
   | "batch1"
   | "email_optin"
@@ -79,6 +80,7 @@ type IntakeData = {
   visa: string | null;
   salaryMin: number | null;
   level: string | null;
+  jobFunction: string | null;
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -181,6 +183,21 @@ function inferDepartment(title: string | null): string | null {
   if (t.includes("security") || t.includes("infosec") || t.includes("cybersecurity")) return "security";
   if (t.includes("devops") || t.includes("site reliability") || t.includes("platform engineer") || t.includes("infrastructure")) return "platform / devops";
   if (t.includes("legal") || t.includes("counsel") || t.includes("attorney") || t.includes("compliance")) return "legal";
+  return null;
+}
+
+function inferJobFunction(headline: string | null): string | null {
+  if (!headline) return null;
+  const h = headline.toLowerCase();
+  if (h.includes("software") || h.includes("engineer") || h.includes("developer") || h.includes("backend") || h.includes("frontend") || h.includes("devops") || h.includes("fullstack") || h.includes("mobile") || h.includes("infrastructure")) return "Engineering";
+  if (h.includes("product manager") || h.includes("product management") || /\bhead of product\b/.test(h) || / pm,| pm$|\bvp product\b/.test(h)) return "Product";
+  if (h.includes("machine learning") || h.includes("data scientist") || h.includes("data engineer") || h.includes("analytics") || /\bml\b/.test(h) || h.includes("ai ")) return "Data / AI";
+  if (h.includes("growth") || h.includes("marketing") || h.includes("demand gen")) return "Marketing";
+  if (h.includes("design") || /\bux\b/.test(h) || /\bui\b/.test(h)) return "Design";
+  if (h.includes("sales") || h.includes("account executive") || h.includes("business development") || h.includes("partnerships")) return "Sales";
+  if (h.includes("finance") || h.includes("accounting") || h.includes("controller") || h.includes("cfo")) return "Finance";
+  if (h.includes("operations") || h.includes("recruiting") || h.includes("talent") || /\bhr\b/.test(h)) return "Operations";
+  if (h.includes("product")) return "Product"; // catch "product" without "manager"
   return null;
 }
 
@@ -748,7 +765,7 @@ export default function KaiFirstPage() {
   const [quickReplies, setQuickReplies] = useState<QR[]>([]);
   const [intake, setIntake] = useState<IntakeData>({
     intent: null, layoffDate: null, location: null, locationMode: null,
-    visa: null, salaryMin: null, level: null,
+    visa: null, salaryMin: null, level: null, jobFunction: null,
   });
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [total3dCount, setTotal3dCount] = useState<number>(0);
@@ -973,16 +990,16 @@ export default function KaiFirstPage() {
       ]);
       setStep("q3");
 
-    // Q3 – salary
+    // Q3 – salary → Q4 job function
     } else if (step === "q3") {
       const salaryMin = parseInt(qr.value, 10);
       setIntake((prev) => ({ ...prev, salaryMin: salaryMin > 0 ? salaryMin : null }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(400);
-      // Q4 – re-fetch headline in case SERP enrichment wrote it since page load (~3-5s lag).
-      // By Q3 answer time (~20-25s in), the SERP headline is always available.
-      let q4Headline = linkedIn?.headline ?? null;
-      if (!q4Headline && user) {
+
+      // Re-fetch headline — by Q3 answer time (~20-25s in) SERP + extension have run.
+      let freshHeadline = linkedIn?.headline ?? null;
+      if (!freshHeadline && user) {
         const supa = createSupabaseBrowser();
         const { data: lp } = await supa
           .schema("linkedin")
@@ -991,18 +1008,58 @@ export default function KaiFirstPage() {
           .eq("id", user.id)
           .maybeSingle();
         if (lp?.headline) {
-          q4Headline = lp.headline;
+          freshHeadline = lp.headline;
           setLinkedIn({ headline: lp.headline });
         }
       }
-      const inferredLevel = inferLevel(q4Headline ?? "");
+
+      const inferredFunc = inferJobFunction(freshHeadline);
+      const funcLabel: Record<string, string> = {
+        Engineering: "Engineering",
+        Product: "Product",
+        Marketing: "Marketing / Growth",
+        "Data / AI": "Data / AI",
+        Design: "Design",
+        Sales: "Sales",
+        Finance: "Finance",
+        Operations: "Operations",
+      };
+      const q4Text = inferredFunc
+        ? `Based on your profile, looks like you're in ${funcLabel[inferredFunc] ?? inferredFunc} — is that right?`
+        : "What kind of role are you looking for?";
+      const topFuncs: QR[] = [
+        { label: "Engineering",       value: "Engineering" },
+        { label: "Marketing / Growth", value: "Marketing"  },
+        { label: "Product",           value: "Product"     },
+        { label: "Design / Data / Other", value: "Other"   },
+      ];
+      const q4Replies: QR[] = inferredFunc
+        ? [
+            { label: `Yes, ${funcLabel[inferredFunc] ?? inferredFunc}`, value: inferredFunc },
+            ...topFuncs.filter(c => c.value !== inferredFunc).slice(0, 2),
+            { label: "Something else", value: "Other" },
+          ]
+        : topFuncs;
+      setMessages((prev) => [...prev, { id: "k-q4", role: "assistant", content: q4Text }]);
+      setQuickReplies(q4Replies);
+      setStep("q4");
+
+    // Q4 – job function → Q5 job level
+    } else if (step === "q4") {
+      const jobFunction = qr.value;
+      setIntake((prev) => ({ ...prev, jobFunction }));
+      setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
+      await delay(400);
+
+      // Infer level from the headline we already fetched in Q3
+      const inferredLevel = inferLevel(linkedIn?.headline ?? "");
       const isManager = inferredLevel?.toLowerCase().includes("manager") || inferredLevel?.toLowerCase().includes("lead");
-      const q4Text = inferredLevel
+      const q5Text = inferredLevel
         ? isManager
-          ? `Looks like you're in a manager role based on your profile — staying that path, or open to IC work too?`
+          ? `Looks like you're in a manager role — staying that path, or open to IC work too?`
           : `Looks like you're a ${inferredLevel} based on your profile — planning to stay that route, or open to people management?`
         : "Senior IC, or ready to lead a team?";
-      const q4Replies: QR[] = inferredLevel
+      const q5Replies: QR[] = inferredLevel
         ? isManager
           ? [
               { label: "Staying Manager / Lead", value: "manager"   },
@@ -1019,41 +1076,40 @@ export default function KaiFirstPage() {
             { label: "Manager / Lead",  value: "manager"   },
             { label: "Either works",    value: "either"    },
           ];
-      setMessages((prev) => [...prev, { id: "k-q4", role: "assistant", content: q4Text }]);
-      setQuickReplies(q4Replies);
-      setStep("q4");
+      setMessages((prev) => [...prev, { id: "k-q5", role: "assistant", content: q5Text }]);
+      setQuickReplies(q5Replies);
+      setStep("q5");
 
-    // Q4 – level → then ask / pre-confirm location
-    } else if (step === "q4") {
+    // Q5 – job level → Q6 location
+    } else if (step === "q5") {
       const level = qr.value;
       setIntake((prev) => ({ ...prev, level }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
 
       if (level === "either") {
         await delay(450);
-        setMessages((prev) => [...prev, { id: "k-f4", role: "assistant", content: "Flexible – that opens it up." }]);
+        setMessages((prev) => [...prev, { id: "k-f5", role: "assistant", content: "Flexible – that opens it up." }]);
       }
       await delay(level === "either" ? 700 : 400);
 
-      // Q5 – location: try PDL/Apollo enrichment first (has had ~16s to run by now)
+      // Q6 – location: re-fetch from enrichment (extension has had ~25s by now)
       const supabase = createSupabaseBrowser();
       const { data: { user: authUser } } = await supabase.auth.getUser();
       let knownLocation: string | null = null;
       if (authUser) {
-        const { data: ep } = await supabase
-          .schema("enriched")
+        const { data: lp } = await supabase
+          .schema("linkedin")
           .from("profiles")
           .select("location")
-          .eq("user_id", authUser.id)
-          .eq("enrich_status", "done")
+          .eq("id", authUser.id)
           .maybeSingle();
-        knownLocation = ep?.location ?? null;
+        knownLocation = lp?.location ?? null;
       }
 
-      const q5Text = knownLocation
+      const q6Text = knownLocation
         ? `You're in ${knownLocation} – staying local, or open to remote and other cities?`
         : "Where are you based right now?";
-      const q5Replies: QR[] = knownLocation
+      const q6Replies: QR[] = knownLocation
         ? [
             { label: `${knownLocation.split(",")[0]} / local`, value: "local"   },
             { label: "Remote only",                            value: "remote"  },
@@ -1066,17 +1122,16 @@ export default function KaiFirstPage() {
             { label: "Open anywhere",    value: "anywhere" },
           ];
 
-      // Store knownLocation so Q5 handler can use it
       if (knownLocation) {
         setIntake((prev) => ({ ...prev, location: knownLocation, locationMode: "local" }));
       }
 
-      setMessages((prev) => [...prev, { id: "k-q5", role: "assistant", content: q5Text }]);
-      setQuickReplies(q5Replies);
-      setStep("q5");
+      setMessages((prev) => [...prev, { id: "k-q6", role: "assistant", content: q6Text }]);
+      setQuickReplies(q6Replies);
+      setStep("q6");
 
-    // Q5 – location → kicks off scan
-    } else if (step === "q5") {
+    // Q6 – location → kicks off scan
+    } else if (step === "q6") {
       const level = intake.level ?? "either";
       const locMap: Record<string, { location: string | null; locationMode: string }> = {
         local:    { location: intake.location, locationMode: "local"    },
@@ -1091,7 +1146,10 @@ export default function KaiFirstPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(500);
 
-      const dept = inferDepartment(linkedIn?.headline ?? enriched?.current_title ?? null);
+      const funcLabelMap: Record<string, string> = { Marketing: "marketing / growth", "Data / AI": "data / AI" };
+      const dept = updatedIntake.jobFunction && updatedIntake.jobFunction !== "Other"
+        ? (funcLabelMap[updatedIntake.jobFunction] ?? updatedIntake.jobFunction.toLowerCase())
+        : inferDepartment(linkedIn?.headline ?? enriched?.current_title ?? null);
       const salaryStr = updatedIntake.salaryMin
         ? `$${Math.round(updatedIntake.salaryMin / 1000)}K+`
         : "any salary";
@@ -1140,6 +1198,7 @@ export default function KaiFirstPage() {
               user_id: data.user.id,
               visa_type: visaMap[updatedIntake.visa ?? ""] ?? "Other",
               salary_floor: updatedIntake.salaryMin ?? null,
+              job_function: updatedIntake.jobFunction !== "Other" ? updatedIntake.jobFunction : null,
               job_level: levelMap[updatedIntake.level ?? ""] ?? null,
               location: prefLocStr ?? null,
               onboarding_complete: true,

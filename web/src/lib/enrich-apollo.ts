@@ -98,11 +98,23 @@ function deriveJobLevel(headline: string): "Senior IC" | "Manager/Lead" {
 
 // ── SerpAPI — LinkedIn URL discovery ────────────────────────────────────────
 
+type SerpResult = {
+  url:      string;
+  headline: string | null; // extracted from Google result title, e.g. "Growth Marketer at Caffeine"
+};
+
+// Google formats LinkedIn results as "Name - Title | LinkedIn" or
+// "Name - Title at Company | LinkedIn".  Extract the title portion.
+function extractSerpHeadline(serpTitle: string): string | null {
+  const match = serpTitle.match(/ - (.+?) \| LinkedIn/i);
+  return match?.[1]?.trim() || null;
+}
+
 async function trySerpAPI(
   fullName: string,
   email:    string | null,
   country:  string | null,
-): Promise<string | null> {
+): Promise<SerpResult | null> {
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) return null;
 
@@ -137,21 +149,21 @@ async function trySerpAPI(
       return null;
     }
 
-    const data = await res.json() as { organic_results?: { link: string }[] };
+    const data = await res.json() as { organic_results?: { link: string; title?: string }[] };
     const candidates = (data.organic_results ?? [])
-      .map(r => r.link)
-      .filter((l): l is string => !!l?.includes("linkedin.com/in/") && !l.includes("/pub/dir/"));
+      .filter(r => !!r.link?.includes("linkedin.com/in/") && !r.link.includes("/pub/dir/"));
 
     if (!candidates.length) {
       console.log(`[serp] no /in/ candidates among ${data.organic_results?.length ?? 0} results`);
       return null;
     }
 
-    const scored = candidates.map(l => ({ l, s: scoreSlug(l) })).sort((a, b) => b.s - a.s);
-    const best = scored[0].s > 0 ? scored[0].l : candidates[0];
+    const scored = candidates.map(r => ({ r, s: scoreSlug(r.link) })).sort((a, b) => b.s - a.s);
+    const best = scored[0].s > 0 ? scored[0].r : candidates[0];
 
-    console.log(`[serp] resolved (score ${scored[0].s}): ${best}  [candidates: ${candidates.join(", ")}]`);
-    return best;
+    const headline = extractSerpHeadline(best.title ?? "");
+    console.log(`[serp] resolved (score ${scored[0].s}): ${best.link}  headline="${headline}"`);
+    return { url: best.link, headline };
   } catch (err) {
     console.error("[serp] fetch error:", err);
     return null;
@@ -176,13 +188,27 @@ export async function enrichUser(
     const fullName = [firstName, lastName].filter(Boolean).join(" ");
     if (fullName) {
       const country = locale ? (locale.split("_")[1] ?? null) : null;
-      resolvedUrl = await trySerpAPI(fullName, email, country);
-      if (resolvedUrl) {
+      const serpResult = await trySerpAPI(fullName, email, country);
+      if (serpResult) {
+        resolvedUrl = serpResult.url;
+
+        // Write URL + SERP-extracted headline immediately (~3-5s after OAuth).
+        // This is a fast approximation — the extension overwrites with the full
+        // DOM-scraped headline + location ~20s later.  But having the headline
+        // now means Q4 ("Senior IC or lead?") on /kai-first can pre-fill itself
+        // from the title without waiting for the extension.
+        const profilePatch: Record<string, string> = { linkedin_url: resolvedUrl };
+        if (serpResult.headline) profilePatch.headline = serpResult.headline;
+
         await supabase
           .schema("linkedin")
           .from("profiles")
-          .update({ linkedin_url: resolvedUrl })
+          .update(profilePatch)
           .eq("id", userId);
+
+        if (serpResult.headline) {
+          console.log(`[enrich] ${userId} — SERP headline written: "${serpResult.headline}"`);
+        }
       }
     }
   }

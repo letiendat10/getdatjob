@@ -963,10 +963,25 @@ export default function KaiFirstPage() {
       setIntake((prev) => ({ ...prev, salaryMin: salaryMin > 0 ? salaryMin : null }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(400);
-      // Q4 is now level – pre-confirm from LinkedIn headline if available
-      const inferredLevel = inferLevel(linkedIn?.headline ?? "");
+      // Q4 – re-fetch headline in case SERP enrichment wrote it since page load (~3-5s lag).
+      // By Q3 answer time (~20-25s in), the SERP headline is always available.
+      let q4Headline = linkedIn?.headline ?? null;
+      if (!q4Headline && user) {
+        const supa = createSupabaseBrowser();
+        const { data: lp } = await supa
+          .schema("linkedin")
+          .from("profiles")
+          .select("headline")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (lp?.headline) {
+          q4Headline = lp.headline;
+          setLinkedIn({ headline: lp.headline });
+        }
+      }
+      const inferredLevel = inferLevel(q4Headline ?? "");
       const q4Text = inferredLevel
-        ? `Based on your title, looks like **${inferredLevel}** – is that right?`
+        ? `Based on your title, looks like ${inferredLevel} – is that right?`
         : "Senior IC, or ready to lead a team?";
       const q4Replies: QR[] = inferredLevel
         ? [

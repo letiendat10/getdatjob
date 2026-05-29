@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const jobId = sp.get("job_id") ?? "";
 
   if (source === "amazon") return handleAmazon(jobId);
+  if (source === "ashby") return handleAshby(jobId, sp.get("slug") ?? "");
   if (source === "db") return handleDb(sp.get("id") ?? "");
   if (url) return handleWorkday(url);
   return Response.json({ error: "missing params" }, { status: 400 });
@@ -38,6 +39,41 @@ async function handleDb(id: string) {
     );
   } catch {
     return Response.json({ text: "" });
+  }
+}
+
+// ── Ashby ────────────────────────────────────────────────────────────────────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function handleAshby(jobId: string, slug: string) {
+  if (!UUID_RE.test(jobId) || !slug) return Response.json({ html: "", text: "" });
+  try {
+    const res = await fetch("https://jobs.ashbyhq.com/api/non-user-graphql?op=ApiJobPosting", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": UA },
+      body: JSON.stringify({
+        operationName: "ApiJobPosting",
+        variables: { jobPostingId: jobId, organizationHostedJobsPageName: slug },
+        query: `query ApiJobPosting($jobPostingId: String!, $organizationHostedJobsPageName: String!) {
+          jobPosting(jobPostingId: $jobPostingId, organizationHostedJobsPageName: $organizationHostedJobsPageName) {
+            descriptionHtml
+          }
+        }`,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return Response.json({ html: "", text: "" });
+    const data = await res.json();
+    const posting = data?.data?.jobPosting;
+    if (!posting) return Response.json({ html: "", text: "" });
+    const html = (posting.descriptionHtml ?? "").slice(0, 20000);
+    return Response.json(
+      { html },
+      { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=3600" } }
+    );
+  } catch {
+    return Response.json({ html: "", text: "" });
   }
 }
 

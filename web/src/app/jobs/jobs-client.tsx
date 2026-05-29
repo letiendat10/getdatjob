@@ -99,9 +99,13 @@ const COMPANY_NAME_OVERRIDES: Record<string, string> = {
   "united parcel service general services": "UPS",
   "foot locker corporate services": "Foot Locker",
   "macy's systems and technology": "Macy's",
+  // AI
+  "openai opco": "OpenAI",
   // Other
   "london stock exchange group holdings": "LSEG",
   "general dynamics information technology": "GDIT",
+  // Fintech
+  "robinhood markets": "Robinhood",
 };
 
 function normalizeCompanyName(name: string): string {
@@ -115,8 +119,8 @@ function normalizeCompanyName(name: string): string {
     .replace(/\s*\([^)]+\)\s*$/g, "")
     // 4. Strip trailing geographic qualifiers
     .replace(/,?\s+(united states|north america|americas|usa|u\.s\.a?)\.?\s*$/i, "")
-    // 5. Strip legal entity suffixes (added LLP and N.A.)
-    .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|l\.?l\.?p\.?|corporation|corp\.?|limited|ltd\.?|co\.|l\.p\.?|\blp\b|pbc|p\.c\.|pllc|n\.a\.?)\.?\s*$/i, "")
+    // 5. Strip legal entity suffixes (added LLP, N.A., OpCo)
+    .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|l\.?l\.?p\.?|corporation|corp\.?|limited|ltd\.?|co\.|l\.p\.?|\blp\b|pbc|p\.c\.|pllc|n\.a\.?|\bopco\b)\.?\s*$/i, "")
     .trim();
 
   // 6. Manual override for well-known brands
@@ -585,13 +589,15 @@ function JobCard({ job, isSelected, isViewed, isFilled, onClick }: {
   );
 }
 
-function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved, onShare, onSave }: {
+function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved, onShare, onSave, salaryOverride }: {
   job: JobWithNorm; descHtml: string; descText: string;
   descLoading: boolean; copied: boolean; isSaved: boolean; onShare: () => void; onSave: () => void;
+  salaryOverride?: string;
 }) {
   const lastFiling = formatLastFiling(job.last_filing_date);
   const posted = timeAgo(job.posted_at);
-  const salary = useMemo(() => extractSalary(descHtml), [descHtml]);
+  const extractedSalary = useMemo(() => extractSalary(descHtml), [descHtml]);
+  const salary = salaryOverride ?? extractedSalary;
   const experience = useMemo(() => extractExperience(descHtml), [descHtml]);
   const level = inferLevel(job.title);
   const department = inferDepartment(job.title);
@@ -746,7 +752,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [viewedJobs, setViewedJobs] = useState<Set<number>>(new Set());
   const [savedJobs, setSavedJobs] = useState<Set<number>>(new Set());
-  const [descCache, setDescCache] = useState<Record<number, { html: string; text: string }>>({});
+  const [descCache, setDescCache] = useState<Record<number, { html: string; text: string; salary?: string }>>({});
   const [descLoading, setDescLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -963,6 +969,20 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
           const res = await fetch(`/api/jobs/description?source=amazon&job_id=${encodeURIComponent(jobId)}`);
           const json = res.ok ? await res.json() : {};
           setDescCache((c) => ({ ...c, [sid]: { html: json.html ?? "", text: json.text ?? "" } }));
+        } catch {
+          setDescCache((c) => ({ ...c, [sid]: { html: "", text: "" } }));
+        }
+        setDescLoading(false);
+      })();
+    } else if (job.ats_source === "ashby" && job.ats_job_id && job.ats_slug) {
+      const sid = selectedJobId;
+      const jobId = job.ats_job_id;
+      const slug = job.ats_slug;
+      (async () => {
+        try {
+          const res = await fetch(`/api/jobs/description?source=ashby&job_id=${encodeURIComponent(jobId)}&slug=${encodeURIComponent(slug)}`);
+          const json = res.ok ? await res.json() : {};
+          setDescCache((c) => ({ ...c, [sid]: { html: json.html ?? "", text: "", salary: json.salary ?? undefined } }));
         } catch {
           setDescCache((c) => ({ ...c, [sid]: { html: "", text: "" } }));
         }
@@ -1291,6 +1311,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
               isSaved={savedJobs.has(selectedJob.id)}
               onShare={handleShare}
               onSave={handleSave}
+              salaryOverride={descCache[selectedJob.id]?.salary}
             />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center rounded-xl border border-dashed border-zinc-200 h-full min-h-[400px]">
@@ -1318,6 +1339,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
               isSaved={savedJobs.has(selectedJob.id)}
               onShare={handleShare}
               onSave={handleSave}
+              salaryOverride={descCache[selectedJob.id]?.salary}
             />
           </div>
         )}

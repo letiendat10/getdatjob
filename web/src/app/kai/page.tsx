@@ -61,7 +61,7 @@ const DOMAIN_OVERRIDES: Record<string, string> = {
 };
 function normalizeCompanyName(name: string): string {
   const cleaned = name
-    .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|corporation|corp\.?|limited|ltd\.?|co\.|l\.p\.?|\blp\b|pbc|p\.c\.|pllc)\.?\s*$/i, "")
+    .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|corporation|corp\.?|limited|ltd\.?|co\.|l\.p\.?|\blp\b|pbc|p\.c\.|pllc|\bopco\b)\.?\s*$/i, "")
     .trim();
   const letters = cleaned.replace(/[^a-zA-Z]/g, "");
   if (letters.length > 0 && letters === letters.toUpperCase()) {
@@ -349,8 +349,9 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const isVerified = job.visa_tier === "verified";
   const isFriendly = job.visa_tier === "friendly";
   const lcaLastFiled = formatLcaDate(job.lca_last_filed);
+  const [apiSalary, setApiSalary] = useState<string | null>(null);
   const extractedSalary = useMemo(() => extractPostedSalary(descHtml || descText), [descHtml, descText]);
-  const postedSalary = job.salary_range || extractedSalary;
+  const postedSalary = job.salary_range || apiSalary || extractedSalary;
   const [saved, setSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -373,6 +374,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
     setDescLoading(true);
     setDescHtml("");
     setDescText("");
+    setApiSalary(null);
     (async () => {
       try {
         if (job.ats_source === "amazon" && job.ats_job_id) {
@@ -380,6 +382,18 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
           if (res.ok) {
             const { html } = await res.json();
             if (html) { setDescHtml(html); setDescLoading(false); return; }
+          }
+        } else if (job.ats_source === "ashby" && job.ats_job_id && job.url) {
+          const slug = job.url.match(/jobs\.ashbyhq\.com\/([^/]+)\//)?.[1] ?? "";
+          if (slug) {
+            const res = await fetch(`/api/jobs/description?source=ashby&job_id=${encodeURIComponent(job.ats_job_id)}&slug=${encodeURIComponent(slug)}`);
+            if (res.ok) {
+              const { html, salary } = await res.json();
+              if (html) { setDescHtml(html); }
+              if (salary) { setApiSalary(salary); }
+              setDescLoading(false);
+              return;
+            }
           }
         } else if (job.ats_source === "workday" && job.url) {
           const res = await fetch(`/api/jobs/description?url=${encodeURIComponent(job.url)}`);

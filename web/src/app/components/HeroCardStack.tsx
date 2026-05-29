@@ -48,7 +48,7 @@ const CARDS: CardData[] = [
     domain: 'airbnb.com',
     company: 'Airbnb',
     title: 'Senior Software Engineer, Guest & Host',
-    location: 'SF Bay Area · 6h ago',
+    location: 'San Francisco Bay Area · 6h ago',
     salary: 'Salary: $191K — $223K',
     lastLca: 'Last LCA filed: March 2026',
     lcaCount: '1,211 LCAs filed in 2025',

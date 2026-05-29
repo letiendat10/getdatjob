@@ -190,6 +190,19 @@ function normalizeProfile(data: Raw): {
     "education_list"
   ) as Raw[];
 
+  const experiences = experienceRaw.map(normalizeExperience);
+
+  // Headline fallback: if the profile field is blank, build from current role
+  let headline = pick(data, "headline", "title", "occupation", "currentTitle", "summary_heading");
+  if (!headline) {
+    const current = experiences.find(e => e.is_current) ?? experiences[0];
+    if (current?.title && current.title !== "Unknown" && current.company && current.company !== "Unknown") {
+      headline = `${current.title} at ${current.company}`;
+    } else if (current?.title && current.title !== "Unknown") {
+      headline = current.title;
+    }
+  }
+
   return {
     full_name: full,
     first_name: firstName,
@@ -203,12 +216,12 @@ function normalizeProfile(data: Raw): {
       "image",
       "photo"
     ),
-    headline: pick(data, "headline", "title", "occupation", "currentTitle"),
+    headline,
     summary: pick(data, "about", "summary", "description", "bio"),
     location,
     skills: normalizeSkills(data),
     education: educationRaw.map(normalizeEducation),
-    experiences: experienceRaw.map(normalizeExperience),
+    experiences,
   };
 }
 
@@ -277,16 +290,27 @@ export async function importLinkedInFromUrl(
 
   let raw: Raw;
   try {
-    raw = (await res.json()) as Raw;
+    const parsed = await res.json();
+    // ScrapingDog returns either an object or a single-item array — unwrap if needed
+    raw = (Array.isArray(parsed) ? parsed[0] : parsed) as Raw;
   } catch {
     return { status: "error", message: "ScrapingDog returned non-JSON response" };
   }
 
-  // success=false envelope means the profile wasn't found / scrape failed
-  if (raw.success === false) return { status: "not_found" };
-  if (!raw || typeof raw !== "object" || Object.keys(raw).length < 3) {
+  if (!raw || typeof raw !== "object") return { status: "not_found" };
+
+  // success=false envelope: quota exceeded or profile not found
+  if (raw.success === false) {
+    const msg = (raw.message as string | undefined) ?? "";
+    console.error(`[scrapingdog] success=false: ${msg}`);
+    // Treat quota errors as rate_limited so caller can distinguish
+    if (/upgrade|quota|limit|pack/i.test(msg)) return { status: "rate_limited" };
     return { status: "not_found" };
   }
+
+  // Require at least a name or headline to consider this a valid profile
+  const hasData = !!(raw.fullName ?? raw.full_name ?? raw.headline ?? raw.firstName ?? raw.first_name);
+  if (!hasData) return { status: "not_found" };
 
   const profile = normalizeProfile(raw);
 

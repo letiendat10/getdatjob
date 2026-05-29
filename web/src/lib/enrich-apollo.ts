@@ -1,125 +1,102 @@
-// Person enrichment pipeline: PDL first, Apollo.io fallback.
-// Called async via after() in auth/callback — fires after the redirect.
-// Writes to enriched.profiles via enrich_set_result / enrich_set_failed RPCs.
+// Enrichment pipeline: SerpAPI (LinkedIn URL discovery) → ScrapingDog (full profile).
+// PDL and Apollo have been removed — ScrapingDog is the sole enrichment source.
+//
+// After ScrapingDog writes headline + location + work history to linkedin.profiles,
+// we derive job_function / job_level from the headline and call enrich_set_result.
+//
+// Called via after() in auth/linkedin/callback — fires after the redirect.
 //
 // Env vars:
-//   PDL_API_KEY    — People Data Labs (https://www.peopledatalabs.com)
-//   APOLLO_API_KEY — Apollo.io (https://www.apollo.io)
+//   SERP_API_KEY        — SerpAPI (https://serpapi.com) for LinkedIn URL discovery
+//   SCRAPINGDOG_API_KEY — ScrapingDog (https://scrapingdog.com) for profile scraping
 
 import { createSupabaseAdmin } from "./supabase-admin";
 
-const PDL_URL     = "https://api.peopledatalabs.com/v5/person/enrich";
-const APOLLO_URL  = "https://api.apollo.io/api/v1/people/match";
 const SERP_API_URL = "https://serpapi.com/search";
 
-// ── Shared mappings ───────────────────────────────────────────────────────────
+// ── Job function / level mappings ────────────────────────────────────────────
+// Applied to the full lowercase headline string (not just a single role keyword).
 
-const FUNCTION_MAP: Record<string, string> = {
-  engineering:          "Engineering",
-  software:             "Engineering",
-  it:                   "Engineering",
-  product:              "Product",
-  design:               "Design",
-  "data science":       "Data",
-  analytics:            "Data",
-  research:             "Data",
-  sales:                "Sales",
-  "business development": "Sales",
-  marketing:            "Marketing",
-  finance:              "Finance",
-  accounting:           "Finance",
-  operations:           "Operations",
-  "human resources":    "Operations",
-  hr:                   "Operations",
-  legal:                "Other",
-  education:            "Other",
-};
+const FUNCTION_MAP: [string, string][] = [
+  // Engineering
+  ["software",          "Engineering"],
+  ["engineer",          "Engineering"],
+  ["engineering",       "Engineering"],
+  ["developer",         "Engineering"],
+  ["devops",            "Engineering"],
+  ["frontend",          "Engineering"],
+  ["backend",           "Engineering"],
+  ["fullstack",         "Engineering"],
+  ["mobile",            "Engineering"],
+  ["infrastructure",    "Engineering"],
+  ["security",          "Engineering"],
+  // Product
+  ["product manager",   "Product"],
+  ["product management","Product"],
+  ["product",           "Product"],
+  // Design
+  ["design",            "Design"],
+  ["ux",                "Design"],
+  ["ui ",               "Design"],
+  // Data / Research
+  ["machine learning",  "Data"],
+  ["data scientist",    "Data"],
+  ["data engineer",     "Data"],
+  ["data science",      "Data"],
+  ["data analyst",      "Data"],
+  ["analytics",         "Data"],
+  ["research",          "Data"],
+  // Marketing
+  ["growth",            "Marketing"],
+  ["marketing",         "Marketing"],
+  ["brand",             "Marketing"],
+  ["content",           "Marketing"],
+  ["seo",               "Marketing"],
+  ["demand generation", "Marketing"],
+  // Sales / Business Development
+  ["partnerships",      "Sales"],
+  ["business development","Sales"],
+  ["account executive", "Sales"],
+  ["account manager",   "Sales"],
+  ["sales",             "Sales"],
+  ["revenue",           "Sales"],
+  // Finance
+  ["finance",           "Finance"],
+  ["financial",         "Finance"],
+  ["accounting",        "Finance"],
+  ["controller",        "Finance"],
+  // Operations / HR
+  ["operations",        "Operations"],
+  ["human resources",   "Operations"],
+  ["recruiting",        "Operations"],
+  ["talent",            "Operations"],
+  ["hr",                "Operations"],
+  ["supply chain",      "Operations"],
+  ["program manager",   "Operations"],
+  ["project manager",   "Operations"],
+];
 
-const MANAGER_LEVELS = new Set([
-  "manager", "director", "vp", "c_suite", "cxo", "owner", "partner",
-]);
+// Words in a headline that imply a manager/leadership level.
+const MANAGER_HEADLINE_KEYWORDS = [
+  "head of", "chief", "ceo", "cto", "coo", "cfo", "cpo", "cmo",
+  "vp ", "vice president", "director", "manager", "principal",
+  "partner", "owner", "founder", "president", "lead ",
+];
 
-type EnrichResult = {
-  p_location:       string | null;
-  p_current_title:  string | null;
-  p_job_function:   string;
-  p_job_level:      "Senior IC" | "Manager/Lead";
-  resolved_linkedin_url?: string | null;
-};
-
-// ── PDL ───────────────────────────────────────────────────────────────────────
-
-async function tryPDL(
-  linkedinUrl: string | null,
-  email:       string | null,
-  firstName:   string | null,
-  lastName:    string | null,
-): Promise<EnrichResult | null> {
-  const apiKey = process.env.PDL_API_KEY;
-  if (!apiKey) return null;
-
-  const params = new URLSearchParams({ min_likelihood: "6" });
-
-  // LinkedIn URL gives ~88% match rate vs ~55% for email+name
-  if (linkedinUrl) {
-    params.set("profile", linkedinUrl.replace("https://www.", "").replace("https://", ""));
-  } else {
-    if (email)     params.set("email",      email);
-    if (firstName) params.set("first_name", firstName);
-    if (lastName)  params.set("last_name",  lastName);
+function deriveJobFunction(headline: string): string {
+  const h = headline.toLowerCase();
+  for (const [keyword, fn] of FUNCTION_MAP) {
+    if (h.includes(keyword)) return fn;
   }
-
-  try {
-    const res = await fetch(`${PDL_URL}?${params}`, {
-      headers: { "X-Api-Key": apiKey },
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (res.status === 404) return null;
-    if (!res.ok) {
-      const body = await res.text();
-      console.error(`[pdl] API ${res.status}: ${body.slice(0, 500)}`);
-      return null;
-    }
-
-    const data = await res.json() as {
-      data?: {
-        job_title?:        string;
-        job_title_role?:   string;
-        job_title_levels?: string[];
-        location_name?:    string;
-        location_locality?: string;
-        location_region?:  string;
-      };
-    };
-
-    const p = data.data;
-    if (!p) return null;
-
-    const location =
-      p.location_name ??
-      (p.location_locality && p.location_region
-        ? `${p.location_locality}, ${p.location_region}`
-        : p.location_locality ?? null);
-
-    const role   = (p.job_title_role ?? "").toLowerCase();
-    const levels = Array.isArray(p.job_title_levels) ? p.job_title_levels : [];
-
-    console.log(`[pdl] matched`, { title: p.job_title, location });
-
-    return {
-      p_location:      location,
-      p_current_title: p.job_title ?? null,
-      p_job_function:  FUNCTION_MAP[role] ?? "Other",
-      p_job_level:     levels.some(l => MANAGER_LEVELS.has(l.toLowerCase())) ? "Manager/Lead" : "Senior IC",
-    };
-  } catch (err) {
-    console.error("[pdl] fetch error:", err);
-    return null;
-  }
+  return "Other";
 }
 
-// ── SerpAPI (LinkedIn URL discovery via Google Search) ────────────────────────
+function deriveJobLevel(headline: string): "Senior IC" | "Manager/Lead" {
+  const h = headline.toLowerCase();
+  return MANAGER_HEADLINE_KEYWORDS.some(k => h.includes(k)) ? "Manager/Lead" : "Senior IC";
+}
+
+// ── SerpAPI — LinkedIn URL discovery ────────────────────────────────────────
 
 async function trySerpAPI(
   fullName: string,
@@ -129,13 +106,28 @@ async function trySerpAPI(
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) return null;
 
-  // Query: linkedin [full name] [email] [country] — mirrors a manual Google search
+  // Query: "linkedin [full name] [email] [country]" mirrors a manual Google search.
+  // Fetch 10 results and score each /in/ URL against the email local part —
+  // email usernames often embed the LinkedIn slug (e.g. le.tiendat10 → letiendat10).
   const parts = ["linkedin", fullName, email, country].filter(Boolean);
   const q = parts.join(" ");
 
+  // Normalise email local part: strip dots, lowercase
+  const emailLocal = email ? email.split("@")[0].replace(/\./g, "").toLowerCase() : "";
+  const emailLocalNoNumbers = emailLocal.replace(/\d+/g, "");
+
+  function scoreSlug(url: string): number {
+    const slug = url.split("/in/")[1]?.split(/[/?#]/)[0]?.toLowerCase() ?? "";
+    if (!slug) return -1;
+    if (emailLocal && slug === emailLocal) return 3;
+    if (emailLocal && slug.includes(emailLocal)) return 2;
+    if (emailLocalNoNumbers && slug.includes(emailLocalNoNumbers)) return 1;
+    return 0;
+  }
+
   try {
     const res = await fetch(
-      `${SERP_API_URL}?engine=google&q=${encodeURIComponent(q)}&num=1&api_key=${apiKey}`,
+      `${SERP_API_URL}?engine=google&q=${encodeURIComponent(q)}&num=10&api_key=${apiKey}`,
       { signal: AbortSignal.timeout(8000) },
     );
 
@@ -146,87 +138,27 @@ async function trySerpAPI(
     }
 
     const data = await res.json() as { organic_results?: { link: string }[] };
-    const link = data.organic_results?.[0]?.link ?? null;
-    if (!link?.includes("linkedin.com/in/")) return null;
+    const candidates = (data.organic_results ?? [])
+      .map(r => r.link)
+      .filter((l): l is string => !!l?.includes("linkedin.com/in/") && !l.includes("/pub/dir/"));
 
-    console.log(`[serp] resolved linkedin url: ${link}`);
-    return link;
+    if (!candidates.length) {
+      console.log(`[serp] no /in/ candidates among ${data.organic_results?.length ?? 0} results`);
+      return null;
+    }
+
+    const scored = candidates.map(l => ({ l, s: scoreSlug(l) })).sort((a, b) => b.s - a.s);
+    const best = scored[0].s > 0 ? scored[0].l : candidates[0];
+
+    console.log(`[serp] resolved (score ${scored[0].s}): ${best}  [candidates: ${candidates.join(", ")}]`);
+    return best;
   } catch (err) {
     console.error("[serp] fetch error:", err);
     return null;
   }
 }
 
-// ── Apollo.io ─────────────────────────────────────────────────────────────────
-
-async function tryApollo(
-  linkedinUrl: string | null,
-  email:       string | null,
-  firstName:   string | null,
-  lastName:    string | null,
-): Promise<EnrichResult | null> {
-  const apiKey = process.env.APOLLO_API_KEY;
-  if (!apiKey) return null;
-
-  try {
-    const res = await fetch(APOLLO_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Api-Key": apiKey,
-      },
-      body: JSON.stringify({
-        linkedin_url:            linkedinUrl,
-        email,
-        first_name:              firstName,
-        last_name:               lastName,
-        reveal_personal_emails:  false,
-      }),
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!res.ok) {
-      const body = await res.text();
-      console.error(`[apollo] API ${res.status}: ${body.slice(0, 500)}`);
-      return null;
-    }
-
-    const { person } = await res.json() as {
-      person?: {
-        title?:        string;
-        city?:         string;
-        state?:        string;
-        seniority?:    string;
-        departments?:  string[];
-        linkedin_url?: string;
-      };
-    };
-
-    if (!person) return null;
-
-    const location =
-      person.city && person.state ? `${person.city}, ${person.state}` :
-      person.city ?? null;
-
-    const dept      = (person.departments?.[0] ?? "").toLowerCase();
-    const seniority = (person.seniority ?? "").toLowerCase();
-
-    console.log(`[apollo] matched`, { title: person.title, location, linkedin_url: person.linkedin_url });
-
-    return {
-      p_location:            location,
-      p_current_title:       person.title ?? null,
-      p_job_function:        FUNCTION_MAP[dept] ?? "Other",
-      p_job_level:           MANAGER_LEVELS.has(seniority) ? "Manager/Lead" : "Senior IC",
-      resolved_linkedin_url: person.linkedin_url ?? null,
-    };
-  } catch (err) {
-    console.error("[apollo] fetch error:", err);
-    return null;
-  }
-}
-
-// ── Main export ───────────────────────────────────────────────────────────────
+// ── Main export ──────────────────────────────────────────────────────────────
 
 export async function enrichUser(
   userId:      string,
@@ -238,7 +170,7 @@ export async function enrichUser(
 ): Promise<void> {
   const supabase = createSupabaseAdmin();
 
-  // If no LinkedIn URL, try SerpAPI to discover one from name + country
+  // Step 1 — Discover LinkedIn URL via SerpAPI if not already known
   let resolvedUrl = linkedinUrl;
   if (!resolvedUrl) {
     const fullName = [firstName, lastName].filter(Boolean).join(" ");
@@ -255,43 +187,24 @@ export async function enrichUser(
     }
   }
 
-  const pdlResult   = await tryPDL(resolvedUrl, email, firstName, lastName);
-  const apolloResult = pdlResult ? null : await tryApollo(resolvedUrl, email, firstName, lastName);
-  const result      = pdlResult ?? apolloResult;
-
-  // Apollo may have resolved a LinkedIn URL we didn't have yet — save + use it
-  if (!resolvedUrl && apolloResult?.resolved_linkedin_url) {
-    resolvedUrl = apolloResult.resolved_linkedin_url;
-    await supabase
-      .schema("linkedin")
-      .from("profiles")
-      .update({ linkedin_url: resolvedUrl })
-      .eq("id", userId);
-    console.log(`[enrich] apollo resolved linkedin url: ${resolvedUrl}`);
-  }
-
-  // Fire ScrapingDog in the background once we have any LinkedIn URL.
-  // This populates headline + work history in linkedin.profiles even when
-  // PDL/Apollo only returned title/location — no user action needed.
-  if (resolvedUrl) {
-    import("./enrich-scrapingdog")
-      .then(({ importLinkedInFromUrl }) => importLinkedInFromUrl(userId, resolvedUrl!))
-      .then((r) => console.log(`[enrich] scrapingdog: ${r.status}`))
-      .catch((err) => console.error("[enrich] scrapingdog error:", err));
-  }
-
-  if (result) {
-    // Strip our internal field before passing to the RPC
-    const { resolved_linkedin_url: _, ...rpcPayload } = result;
-    const { error } = await supabase.rpc("enrich_set_result", {
-      p_user_id: userId,
-      ...rpcPayload,
-    });
-    if (error) console.error("[enrich] enrich_set_result RPC error:", error);
+  if (!resolvedUrl) {
+    console.warn(`[enrich] ${userId} — no LinkedIn URL found, marking failed`);
+    await supabase.rpc("enrich_set_failed", { p_user_id: userId });
     return;
   }
 
-  console.warn(`[enrich] ${userId} — both PDL and Apollo failed, marking failed`);
-  const { error } = await supabase.rpc("enrich_set_failed", { p_user_id: userId });
-  if (error) console.error("[enrich] enrich_set_failed RPC error:", error);
+  // Step 2 — Queue for Chrome Extension to scrape via real browser DOM.
+  // The extension polls linkedin_import_queue every 30s, opens the LinkedIn page,
+  // extracts headline/location/work history, and POSTs to /api/import-linkedin/from-dom.
+  const { error: queueErr } = await supabase
+    .from("linkedin_import_queue")
+    .insert({ user_id: userId, linkedin_url: resolvedUrl });
+
+  if (queueErr) {
+    console.error(`[enrich] ${userId} — queue insert failed:`, queueErr);
+    await supabase.rpc("enrich_set_failed", { p_user_id: userId });
+  } else {
+    console.log(`[enrich] ${userId} — queued for Chrome extension: ${resolvedUrl}`);
+    // Leave enrich_status as "pending" — the extension will call enrich_set_result when done
+  }
 }

@@ -1,5 +1,9 @@
 import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
+
+// Give after() enough time to finish the enrichment chain
+// (SerpAPI + PDL/Apollo + ScrapingDog can each take ~5-8s)
+export const maxDuration = 60;
 import { createSupabaseAdmin } from "@/lib/supabase-admin";
 import { enrichUser } from "@/lib/enrich-apollo";
 
@@ -37,6 +41,7 @@ type LiProfile = {
   vanityName: string | null;
   linkedinUrl: string | null;
   avatarUrl: string | null;
+  locale: string | null;
 };
 
 async function fetchLinkedInProfile(accessToken: string): Promise<LiProfile> {
@@ -81,6 +86,18 @@ async function fetchLinkedInProfile(accessToken: string): Promise<LiProfile> {
   }
   avatarUrl = avatarUrl ?? (userinfo.picture as string | null) ?? null;
 
+  // LinkedIn locale can be a string ("en_US") or object ({ country: "US", language: "en" })
+  const localeRaw = userinfo.locale;
+  let locale: string | null = null;
+  if (typeof localeRaw === "string") {
+    locale = localeRaw;
+  } else if (localeRaw && typeof localeRaw === "object" && "country" in localeRaw) {
+    const c = (localeRaw as Record<string, string>).country;
+    const l = (localeRaw as Record<string, string>).language;
+    if (l && c) locale = `${l}_${c}`;
+    else if (c) locale = `_${c}`;
+  }
+
   return {
     email: (userinfo.email as string | null) ?? null,
     firstName,
@@ -90,6 +107,7 @@ async function fetchLinkedInProfile(accessToken: string): Promise<LiProfile> {
     vanityName,
     linkedinUrl: vanityName ? `https://www.linkedin.com/in/${vanityName}` : null,
     avatarUrl,
+    locale,
   };
 }
 
@@ -192,7 +210,7 @@ export async function GET(request: NextRequest) {
       profile.firstName,
       profile.lastName,
       profile.linkedinUrl,
-      null
+      profile.locale,
     );
   });
 

@@ -997,7 +997,11 @@ export default function KaiFirstPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(400);
 
-      // Re-fetch headline — by Q3 answer time (~20-25s in) SERP + extension have run.
+      // Re-fetch headline — wait a moment to give the extension extra time to finish.
+      // Extension starts during the OAuth redirect, so by ~25s it should be done.
+      // The extra 3s here ensures we don't race against it.
+      await delay(3000);
+
       let freshHeadline = linkedIn?.headline ?? null;
       if (!freshHeadline && user) {
         const supa = createSupabaseBrowser();

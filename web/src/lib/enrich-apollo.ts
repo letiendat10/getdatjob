@@ -110,7 +110,7 @@ function extractSerpHeadline(serpTitle: string): string | null {
   return match?.[1]?.trim() || null;
 }
 
-async function trySerpAPI(
+export async function trySerpAPI(
   fullName: string,
   email:    string | null,
   country:  string | null,

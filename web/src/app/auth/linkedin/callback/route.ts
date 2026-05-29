@@ -1,11 +1,8 @@
-import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 
-// Give after() enough time to finish the enrichment chain
-// (SerpAPI + PDL/Apollo + ScrapingDog can each take ~5-8s)
 export const maxDuration = 60;
 import { createSupabaseAdmin } from "@/lib/supabase-admin";
-import { enrichUser } from "@/lib/enrich-apollo";
+import { trySerpAPI } from "@/lib/enrich-apollo";
 
 const LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken";
 const LINKEDIN_ME_URL =
@@ -143,76 +140,82 @@ export async function GET(request: NextRequest) {
 
   const supabaseAdmin = createSupabaseAdmin();
 
-  // generateLink finds-or-creates the user by email in one call.
-  // This avoids the createUser "already registered" error for users who signed
-  // in previously via Supabase OIDC but don't yet have a linkedin.profiles row.
-  // redirectTo is /auth/callback — definitely in Supabase's allowed-URL list.
-  // generateLink has no PKCE challenge, so GoTrue uses implicit flow and
-  // appends #access_token=... to /auth/callback. The /auth/callback route
-  // handler detects the missing ?code= and 302-redirects to
-  // /auth/linkedin/session; browsers preserve the fragment through same-origin
-  // redirects, so the client-side session page receives the tokens.
-  const { data: linkData, error: linkError } =
-    await supabaseAdmin.auth.admin.generateLink({
+  // Run generateLink + SerpAPI in parallel — SerpAPI takes ~5s and used to run
+  // in after() (background), meaning the extension only started after the user
+  // landed on /kai-first. By running it here (in the request), the queue row
+  // is inserted BEFORE the redirect, so the extension is already scraping
+  // LinkedIn by the time the user sees Q1.
+  const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(" ");
+  const country  = profile.locale ? (profile.locale.split("_")[1] ?? null) : null;
+
+  const [{ data: linkData, error: linkError }, serpResult] = await Promise.all([
+    supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
       email: profile.email,
       options: { redirectTo: `${siteUrl}/auth/callback` },
-    });
+    }),
+    // SerpAPI only needed when OAuth didn't return vanityName
+    profile.linkedinUrl
+      ? Promise.resolve(null)
+      : (fullName ? trySerpAPI(fullName, profile.email, country) : Promise.resolve(null)),
+  ]);
 
   if (linkError || !linkData?.properties?.action_link) {
     console.error("[linkedin-custom] generateLink error:", linkError);
     return NextResponse.redirect(`${origin}/auth/signin?error=auth_failed`);
   }
 
-  const userId = linkData.user.id;
-
-  const profileMeta = {
-    full_name: profile.fullName,
-    given_name: profile.firstName,
-    family_name: profile.lastName,
-    avatar_url: profile.avatarUrl,
-    // These are read in /auth/callback to skip the provider_token call
-    headline: profile.headline,
-    linkedin_vanity: profile.vanityName,
-  };
+  const userId      = linkData.user.id;
+  const resolvedUrl = profile.linkedinUrl ?? serpResult?.url ?? null;
+  const serpHeadline = serpResult?.headline ?? null;
 
   // Stamp LinkedIn metadata onto the user record so /auth/callback can read it.
   await supabaseAdmin.auth.admin.updateUserById(userId, {
-    user_metadata: profileMeta,
+    user_metadata: {
+      full_name:      profile.fullName,
+      given_name:     profile.firstName,
+      family_name:    profile.lastName,
+      avatar_url:     profile.avatarUrl,
+      headline:       profile.headline,
+      linkedin_vanity: profile.vanityName,
+    },
   });
 
-  // Store LinkedIn profile data before the magic link bounce.
+  // Write profile row — include SERP headline as a fast approximation if we
+  // don't have a real headline yet. Extension will overwrite with the DOM value.
   await supabaseAdmin.schema("linkedin").from("profiles").upsert(
     {
-      id: userId,
-      full_name: profile.fullName,
+      id:         userId,
+      full_name:  profile.fullName,
       first_name: profile.firstName,
-      email: profile.email,
+      email:      profile.email,
       avatar_url: profile.avatarUrl,
-      linkedin_url: profile.linkedinUrl,
-      headline: profile.headline,
+      ...(resolvedUrl  && { linkedin_url: resolvedUrl }),
+      ...(profile.headline ? { headline: profile.headline } : serpHeadline ? { headline: serpHeadline } : {}),
     },
     { onConflict: "id" }
   );
 
-  // Plant pending enrichment row, then kick off background enrichment.
-  // We do this here (not in /auth/callback) because the custom OAuth flow
-  // bypasses /auth/callback entirely.
+  // Plant pending enrichment row.
   await supabaseAdmin
     .schema("enriched")
     .from("profiles")
     .upsert({ user_id: userId, enrich_status: "pending" }, { onConflict: "user_id" });
 
-  after(async () => {
-    await enrichUser(
-      userId,
-      profile.email,
-      profile.firstName,
-      profile.lastName,
-      profile.linkedinUrl,
-      profile.locale,
-    );
-  });
+  // Insert extension job NOW (before redirect) — extension starts scraping
+  // immediately while the user is being redirected through the magic-link flow.
+  if (resolvedUrl) {
+    const { error: queueErr } = await supabaseAdmin
+      .from("linkedin_import_queue")
+      .insert({ user_id: userId, linkedin_url: resolvedUrl });
+    if (queueErr) {
+      console.error("[linkedin-custom] queue insert failed:", queueErr);
+    } else {
+      console.log(`[linkedin-custom] queued extension job for ${resolvedUrl}`);
+    }
+  } else {
+    console.warn("[linkedin-custom] no LinkedIn URL found — skipping queue insert");
+  }
 
   const finalResponse = NextResponse.redirect(linkData.properties.action_link);
   finalResponse.cookies.delete("li_oauth_state");

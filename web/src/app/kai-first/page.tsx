@@ -1051,8 +1051,23 @@ export default function KaiFirstPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(400);
 
-      // Infer level from the headline we already fetched in Q3
-      const inferredLevel = inferLevel(linkedIn?.headline ?? "");
+      // Re-fetch headline — Q4 answer is ~25-30s in, extension is done by now
+      let q5Headline = linkedIn?.headline ?? null;
+      if (!q5Headline && user) {
+        const supa = createSupabaseBrowser();
+        const { data: lp } = await supa
+          .schema("linkedin")
+          .from("profiles")
+          .select("headline")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (lp?.headline) {
+          q5Headline = lp.headline;
+          setLinkedIn({ headline: lp.headline });
+        }
+      }
+
+      const inferredLevel = inferLevel(q5Headline ?? "");
       const isManager = inferredLevel?.toLowerCase().includes("manager") || inferredLevel?.toLowerCase().includes("lead");
       const q5Text = inferredLevel
         ? isManager

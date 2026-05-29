@@ -88,7 +88,7 @@ const DOMAIN_OVERRIDES: Record<string, string> = { block: "block.xyz" };
 
 function normalizeCompanyName(name: string): string {
   const cleaned = name
-    .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|corporation|corp\.?|limited|ltd\.?|co\.|l\.p\.?|\blp\b|pbc|p\.c\.|pllc)\.?\s*$/i, "")
+    .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|corporation|corp\.?|limited|ltd\.?|co\.|l\.p\.?|\blp\b|pbc|p\.c\.|pllc|\bopco\b)\.?\s*$/i, "")
     .trim();
   const letters = cleaned.replace(/[^a-zA-Z]/g, "");
   if (letters.length > 0 && letters === letters.toUpperCase()) {
@@ -185,13 +185,15 @@ function inferDepartment(title: string | null): string | null {
 }
 
 function inferLevel(title: string): string | null {
+  if (!title) return null;
   const t = title.toLowerCase();
   if (/\b(intern|internship)\b/.test(t)) return "Intern";
   if (/\b(junior|jr\.?|entry[- ]level|associate(?! director| product))\b/.test(t)) return "Junior";
   if (/\b(principal|staff engineer|distinguished|fellow)\b/.test(t)) return "Principal / Staff";
   if (/\b(senior|sr\.?)\b/.test(t)) return "Senior";
   if (/\b(lead|manager|director|head of|vp\b|vice president)\b/.test(t)) return "Lead / Manager";
-  return null;
+  // Default to Senior IC when headline exists but no level keywords found
+  return "Senior IC";
 }
 
 interface Greeting {
@@ -396,8 +398,9 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const isVerified = job.visa_tier === "verified";
   const isFriendly = job.visa_tier === "friendly";
   const lcaLastFiled = formatLcaDate(job.lca_last_filed);
+  const [apiSalary, setApiSalary] = useState<string | null>(null);
   const extractedSalary = useMemo(() => extractPostedSalary(descHtml || descText), [descHtml, descText]);
-  const postedSalary = job.salary_range || extractedSalary;
+  const postedSalary = job.salary_range || apiSalary || extractedSalary;
   const [saved, setSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -420,14 +423,24 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
     setDescLoading(true);
     setDescHtml("");
     setDescText("");
+    setApiSalary(null);
     (async () => {
       try {
-        // Amazon + Workday: fetch live via proxy for full, formatted description
+        // Amazon + Ashby + Workday: fetch live via proxy for full, formatted description
         if (job.ats_source === "amazon" && job.ats_job_id) {
           const res = await fetch(`/api/jobs/description?source=amazon&job_id=${encodeURIComponent(job.ats_job_id)}`);
           if (res.ok) {
             const { html } = await res.json();
             if (html) { setDescHtml(html); setDescLoading(false); return; }
+          }
+        } else if (job.ats_source === "ashby" && job.ats_job_id) {
+          const res = await fetch(`/api/jobs/description?source=ashby&job_id=${encodeURIComponent(job.ats_job_id)}`);
+          if (res.ok) {
+            const { html, salary } = await res.json();
+            if (html) { setDescHtml(html); }
+            if (salary) { setApiSalary(salary); }
+            setDescLoading(false);
+            return;
           }
         } else if (job.ats_source === "workday" && job.url) {
           const res = await fetch(`/api/jobs/description?url=${encodeURIComponent(job.url)}`);
@@ -980,15 +993,24 @@ export default function KaiFirstPage() {
         }
       }
       const inferredLevel = inferLevel(q4Headline ?? "");
+      const isManager = inferredLevel?.toLowerCase().includes("manager") || inferredLevel?.toLowerCase().includes("lead");
       const q4Text = inferredLevel
-        ? `Based on your title, looks like ${inferredLevel} – is that right?`
+        ? isManager
+          ? `Looks like you're in a manager role based on your profile — staying that path, or open to IC work too?`
+          : `Looks like you're a ${inferredLevel} based on your profile — planning to stay that route, or open to people management?`
         : "Senior IC, or ready to lead a team?";
       const q4Replies: QR[] = inferredLevel
-        ? [
-            { label: "That's right", value: inferredLevel.toLowerCase().includes("manager") || inferredLevel.toLowerCase().includes("lead") ? "manager" : "senior_ic" },
-            { label: "Actually Manager / Lead", value: "manager" },
-            { label: "Either works", value: "either" },
-          ]
+        ? isManager
+          ? [
+              { label: "Staying Manager / Lead", value: "manager"   },
+              { label: "Open to IC too",          value: "senior_ic" },
+              { label: "Either works",            value: "either"    },
+            ]
+          : [
+              { label: `Staying ${inferredLevel}`, value: "senior_ic" },
+              { label: "Open to Manager / Lead",   value: "manager"   },
+              { label: "Either works",             value: "either"    },
+            ]
         : [
             { label: "Senior IC",       value: "senior_ic" },
             { label: "Manager / Lead",  value: "manager"   },
@@ -1078,14 +1100,14 @@ export default function KaiFirstPage() {
         updatedIntake.locationMode === "anywhere" ? "anywhere in the US" :
         updatedIntake.location ?? "all locations";
 
-      const filterTokens = [dept, locStr, salaryStr, levelStr, "last 3 days"].filter(Boolean);
+      const filterTokens = [dept, locStr, salaryStr, levelStr].filter(Boolean);
 
       setMessages((prev) => [
         ...prev,
         {
           id: "k-scan-announce",
           role: "assistant",
-          content: `Running a pass across ${filterTokens.join(" · ")}.\n\nGive me a sec – I'll come back with whatever's worth your time.`,
+          content: `Running a pass across ${filterTokens.join(" · ")}.\n\nI'm looking at the last 3 days – so everything I bring back is fresh. Give me a sec.`,
         },
       ]);
       setStep("scanning");

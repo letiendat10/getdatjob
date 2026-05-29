@@ -86,6 +86,15 @@ export async function POST(req: NextRequest) {
   // 1. Write to linkedin.profiles
   const headline = data.headline?.trim() || null;
 
+  // Reject single-word location values — these are almost always company names
+  // (e.g. "Caffeine", "Google") not cities. Real locations are multi-word or "Remote".
+  const location = (() => {
+    const raw = data.location?.trim() || null;
+    if (!raw) return null;
+    if (!raw.includes(" ") && !/^remote$/i.test(raw)) return null;
+    return raw;
+  })();
+
   // Headline fallback: build from current experience if blank
   let resolvedHeadline = headline;
   if (!resolvedHeadline && data.experiences.length > 0) {
@@ -106,7 +115,7 @@ export async function POST(req: NextRequest) {
         ...(linkedinUrl        && { linkedin_url: linkedinUrl }),
         ...(data.fullName      && { full_name:    data.fullName }),
         ...(resolvedHeadline   && { headline:     resolvedHeadline }),
-        ...(data.location      && { location:     data.location }),
+        ...(location           && { location }),
         linkedin_data_source:  "dom",
         linkedin_imported_at:  new Date().toISOString(),
       },
@@ -137,19 +146,19 @@ export async function POST(req: NextRequest) {
   const titleForDerive = resolvedHeadline ?? "";
   const { error: enrichErr } = await supabase.rpc("enrich_set_result", {
     p_user_id:       userId,
-    p_location:      data.location ?? null,
+    p_location:      location,
     p_current_title: resolvedHeadline ?? null,
     p_job_function:  deriveJobFunction(titleForDerive),
     p_job_level:     deriveJobLevel(titleForDerive),
   });
   if (enrichErr) console.error("[from-dom] enrich_set_result error:", enrichErr);
 
-  console.log(`[from-dom] ${userId} ✓ headline="${resolvedHeadline}" location="${data.location}" exp=${data.experiences.length}`);
+  console.log(`[from-dom] ${userId} ✓ headline="${resolvedHeadline}" location="${location}" exp=${data.experiences.length}`);
 
   return Response.json({
     ok: true,
     headline: resolvedHeadline,
-    location: data.location,
+    location,
     experiences: data.experiences.length,
   });
 }

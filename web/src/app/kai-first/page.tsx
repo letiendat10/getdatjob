@@ -1122,7 +1122,10 @@ export default function KaiFirstPage() {
           .select("location")
           .eq("id", authUser.id)
           .maybeSingle();
-        knownLocation = lp?.location ?? null;
+        const raw = lp?.location ?? null;
+        // Discard single-word values — company names (e.g. "Caffeine") stored
+        // by older enrichment runs before the server-side guard was added.
+        knownLocation = raw && (raw.includes(" ") || /^remote$/i.test(raw)) ? raw : null;
       }
 
       const q6Text = knownLocation

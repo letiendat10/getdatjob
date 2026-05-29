@@ -23,7 +23,7 @@ export const KAI_TOOLS: Tool[] = [
         location: {
           type: "string",
           description:
-            'Location filter — "remote", a US city name (e.g. "San Francisco"), or a state abbreviation (e.g. "CA")',
+            'Location filter — "remote" for remote jobs, a US city name (e.g. "San Francisco"), or a US state abbreviation (e.g. "CA"). OMIT this parameter entirely (do not pass it) when the user is open to any location, nationwide, or "anywhere".',
         },
         department: {
           type: "string",
@@ -137,8 +137,10 @@ export async function handleSearchJobs(input: SearchJobsInput) {
     ? (INDUSTRY_COMPANY_KEYWORDS[input.industry.toLowerCase().replace(/[^a-z0-9]/g, "")] ?? [input.industry.toLowerCase()])
     : null;
 
-  // Location — "remote" stays as-is; everything else is passed through
-  const location = input.location ? input.location.toLowerCase().trim() : null;
+  // Location — normalize "anywhere" phrases to null (no filter); "remote" stays as-is
+  const rawLocation = input.location ? input.location.toLowerCase().trim() : null;
+  const ANYWHERE_PHRASES = ["anywhere", "us", "usa", "united states", "united states of america", "nationwide", "open anywhere", "anywhere in the us", "anywhere in the usa"];
+  const location = rawLocation && !ANYWHERE_PHRASES.includes(rawLocation) ? rawLocation : null;
 
   // search_jobs_kai RPC deduplicates by company at the SQL level, so a single
   // bulk-posting employer (e.g. Lowe's 19K jobs, Amazon 10K jobs) can't crowd

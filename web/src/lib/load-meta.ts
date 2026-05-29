@@ -17,6 +17,7 @@ export async function loadMeta() {
 
   return {
     companies,
+    weekCount:     statsRow?.week_count      ?? 0,
     threeDayCount: statsRow?.three_day_count ?? 0,
     totalCount:    statsRow?.total_count     ?? 0,
   };

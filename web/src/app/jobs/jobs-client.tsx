@@ -989,7 +989,24 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
         .then((data) => {
           const txt = document.createElement("textarea");
           txt.innerHTML = data.content ?? "";
-          setDescCache((c) => ({ ...c, [sid]: { html: txt.value, text: "" } }));
+          // Greenhouse pay_range (min_cents/max_cents) — separate from content HTML
+          let ghSalary: string | undefined;
+          const pr = data.pay_range;
+          if (pr?.min_cents != null && pr?.max_cents != null) {
+            const fmt = (c: number) => "$" + Math.round(c / 100).toLocaleString("en-US");
+            ghSalary = `${fmt(pr.min_cents)} – ${fmt(pr.max_cents)}`;
+          }
+          // Fallback: salary_range in metadata custom fields
+          if (!ghSalary && Array.isArray(data.metadata)) {
+            for (const m of data.metadata as Array<{value_type?: string; value?: {min_value?: string; max_value?: string}}>) {
+              if (m.value_type === "salary_range" && m.value?.min_value && m.value?.max_value) {
+                const fmt2 = (v: string) => "$" + Number(v).toLocaleString("en-US");
+                ghSalary = `${fmt2(m.value.min_value)} – ${fmt2(m.value.max_value)}`;
+                break;
+              }
+            }
+          }
+          setDescCache((c) => ({ ...c, [sid]: { html: txt.value, text: "", ...(ghSalary ? { salary: ghSalary } : {}) } }));
           setDescLoading(false);
         })
         .catch(async () => {

@@ -167,6 +167,42 @@ def strip_html(html: str) -> str:
     return BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
 
 
+_SAL_DASH = re.compile(r'\$[\d,]+(?:\.\d+)?K?\s*[–—\-]+\s*\$[\d,]+(?:\.\d+)?K?')
+_SAL_TO   = re.compile(r'(\$[\d,]+(?:\.\d+)?K?)\s+to\s+(\$[\d,]+(?:\.\d+)?K?)', re.I)
+_SAL_USD  = re.compile(r'([\d,]{6,}(?:\.\d+)?)\s*USD\s*[–—\-]+\s*([\d,]{6,}(?:\.\d+)?)\s*USD', re.I)
+
+def extract_salary(html: str) -> str | None:
+    """Extract salary range from a job description (HTML or plain text).
+
+    Tries the Greenhouse pay-range div structure first, then falls back to
+    regex on plain text so it works for any ATS whose description contains
+    dollar amounts inline.
+    """
+    if not html:
+        return None
+    soup = BeautifulSoup(html, "html.parser")
+    # Greenhouse content-pay-transparency block
+    pay_div = soup.find("div", class_="pay-range")
+    if pay_div:
+        spans = [s.get_text(strip=True) for s in pay_div.find_all("span")
+                 if "divider" not in (s.get("class") or [])]
+        dollar = [s for s in spans if s.startswith("$") or (s and s[0].isdigit())]
+        if len(dollar) >= 2:
+            max_val = dollar[-1].removesuffix(" USD").strip()
+            return f"{dollar[0]} – {max_val}"
+    text = soup.get_text(" ", strip=True)
+    m = _SAL_DASH.search(text)
+    if m:
+        return m.group(0).strip()
+    m = _SAL_TO.search(text)
+    if m:
+        return f"{m.group(1)} – {m.group(2)}"
+    m = _SAL_USD.search(text)
+    if m:
+        return f"${m.group(1)} – ${m.group(2)}"
+    return None
+
+
 def check_sponsorship(text: str) -> str | None:
     """Returns 'no_sponsor', 'sponsors', or None."""
     lower = text.lower()
@@ -199,13 +235,24 @@ def fetch_greenhouse(slug: str) -> list[dict]:
         loc = (j.get("location") or {}).get("name", "")
         if is_non_us_location(loc):
             continue
+        content_html = j.get("content", "")
+        # Structured pay_input_ranges takes priority; fall back to HTML extraction
+        salary = None
+        for pr in j.get("pay_input_ranges", []):
+            min_c, max_c = pr.get("min_cents"), pr.get("max_cents")
+            if min_c and max_c:
+                salary = f"${round(min_c / 100):,} – ${round(max_c / 100):,}"
+                break
+        if not salary:
+            salary = extract_salary(content_html)
         jobs.append({
             "ats_job_id": str(j["id"]),
             "title": j.get("title", ""),
             "location": loc,
             "url": j.get("absolute_url", ""),
             "posted_at": parse_iso(j.get("updated_at")),
-            "description_text": strip_html(j.get("content", "")),
+            "description_text": strip_html(content_html),
+            "salary_range": salary,
         })
     return jobs
 
@@ -221,13 +268,15 @@ def fetch_lever(slug: str) -> list[dict]:
             continue
         created_ms = j.get("createdAt", 0)
         posted_at = datetime.fromtimestamp(created_ms / 1000, tz=timezone.utc).isoformat() if created_ms else None
+        desc_html = j.get("descriptionBody", "")
         jobs.append({
             "ats_job_id": j.get("id", ""),
             "title": j.get("text", ""),
             "location": loc,
             "url": j.get("hostedUrl", ""),
             "posted_at": posted_at,
-            "description_text": strip_html(j.get("descriptionBody", "")),
+            "description_text": strip_html(desc_html),
+            "salary_range": extract_salary(desc_html),
         })
     return jobs
 
@@ -241,13 +290,15 @@ def fetch_ashby(slug: str) -> list[dict]:
         loc = j.get("location") or ""
         if is_non_us_location(loc):
             continue
+        desc_html = j.get("descriptionHtml", "")
         jobs.append({
             "ats_job_id": j.get("id", ""),
             "title": j.get("title", ""),
             "location": loc,
             "url": j.get("jobUrl", ""),
             "posted_at": parse_iso(j.get("publishedAt")) or datetime.now(timezone.utc).isoformat(),
-            "description_text": strip_html(j.get("descriptionHtml", "")),
+            "description_text": strip_html(desc_html),
+            "salary_range": extract_salary(desc_html),
         })
     return jobs
 
@@ -313,7 +364,8 @@ def fetch_workable(slug: str) -> list[dict]:
         loc = (j.get("location") or {}).get("location_str", "")
         if is_non_us_location(loc):
             continue
-        desc = strip_html(j.get("description", "") + j.get("requirements", ""))
+        desc_html = j.get("description", "") + j.get("requirements", "")
+        desc = strip_html(desc_html)
         jobs.append({
             "ats_job_id": j.get("shortcode", ""),
             "title": j.get("title", ""),
@@ -321,6 +373,7 @@ def fetch_workable(slug: str) -> list[dict]:
             "url": j.get("url", ""),
             "posted_at": parse_iso(j.get("created_at")),
             "description_text": desc,
+            "salary_range": extract_salary(desc_html),
         })
     return jobs
 
@@ -393,13 +446,15 @@ def fetch_amazon(_slug: str) -> list[dict]:
                 desc_parts.append(f"Basic Qualifications\n{basic}")
             if preferred:
                 desc_parts.append(f"Preferred Qualifications\n{preferred}")
+            desc_text = "\n\n".join(p for p in desc_parts if p)[:8000]
             jobs.append({
                 "ats_job_id": str(j.get("id_icims", j.get("id", ""))),
                 "title": j.get("title", ""),
                 "location": j.get("location", ""),
                 "url": f"{base}{path}" if path else "",
                 "posted_at": parse_iso(j.get("posted_date")) or datetime.now(timezone.utc).isoformat(),
-                "description_text": "\n\n".join(p for p in desc_parts if p)[:8000],
+                "description_text": desc_text,
+                "salary_range": extract_salary(desc_text),
             })
         if len(batch) < limit:
             break
@@ -514,7 +569,8 @@ def fetch_jibe(slug: str) -> list[dict]:
             req_id = d.get("req_id") or d.get("slug", "")
             title = d.get("title", "")
             location = d.get("full_location") or d.get("location_name", "")
-            desc = strip_html(d.get("description", ""))
+            desc_html = d.get("description", "")
+            desc = strip_html(desc_html)
             posted = d.get("posted_date")
             job_url = f"{base_url}/careers-home/jobs/{req_id}"
             jobs.append({
@@ -524,6 +580,7 @@ def fetch_jibe(slug: str) -> list[dict]:
                 "url": job_url,
                 "posted_at": parse_iso(posted) if posted else None,
                 "description_text": desc[:8000],
+                "salary_range": extract_salary(desc_html),
             })
         if len(batch) < limit:
             break
@@ -624,6 +681,7 @@ if __name__ == "__main__":
                 "ats_source": ats,
                 "ats_job_id": j["ats_job_id"],
                 "description_text": j["description_text"],
+                "salary_range": j.get("salary_range"),
                 "is_active": True,
                 "last_seen_at": datetime.now(timezone.utc).isoformat(),
             })

@@ -427,9 +427,6 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
               Salary: {job.salary_range}
             </span>
           )}
-          {!job.salary_range && job.salary_estimate && job.salary_estimate > 50000 && (
-            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{formatSalary(job.salary_estimate)}</span>
-          )}
           {isVerified && (
             <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
               <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">

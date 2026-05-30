@@ -386,29 +386,41 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
           <span>{[job.location, posted ? `Posted ${posted}` : null].filter(Boolean).join(" · ")}</span>
         </div>
       )}
-      <div className="flex flex-wrap gap-1.5">
-        {job.salary_range && (
-          <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-            Salary: {job.salary_range}
-          </span>
-        )}
-        {!job.salary_range && job.salary_estimate && job.salary_estimate > 50000 && (
-          <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{formatSalary(job.salary_estimate)}</span>
-        )}
-        {isVerified && (
-          <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
-            <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
-              Verified LCA Filings With Similar Job Title
+      {(job.salary_range || (job.salary_estimate && job.salary_estimate > 50000) || isVerified || isFriendly) && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
+          {job.salary_range && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+              Salary: {job.salary_range}
             </span>
-          </span>
-        )}
-        {isFriendly && (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">H-1B Friendly Employer</span>
-        )}
-        {lcaLastFiled && (
-          <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">Last LCA: {lcaLastFiled}</span>
-        )}
-      </div>
+          )}
+          {!job.salary_range && job.salary_estimate && job.salary_estimate > 50000 && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{formatSalary(job.salary_estimate)}</span>
+          )}
+          {isVerified && (
+            <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
+              <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
+                Verified LCA Filings With Similar Job Title
+              </span>
+            </span>
+          )}
+          {isFriendly && (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">H-1B Friendly Employer</span>
+          )}
+        </div>
+      )}
+      {(lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0) || formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)) && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
+          {lcaLastFiled && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">Last LCA filed in {lcaLastFiled}</span>
+          )}
+          {job.lca_count_2025 && job.lca_count_2025 > 0 && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{job.lca_count_2025} LCA filings in 2025</span>
+          )}
+          {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1018,7 +1030,7 @@ export default function KaiPayPage() {
   // ── Alert opt-in handler — triggers the scan after user answers ───────────────
 
   const handleAlertOptin = async (value: string) => {
-    const label = value === "yes" ? "Yes, sign me up for freshest job alert" : "No, I don't want to be updated";
+    const label = value === "yes" ? "Absolutely, keep me updated on new matches" : "No thanks, I'll check manually";
     setMessages((prev) => [...prev, {
       id: `u-alert-${Date.now()}`,
       role: "user",
@@ -1254,8 +1266,8 @@ export default function KaiPayPage() {
               <div className={s["inline-stem"]} />
               <div className={s["inline-tree"]}>
                 {[
-                  { label: "Yes, sign me up for freshest job alert", value: "yes" },
-                  { label: "No, I don't want to be updated", value: "no" },
+                  { label: "Absolutely, keep me updated on new matches", value: "yes" },
+                  { label: "No thanks, I'll check manually", value: "no" },
                 ].map((qr, i, arr) => (
                   <div key={qr.value} className={i === arr.length - 1 ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}` : s["inline-tree-item"]}>
                     <button className={s["inline-chip"]} onClick={() => handleAlertOptin(qr.value)}>{qr.label}</button>

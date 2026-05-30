@@ -9,6 +9,7 @@ import {
   Share2, ArrowLeft, CheckCircle, Bookmark,
 } from "lucide-react";
 import type { JobRow } from "@/lib/query-jobs";
+import { getTnCategory } from "@/lib/tn-eligible";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -193,9 +194,12 @@ function decodeHtmlEntities(s: string): string {
 }
 function extractSalary(html: string): string | null {
   const text = decodeHtmlEntities(html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  // $NNN,NNN – $NNN,NNN
+  // $NNN,NNN – $NNN,NNN (dash separator)
   const dollarRange = text.match(/\$[\d,]+(?:\.\d+)?K?\s*[–—\-]+\s*\$[\d,]+(?:\.\d+)?K?/i);
   if (dollarRange) return dollarRange[0].replace(/\s+/g, " ").trim();
+  // $NNN,NNN to $NNN,NNN (word separator, e.g. CoreWeave)
+  const dollarTo = text.match(/(\$[\d,]+(?:\.\d+)?K?)\s+to\s+(\$[\d,]+(?:\.\d+)?K?)/i);
+  if (dollarTo) return `${dollarTo[1]} – ${dollarTo[2]}`;
   // NNN,NNN USD – NNN,NNN USD (Workday/Nvidia style)
   const usdRange = text.match(/([\d,]{6,}(?:\.\d+)?)\s*USD\s*[–—\-]+\s*([\d,]{6,}(?:\.\d+)?)\s*USD/i);
   if (usdRange) return `$${usdRange[1]} – $${usdRange[2]}`;
@@ -540,6 +544,7 @@ function JobCard({ job, isSelected, isViewed, isFilled, onClick }: {
   const posted = timeAgo(job.posted_at);
   const isVerified = job.confidence_tier === "verified";
   const isFriendly = job.confidence_tier === "friendly";
+  const tnCategory = getTnCategory(job.title);
   return (
     <div
       onClick={onClick}
@@ -582,6 +587,11 @@ function JobCard({ job, isSelected, isViewed, isFilled, onClick }: {
               H-1B Friendly Employer
             </span>
           )}
+          {tnCategory && (
+            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-700">
+              TN eligible
+            </span>
+          )}
           {isViewed && <span className="text-xs text-zinc-400">Viewed</span>}
         </div>
       </div>
@@ -597,7 +607,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
   const lastFiling = formatLastFiling(job.last_filing_date);
   const posted = timeAgo(job.posted_at);
   const extractedSalary = useMemo(() => extractSalary(descHtml), [descHtml]);
-  const salary = salaryOverride ?? extractedSalary;
+  const salary = salaryOverride ?? job.salary_range ?? extractedSalary;
   const experience = useMemo(() => extractExperience(descHtml), [descHtml]);
   const level = inferLevel(job.title);
   const department = inferDepartment(job.title);
@@ -954,19 +964,6 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
       (async () => {
         try {
           const res = await fetch(`/api/jobs/description?url=${encodeURIComponent(jobUrl)}`);
-          const json = res.ok ? await res.json() : {};
-          setDescCache((c) => ({ ...c, [sid]: { html: json.html ?? "", text: json.text ?? "" } }));
-        } catch {
-          setDescCache((c) => ({ ...c, [sid]: { html: "", text: "" } }));
-        }
-        setDescLoading(false);
-      })();
-    } else if (job.ats_source === "amazon" && job.ats_job_id) {
-      const sid = selectedJobId;
-      const jobId = job.ats_job_id;
-      (async () => {
-        try {
-          const res = await fetch(`/api/jobs/description?source=amazon&job_id=${encodeURIComponent(jobId)}`);
           const json = res.ok ? await res.json() : {};
           setDescCache((c) => ({ ...c, [sid]: { html: json.html ?? "", text: json.text ?? "" } }));
         } catch {

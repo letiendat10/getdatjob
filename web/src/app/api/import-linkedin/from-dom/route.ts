@@ -86,12 +86,13 @@ export async function POST(req: NextRequest) {
   // 1. Write to linkedin.profiles
   const headline = data.headline?.trim() || null;
 
-  // Reject single-word location values — these are almost always company names
-  // (e.g. "Caffeine", "Google") not cities. Real locations are multi-word or "Remote".
+  // Only accept geographic locations — reject company names (single-word) and
+  // institution names (university/college/school etc.) that appear in the same DOM slot.
   const location = (() => {
     const raw = data.location?.trim() || null;
     if (!raw) return null;
     if (!raw.includes(" ") && !/^remote$/i.test(raw)) return null;
+    if (/university|college|school|institute|academy|polytechnic/i.test(raw)) return null;
     return raw;
   })();
 

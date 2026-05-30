@@ -1190,9 +1190,14 @@ export default function KaiFirstPage() {
           .eq("id", authUser.id)
           .maybeSingle();
         const raw = lp?.location ?? null;
-        // Discard single-word values — company names (e.g. "Caffeine") stored
-        // by older enrichment runs before the server-side guard was added.
-        knownLocation = raw && (raw.includes(" ") || /^remote$/i.test(raw)) ? raw : null;
+        // Discard non-geographic values: single-word company names and institution names
+        // (universities appear in the same DOM slot as the city for student profiles).
+        knownLocation =
+          raw &&
+          (raw.includes(" ") || /^remote$/i.test(raw)) &&
+          !/university|college|school|institute|academy|polytechnic/i.test(raw)
+            ? raw
+            : null;
       }
 
       const q6Text = knownLocation
@@ -1583,7 +1588,7 @@ export default function KaiFirstPage() {
                 );
               } else if (event.type === "done") {
                 setMessages((prev) =>
-                  prev.map((m) => m.id === thinkingId ? { ...m, isStreaming: false } : m)
+                  prev.map((m) => m.id === thinkingId ? { ...m, isThinking: false, isStreaming: false } : m)
                 );
                 if (receivedJobs) setShowPostChips(true);
               }

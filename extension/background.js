@@ -96,6 +96,8 @@ function extractProfile() {
       // Skip single-word values — these are almost always company names (e.g. "Caffeine"),
       // not locations. Real locations are multi-word ("San Francisco Bay Area") or "Remote".
       if (!t.includes(' ') && !/^remote$/i.test(t)) continue;
+      // Skip institution names — universities/schools appear in the same DOM slot for students.
+      if (/university|college|school|institute|academy|polytechnic/i.test(t)) continue;
       location = t;
       break;
     }

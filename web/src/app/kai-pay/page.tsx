@@ -833,7 +833,12 @@ export default function KaiPayPage() {
       if (authUser) {
         const { data: lp } = await supabase.schema("linkedin").from("profiles").select("location").eq("id", authUser.id).maybeSingle();
         const raw = lp?.location ?? null;
-        knownLocation = raw && (raw.includes(" ") || /^remote$/i.test(raw)) ? raw : null;
+        knownLocation =
+          raw &&
+          (raw.includes(" ") || /^remote$/i.test(raw)) &&
+          !/university|college|school|institute|academy|polytechnic/i.test(raw)
+            ? raw
+            : null;
       }
 
       const q6Text = knownLocation

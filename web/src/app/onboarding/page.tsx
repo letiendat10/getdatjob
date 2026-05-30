@@ -898,7 +898,13 @@ export default function OnboardingPage() {
       let knownLocation: string | null = null;
       if (authUser) {
         const { data: ep } = await supabase.schema("enriched").from("profiles").select("location").eq("user_id", authUser.id).eq("enrich_status", "done").maybeSingle();
-        knownLocation = ep?.location ?? null;
+        const raw = ep?.location ?? null;
+        knownLocation =
+          raw &&
+          (raw.includes(" ") || /^remote$/i.test(raw)) &&
+          !/university|college|school|institute|academy|polytechnic/i.test(raw)
+            ? raw
+            : null;
       }
 
       const q5Text = knownLocation
@@ -1199,7 +1205,7 @@ export default function OnboardingPage() {
               receivedJobs = true;
               setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, jobs: event.jobs } : m));
             } else if (event.type === "done") {
-              setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, isStreaming: false } : m));
+              setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, isThinking: false, isStreaming: false } : m));
               if (receivedJobs) setShowPostChips(true);
             }
           } catch { /* skip malformed SSE */ }

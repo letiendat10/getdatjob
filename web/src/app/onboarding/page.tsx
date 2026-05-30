@@ -393,6 +393,9 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
             Salary: {job.salary_range}
           </span>
         )}
+        {!job.salary_range && job.salary_estimate && job.salary_estimate > 50000 && (
+          <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{formatSalary(job.salary_estimate)}</span>
+        )}
         {isVerified && (
           <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
             <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
@@ -835,7 +838,7 @@ export default function OnboardingPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(450);
       const visaFiller: Record<string, string> = {
-        "h1b": "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year – the good ones are in here.",
+        "h1b": "That narrows the pool to companies with a real H-1B track record. But don't worry – over 47,000 companies filed H-1B LCAs in 2025, and the good ones are in here.",
         "e3":  "E-3 sponsors are a more specific group – I'll zero in on the ones with a strong Australian hire track record.",
         "tn":  "TN sponsors are a more specific group – I'll zero in on the ones with a strong Canada/Mexico hire track record.",
         "opt": "Got it – OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",

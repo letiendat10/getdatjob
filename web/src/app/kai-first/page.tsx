@@ -39,7 +39,7 @@ type ChatMessage = {
   isRateLimited?: boolean;
 };
 
-type QR = { label: string; value: string };
+type QR = { label: string; value: string; row?: number };
 
 type UserProfile = {
   id: string;
@@ -426,6 +426,9 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
             <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
               Salary: {job.salary_range}
             </span>
+          )}
+          {!job.salary_range && job.salary_estimate && job.salary_estimate > 50000 && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{formatSalary(job.salary_estimate)}</span>
           )}
           {isVerified && (
             <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
@@ -1028,7 +1031,7 @@ export default function KaiFirstPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(450);
       const visaFiller: Record<string, string> = {
-        "h1b":  "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year – the good ones are in here.",
+        "h1b":  "That narrows the pool to companies with a real H-1B track record. But don't worry – over 47,000 companies filed H-1B LCAs in 2025, and the good ones are in here.",
         "e3":   "E-3 sponsors are a more specific group – I'll zero in on the ones with a strong Australian hire track record.",
         "tn":   "TN sponsors are a more specific group – I'll zero in on the ones with a strong Canada/Mexico hire track record.",
         "opt":  "Got it – OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
@@ -1099,15 +1102,18 @@ export default function KaiFirstPage() {
         ? `Based on your profile, looks like you're in ${funcLabel[inferredFunc] ?? inferredFunc} — is that right?`
         : "What kind of role are you looking for?";
       const topFuncs: QR[] = [
-        { label: "Engineering",       value: "Engineering" },
-        { label: "Marketing / Growth", value: "Marketing"  },
-        { label: "Product",           value: "Product"     },
-        { label: "Design / Data / Other", value: "Other"   },
+        { label: "Engineering", value: "Engineering", row: 1 },
+        { label: "Product",     value: "Product",     row: 1 },
+        { label: "Data",        value: "Data",        row: 1 },
+        { label: "Marketing",   value: "Marketing",   row: 2 },
+        { label: "Growth",      value: "Growth",      row: 2 },
+        { label: "Design",      value: "Design",      row: 2 },
+        { label: "Other",       value: "Other",       row: 2 },
       ];
       const q4Replies: QR[] = inferredFunc
         ? [
             { label: `Yes, ${funcLabel[inferredFunc] ?? inferredFunc}`, value: inferredFunc },
-            ...topFuncs.filter(c => c.value !== inferredFunc).slice(0, 2),
+            ...topFuncs.filter(c => c.value !== inferredFunc).slice(0, 2).map(c => ({ label: c.label, value: c.value })),
             { label: "Something else", value: "Other" },
           ]
         : topFuncs;
@@ -1240,7 +1246,7 @@ export default function KaiFirstPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(500);
 
-      const funcLabelMap: Record<string, string> = { Marketing: "marketing / growth", "Data / AI": "data / AI" };
+      const funcLabelMap: Record<string, string> = { Marketing: "marketing / growth", Growth: "marketing / growth", Data: "data / AI", "Data / AI": "data / AI" };
       const dept = updatedIntake.jobFunction && updatedIntake.jobFunction !== "Other"
         ? (funcLabelMap[updatedIntake.jobFunction] ?? updatedIntake.jobFunction.toLowerCase())
         : inferDepartment(linkedIn?.headline ?? enriched?.current_title ?? null);
@@ -1725,25 +1731,41 @@ export default function KaiFirstPage() {
           )}
 
           {/* Inline quick-reply chips – tree connector style, anchored to last Kai question */}
-          {quickReplies.length > 0 && (
-            <div className={s["inline-replies"]}>
-              <div className={s["inline-stem"]} />
-              <div className={s["inline-tree"]}>
-                {quickReplies.map((qr, i) => (
-                  <div
-                    key={qr.value}
-                    className={i === quickReplies.length - 1
-                      ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}`
-                      : s["inline-tree-item"]}
-                  >
-                    <button className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>
-                      {qr.label}
-                    </button>
-                  </div>
-                ))}
+          {quickReplies.length > 0 && (() => {
+            // Group chips by row (chips with same row# share a tree branch)
+            const rows: QR[][] = [];
+            quickReplies.forEach((qr) => {
+              if (qr.row !== undefined) {
+                const existing = rows.find(r => r[0].row === qr.row);
+                if (existing) { existing.push(qr); return; }
+              }
+              rows.push([qr]);
+            });
+            return (
+              <div className={s["inline-replies"]}>
+                <div className={s["inline-stem"]} />
+                <div className={s["inline-tree"]}>
+                  {rows.map((rowChips, i) => (
+                    <div
+                      key={rowChips[0].value}
+                      className={i === rows.length - 1
+                        ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}`
+                        : s["inline-tree-item"]}
+                    >
+                      {rowChips.map((qr, ci) => (
+                        <div key={qr.value} style={{ display: "contents" }}>
+                          {ci > 0 && <span className={s["inline-chip-connector"]} aria-hidden="true" />}
+                          <button className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>
+                            {qr.label}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Post-result chips in free-chat mode */}
           {showPostChips && step === "done" && (

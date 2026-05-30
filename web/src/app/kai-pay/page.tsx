@@ -735,7 +735,7 @@ export default function KaiPayPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(450);
       const visaFiller: Record<string, string> = {
-        h1b: "That narrows the pool to companies with a real H-1B track record. But don't worry — over 47,000 companies filed H-1B LCAs in 2025, and the good ones are in here.",
+        h1b: "That narrows the pool to companies with a real H-1B track record. But don't worry – over 47,000 companies filed H-1B LCAs in 2025, and the good ones are in here.",
         e3: "E-3 sponsors are a more specific group – I'll zero in on the ones with a strong Australian hire track record.",
         tn: "TN sponsors are a more specific group – I'll zero in on the ones with a strong Canada/Mexico hire track record.",
         opt: "Got it – OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",

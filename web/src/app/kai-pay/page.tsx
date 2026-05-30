@@ -1135,7 +1135,7 @@ export default function KaiPayPage() {
                 receivedJobs = true;
                 setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, jobs: event.jobs } : m));
               } else if (event.type === "done") {
-                setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, isStreaming: false } : m));
+                setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, isThinking: false, isStreaming: false } : m));
                 if (receivedJobs) setShowPostChips(true);
               }
             } catch { /* skip malformed SSE */ }

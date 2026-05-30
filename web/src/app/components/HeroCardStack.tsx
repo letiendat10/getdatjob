@@ -84,7 +84,7 @@ const ANIM = [
 
 // Natural visual footprint of the 3-card cluster at scale(1)
 const CLUSTER_W = 370;
-const CLUSTER_H = 210;
+const CLUSTER_H = 245;
 const FILL = 0.80;
 
 export default function HeroCardStack() {

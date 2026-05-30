@@ -162,6 +162,15 @@ const LOGO_OVERRIDES: Record<string, string> = {
   "sofi.com": "https://d32ijn7u0aqfv4.cloudfront.net/git/svgs/sofi-logo.svg",
 };
 
+function formatPoc(firstName: string | null, lastName: string | null, email: string | null): string | null {
+  if (!email) return null;
+  const first = firstName ? firstName.split(/[\s/,]+/)[0].trim() : null;
+  const lastInitial = lastName ? lastName.trim()[0].toUpperCase() : null;
+  if (first && lastInitial) return `${first} ${lastInitial} (${email})`;
+  if (first) return `${first} (${email})`;
+  return email;
+}
+
 function formatLastFiling(dateStr: string | null): string | null {
   if (!dateStr) return null;
   const d = new Date(dateStr + "T00:00:00");
@@ -693,6 +702,11 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
         <div className="flex flex-wrap gap-1.5 mb-3">
           {lastFiling && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">Last LCA filed in {lastFiling}</span>}
           {job.lca_count_2025 > 0 && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{job.lca_count_2025} LCA filings in 2025</span>}
+          {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+              PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}
+            </span>
+          )}
         </div>
       </div>
       <div className="overflow-y-auto flex-1 px-5 py-4">
@@ -988,6 +1002,19 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
           const res = await fetch(`/api/jobs/description?source=ashby&job_id=${encodeURIComponent(jobId)}&slug=${encodeURIComponent(slug)}`);
           const json = res.ok ? await res.json() : {};
           setDescCache((c) => ({ ...c, [sid]: { html: json.html ?? "", text: "", salary: json.salary ?? undefined } }));
+        } catch {
+          setDescCache((c) => ({ ...c, [sid]: { html: "", text: "" } }));
+        }
+        setDescLoading(false);
+      })();
+    } else if (job.ats_source === "smartrecruiters" && job.url) {
+      const sid = selectedJobId;
+      const jobUrl = job.url;
+      (async () => {
+        try {
+          const res = await fetch(`/api/jobs/description?source=smartrecruiters&url=${encodeURIComponent(jobUrl)}`);
+          const json = res.ok ? await res.json() : {};
+          setDescCache((c) => ({ ...c, [sid]: { html: json.html ?? "", text: "" } }));
         } catch {
           setDescCache((c) => ({ ...c, [sid]: { html: "", text: "" } }));
         }

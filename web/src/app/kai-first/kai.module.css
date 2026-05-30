@@ -380,7 +380,7 @@
   flex-direction: column;
   gap: 8px;
   margin-top: 8px;
-  max-width: min(480px, 80%);
+  max-width: min(560px, 90%);
 }
 .job-card {
   background: var(--card);

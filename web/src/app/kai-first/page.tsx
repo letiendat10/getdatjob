@@ -24,6 +24,9 @@ type Job = {
   lca_last_filed: string | null;
   ats_source: string | null;
   ats_job_id: string | null;
+  poc_first_name: string | null;
+  poc_last_name: string | null;
+  poc_email: string | null;
 };
 
 type ChatMessage = {
@@ -162,6 +165,15 @@ function formatLcaDate(dateStr: string | null): string | null {
   const month = parseInt(parts[1], 10) - 1;
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return `${months[month]} ${year}`;
+}
+
+function formatPoc(firstName: string | null, lastName: string | null, email: string | null): string | null {
+  if (!email) return null;
+  const first = firstName ? firstName.split(/[\s/,]+/)[0].trim() : null;
+  const lastInitial = lastName ? lastName.trim()[0].toUpperCase() : null;
+  if (first && lastInitial) return `${first} ${lastInitial} (${email})`;
+  if (first) return `${first} (${email})`;
+  return email;
 }
 
 function inferDepartment(title: string | null): string | null {
@@ -385,9 +397,9 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
         </div>
       )}
 
-      {/* LCA stats: last filed + year count */}
-      {(lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0)) && (
-        <div className="flex flex-wrap gap-1.5">
+      {/* LCA stats: last filed + year count + PoC */}
+      {(lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0) || formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)) && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
           {lcaLastFiled && (
             <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
               Last LCA filed in {lcaLastFiled}
@@ -396,6 +408,11 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
           {job.lca_count_2025 && job.lca_count_2025 > 0 && (
             <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
               {job.lca_count_2025} LCA filings in 2025
+            </span>
+          )}
+          {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+              PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}
             </span>
           )}
         </div>
@@ -581,7 +598,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
             )}
           </div>
 
-          {(postedSalary || job.lca_count_2025 || lcaLastFiled) && (
+          {(postedSalary || job.lca_count_2025 || lcaLastFiled || formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)) && (
             <div className="flex flex-wrap gap-1.5">
               {postedSalary && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
@@ -596,6 +613,11 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
               {lcaLastFiled && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
                   Last LCA filed in {lcaLastFiled}
+                </span>
+              )}
+              {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
+                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                  PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}
                 </span>
               )}
             </div>

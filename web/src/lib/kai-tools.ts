@@ -128,8 +128,12 @@ export async function handleSearchJobs(input: SearchJobsInput) {
   }
 
   // Department → title keyword list
+  // Normalize compound labels like "marketing / growth" → "marketing" for dictionary lookup
+  const deptKey = input.department
+    ? input.department.toLowerCase().split(/\s*\/\s*/)[0].trim()
+    : null;
   const titleKeywords: string[] | null = input.department
-    ? (DEPT_KEYWORDS[input.department.toLowerCase()] ?? [input.department.toLowerCase()])
+    ? (DEPT_KEYWORDS[input.department.toLowerCase()] ?? DEPT_KEYWORDS[deptKey!] ?? [input.department.toLowerCase()])
     : null;
 
   // Industry → company keyword list
@@ -176,6 +180,9 @@ export async function handleSearchJobs(input: SearchJobsInput) {
     lca_last_filed: j.lca_last_filed ?? null,
     ats_source:     j.ats_source ?? null,
     ats_job_id:     j.ats_job_id ?? null,
+    poc_first_name: j.poc_first_name ?? null,
+    poc_last_name:  j.poc_last_name ?? null,
+    poc_email:      j.poc_email ?? null,
   }));
 
   return {

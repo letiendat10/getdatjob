@@ -297,13 +297,39 @@ const RETURN_CHIPS = [
 
 function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: () => void }) {
   const name = firstName(profile.full_name);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [buildReturnGreeting(name)]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [showPostChips, setShowPostChips] = useState(false);
 
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load chat history from Supabase on mount
+  useEffect(() => {
+    const supabase = createSupabaseBrowser();
+    supabase
+      .from("kai_messages")
+      .select("id, role, content, jobs, created_at")
+      .order("created_at", { ascending: true })
+      .then(({ data, error }) => {
+        if (!error && data && data.length > 0) {
+          setMessages(
+            data.map((row) => ({
+              id: row.id as string,
+              role: row.role as "user" | "assistant",
+              content: row.content as string,
+              jobs: (row.jobs as Job[] | null) ?? undefined,
+            }))
+          );
+        } else {
+          setMessages([buildReturnGreeting(name)]);
+        }
+        setHistoryLoaded(true);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     if (threadRef.current) {
@@ -338,7 +364,15 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
       setMessages((prev) => [...prev, userMsg, thinkingMsg]);
       setIsStreaming(true);
 
+      // Persist user message immediately (fire-and-forget)
+      const supabase = createSupabaseBrowser();
+      supabase.from("kai_messages").insert({ user_id: profile.id, role: "user", content: trimmed });
+
       const history = [...messages, userMsg].map((m) => ({ role: m.role, content: m.content }));
+
+      // Track accumulated assistant response for persisting
+      let accContent = "";
+      let accJobs: Job[] | undefined;
 
       try {
         const res = await fetch("/api/chat", {
@@ -372,6 +406,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
             try {
               const event = JSON.parse(line.slice(6));
               if (event.type === "text") {
+                accContent += event.text;
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantMsgId
@@ -381,6 +416,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
                 );
                 scrollToBottom();
               } else if (event.type === "tool_start") {
+                accContent = accContent ? accContent.trimEnd() + "\n\n" : "";
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantMsgId
@@ -390,6 +426,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
                 );
               } else if (event.type === "jobs") {
                 receivedJobs = true;
+                accJobs = event.jobs;
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantMsgId ? { ...m, jobs: event.jobs } : m
@@ -401,6 +438,13 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
                     m.id === assistantMsgId ? { ...m, isStreaming: false } : m
                   )
                 );
+                // Persist completed assistant message to Supabase
+                supabase.from("kai_messages").insert({
+                  user_id: profile.id,
+                  role: "assistant",
+                  content: accContent,
+                  jobs: accJobs ?? null,
+                });
                 if (receivedJobs) setShowPostChips(true);
               } else if (event.type === "error") {
                 setMessages((prev) =>
@@ -428,7 +472,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
         setIsStreaming(false);
       }
     },
-    [messages, isStreaming, scrollToBottom, profile.full_name]
+    [messages, isStreaming, scrollToBottom, profile.full_name, profile.id]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -442,64 +486,70 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
     <div className={s["chat-wrap"]}>
       <div className={s.thread} ref={threadRef}>
         <div className={s["thread-inner"]}>
-          {messages.map((msg) => {
-            if (msg.isThinking) {
-              if (msg.content) {
+          {!historyLoaded ? (
+            <ThinkingBubble />
+          ) : (
+            <>
+              {messages.map((msg) => {
+                if (msg.isThinking) {
+                  if (msg.content) {
+                    return (
+                      <div key={msg.id} className={s["msg-row"]}>
+                        <div className={s["kai-avatar"]}>K</div>
+                        <div className={`${s.bubble} ${s["bubble-kai"]}`}>
+                          <KaiText text={msg.content} isStreaming={false} />
+                          <div className={s["thinking-inline"]}>
+                            <span className={s.dot} />
+                            <span className={s.dot} />
+                            <span className={s.dot} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return <ThinkingBubble key={msg.id} />;
+                }
+
                 return (
-                  <div key={msg.id} className={s["msg-row"]}>
-                    <div className={s["kai-avatar"]}>K</div>
-                    <div className={`${s.bubble} ${s["bubble-kai"]}`}>
-                      <KaiText text={msg.content} isStreaming={false} />
-                      <div className={s["thinking-inline"]}>
-                        <span className={s.dot} />
-                        <span className={s.dot} />
-                        <span className={s.dot} />
+                  <div key={msg.id}>
+                    <div className={`${s["msg-row"]} ${msg.role === "user" ? s["msg-row-user"] : ""}`}>
+                      {msg.role === "assistant" && <div className={s["kai-avatar"]}>K</div>}
+                      <div className={`${s.bubble} ${msg.role === "user" ? s["bubble-user"] : s["bubble-kai"]}`}>
+                        {msg.role === "user" ? (
+                          msg.content
+                        ) : (
+                          <KaiText text={msg.content} isStreaming={msg.isStreaming} />
+                        )}
                       </div>
                     </div>
-                  </div>
-                );
-              }
-              return <ThinkingBubble key={msg.id} />;
-            }
-
-            return (
-              <div key={msg.id}>
-                <div className={`${s["msg-row"]} ${msg.role === "user" ? s["msg-row-user"] : ""}`}>
-                  {msg.role === "assistant" && <div className={s["kai-avatar"]}>K</div>}
-                  <div className={`${s.bubble} ${msg.role === "user" ? s["bubble-user"] : s["bubble-kai"]}`}>
-                    {msg.role === "user" ? (
-                      msg.content
-                    ) : (
-                      <KaiText text={msg.content} isStreaming={msg.isStreaming} />
+                    {msg.role === "assistant" && msg.jobs && msg.jobs.length > 0 && (
+                      <div className={s["msg-row"]} style={{ paddingLeft: 38 }}>
+                        <div className={s["jobs-wrap"]}>
+                          {msg.jobs.map((job) => (
+                            <JobCard key={job.id} job={job} />
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
-                {msg.role === "assistant" && msg.jobs && msg.jobs.length > 0 && (
-                  <div className={s["msg-row"]} style={{ paddingLeft: 38 }}>
-                    <div className={s["jobs-wrap"]}>
-                      {msg.jobs.map((job) => (
-                        <JobCard key={job.id} job={job} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
 
-          {showPostChips && (
-            <div className={s.chips}>
-              {RETURN_CHIPS.map((c) => (
-                <button key={c} className={s.chip} onClick={() => sendMessage(c)}>
-                  {c}
-                </button>
-              ))}
-              {!profile.is_supporter && (
-                <button className={s.chip} onClick={onGoToMatches}>
-                  View my Job Matches →
-                </button>
+              {showPostChips && (
+                <div className={s.chips}>
+                  {RETURN_CHIPS.map((c) => (
+                    <button key={c} className={s.chip} onClick={() => sendMessage(c)}>
+                      {c}
+                    </button>
+                  ))}
+                  {!profile.is_supporter && (
+                    <button className={s.chip} onClick={onGoToMatches}>
+                      View my Job Matches →
+                    </button>
+                  )}
+                </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -524,7 +574,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
             disabled={!input.trim() || isStreaming}
             aria-label="Send"
           >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 16 16""ill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 8H2M8 2l6 6-6 6" />
             </svg>
           </button>
@@ -559,7 +609,7 @@ function MatchesTab({ isUnlocked, preferences }: {
       .then((r) => r.json())
       .then((d) => { setJobs((d as { jobs?: Job[] }).jobs ?? []); setLoading(false); })
       .catch(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const visibleJobs = isUnlocked ? jobs : jobs.slice(0, VISIBLE_FREE);

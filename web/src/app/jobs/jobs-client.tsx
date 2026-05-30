@@ -788,10 +788,15 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   const [descLoading, setDescLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const sentinelRef = useRef<HTMLDivElement>(null);
   const filterBarRef = useRef<HTMLDivElement>(null);
   const autoSelectedRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const fetchIdRef = useRef(0);
+  const hasDataRef = useRef(!!initialData);
   // Skip the first client-side fetch when we already have SSR data for the default params
   const skipInitialFetchRef = useRef(!!initialData);
 
@@ -848,13 +853,25 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   // separately via loadMetaOnce). The init route exists as a stable CDN-cacheable
   // URL that the layout's <link rel="preload"> can prime. Subsequent loads use
   // /api/jobs directly.
-  const useInitEndpointRef = useRef(true);
+  // If SSR already seeded data, skip init entirely — it has a 30-min CDN cache
+  // that can serve stale 0-result responses for arbitrary filter combinations.
+  const useInitEndpointRef = useRef(!initialData);
 
   // Main fetch: fires when filters change (page resets to 0)
   const doFetch = useCallback(
     async (params: { q: string; location: string; company: string; posted: string; sort: string; signal: string; visa: string; department: string; level: string }, append = false, pageNum = 0) => {
-      if (!append) setLoading(true);
-      else setLoadingMore(true);
+      const myId = ++fetchIdRef.current;
+
+      if (!append) {
+        // Cancel any in-flight request
+        fetchAbortRef.current?.abort();
+        fetchAbortRef.current = new AbortController();
+        // Show full-screen skeleton only on first ever load; after that use inline refreshing indicator
+        if (!hasDataRef.current) setLoading(true);
+        else setRefreshing(true);
+      } else {
+        setLoadingMore(true);
+      }
 
       const qs = new URLSearchParams({
         q:          params.q,
@@ -873,7 +890,8 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
       if (useInit) useInitEndpointRef.current = false;
       const url  = useInit ? `/api/jobs/init?${qs}` : `/api/jobs?${qs}`;
       try {
-        const res  = await fetch(url);
+        const signal = append ? undefined : fetchAbortRef.current?.signal;
+        const res  = await fetch(url, signal ? { signal } : undefined);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         const rawJobs: JobRow[] = data.jobs ?? [];
@@ -882,23 +900,24 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
         setJobs((prev) => (append ? [...prev, ...normalized] : normalized));
         setTotal(total);
         setPage(pageNum);
-      } catch (err) {
+        hasDataRef.current = true;
+      } catch (err: any) {
+        if (err?.name === "AbortError") return; // superseded — finally still runs but guard below ignores it
         console.error("[jobs] fetch failed:", err);
-        if (!append) { setJobs([]); setTotal(0); }
+        if (!append && myId === fetchIdRef.current) { setJobs([]); setTotal(0); }
       } finally {
-        if (!append) setLoading(false);
-        else setLoadingMore(false);
+        // Only the latest request clears loading — stale aborted requests are ignored
+        if (!append && myId === fetchIdRef.current) { setLoading(false); setRefreshing(false); }
+        else if (append) setLoadingMore(false);
       }
     },
     []
   );
 
-  // Fetch on filter change (debounce search query only)
-  // P3: department + level now included as server-side params
+  // Fetch on filter change — all filters debounced 350ms to batch rapid changes
   useEffect(() => {
     const params = { q: query, location, company, posted: postedDate, sort: sortBy, signal, visa, department, level };
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    const delay = query ? 300 : 0;
     debounceRef.current = setTimeout(() => {
       if (skipInitialFetchRef.current) {
         skipInitialFetchRef.current = false;
@@ -906,7 +925,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
       }
       autoSelectedRef.current = false;
       doFetch(params, false, 0);
-    }, delay);
+    }, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, location, company, postedDate, sortBy, signal, visa, department, level]);
@@ -1117,6 +1136,15 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
 
   return (
     <div className="min-h-screen bg-white font-sans">
+      {/* Thin progress bar — visible during filter re-fetches so the page never blanks */}
+      {refreshing && (
+        <div className="fixed top-0 left-0 right-0 z-[100] h-[2px] bg-zinc-100 overflow-hidden">
+          <div
+            className="h-full w-2/5 bg-zinc-900"
+            style={{ animation: "progress-bar 1.2s linear infinite" }}
+          />
+        </div>
+      )}
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white border-b border-zinc-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-4">

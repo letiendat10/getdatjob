@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
-import s from "./kai.module.css";
+import s from "../kai-first/kai.module.css";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { Bookmark, MapPin, ExternalLink, X, Share2 } from "lucide-react";
+import PaywallScreen from "@/app/components/PaywallScreen";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,6 @@ type ChatMessage = {
   jobs?: Job[];
   isThinking?: boolean;
   isStreaming?: boolean;
-  isRateLimited?: boolean;
 };
 
 type QR = { label: string; value: string };
@@ -55,24 +55,25 @@ type LinkedInProfile = {
 type EnrichedProfile = {
   current_title: string | null;
   location: string | null;
-  job_function: string | null; // Engineering | Product | Design | ...
-  job_level: string | null;   // IC | Manager
+  job_function: string | null;
+  job_level: string | null;
 };
 
+// kai-pay uses a different step sequence — no email_optin/batch2/support;
+// instead: see_more → paywall
 type OnboardingStep =
   | "init"
-  | "q1"          // intent
+  | "q1"
   | "q1_layoff_date"
-  | "q2"          // visa
-  | "q3"          // salary
-  | "q4"          // job function (pre-confirm if headline available)
-  | "q5"          // job level (pre-confirm if headline available)
-  | "q6"          // location (pre-confirm if extension scraped)
+  | "q2"
+  | "q3"
+  | "q4"
+  | "q5"
+  | "q6"
   | "scanning"
   | "batch1"
-  | "email_optin"
-  | "batch2"
-  | "support"
+  | "see_more"
+  | "paywall"
   | "done";
 
 type IntakeData = {
@@ -101,34 +102,14 @@ const COMPANY_NAME_OVERRIDES: Record<string, string> = {
   "united services automobile association": "USAA",
   "american express travel related services company": "American Express",
   "standard & poor's financial services": "S&P Global",
-  "s&p global market intelligence": "S&P Global",
-  "laboratory corporation of america holdings": "LabCorp",
-  "intercontinental exchange holdings": "ICE",
-  "susquehanna international group": "SIG",
-  "citadel enterprise americas services": "Citadel",
-  "citadel securities americas services": "Citadel Securities",
-  "bernstein institutional services": "AllianceBernstein",
-  "galileo financial technologies": "Galileo",
+  "space exploration technologies": "SpaceX",
+  "openai opco": "OpenAI",
   "deloitte touche tohmatsu services": "Deloitte",
   "deloitte transactions and business analytics": "Deloitte",
   "pricewaterhousecoopers advisory services": "PwC",
   "pricewaterhousecoopers": "PwC",
   "mckinsey & company united states": "McKinsey",
   "mckinsey & company": "McKinsey",
-  "space exploration technologies": "SpaceX",
-  "flextronics international usa": "Flex",
-  "environmental systems research institute": "Esri",
-  "cognizant trizetto software group": "Cognizant",
-  "cognizant technology solutions us": "Cognizant",
-  "hsbc technology & services": "HSBC",
-  "cigna health and life insurance company": "Cigna",
-  "united parcel service general services": "UPS",
-  "foot locker corporate services": "Foot Locker",
-  "macy's systems and technology": "Macy's",
-  "openai opco": "OpenAI",
-  "london stock exchange group holdings": "LSEG",
-  "general dynamics information technology": "GDIT",
-  "robinhood markets": "Robinhood",
 };
 
 function normalizeCompanyName(name: string): string {
@@ -199,9 +180,6 @@ function postedWithin(jobs: { posted_at: string | null }[]): string | null {
   return "the last 3 days";
 }
 
-// Infer a human-readable department label from a LinkedIn job title.
-// Returns lowercase, suitable for inline use: "product marketing", "engineering", etc.
-// Returns null when the title is ambiguous or missing.
 function formatLcaDate(dateStr: string | null): string | null {
   if (!dateStr) return null;
   const parts = dateStr.split("-");
@@ -226,8 +204,8 @@ function inferDepartment(title: string | null): string | null {
   const t = title.toLowerCase();
   if (t.includes("product market")) return "product marketing";
   if (t.includes("growth market") || t.includes("demand gen")) return "growth marketing";
-  if (t.includes("product manager") || t.includes("product owner") || /\bhead of product\b/.test(t) || / pm,| pm$|\bvp product\b/.test(t)) return "product";
-  if (t.includes("machine learning") || / ml | ml,|mlops/.test(t) || t.includes("deep learning") || t.includes("llm") || t.includes("ai engineer")) return "AI / ML";
+  if (t.includes("product manager") || t.includes("product owner") || /\bhead of product\b/.test(t)) return "product";
+  if (t.includes("machine learning") || / ml | ml,|mlops/.test(t) || t.includes("llm") || t.includes("ai engineer")) return "AI / ML";
   if (t.includes("data scientist") || t.includes("data engineer") || t.includes("data analyst") || t.includes("analytics engineer")) return "data";
   if (t.includes("software") || t.includes("engineer") || t.includes("developer") || t.includes("backend") || t.includes("frontend") || t.includes("full stack") || t.includes("swe")) return "engineering";
   if (t.includes("design") || /\bux\b/.test(t) || /\bui\b/.test(t)) return "design";
@@ -247,14 +225,14 @@ function inferJobFunction(headline: string | null): string | null {
   if (!headline) return null;
   const h = headline.toLowerCase();
   if (h.includes("software") || h.includes("engineer") || h.includes("developer") || h.includes("backend") || h.includes("frontend") || h.includes("devops") || h.includes("fullstack") || h.includes("mobile") || h.includes("infrastructure")) return "Engineering";
-  if (h.includes("product manager") || h.includes("product management") || /\bhead of product\b/.test(h) || / pm,| pm$|\bvp product\b/.test(h)) return "Product";
+  if (h.includes("product manager") || h.includes("product management") || /\bhead of product\b/.test(h)) return "Product";
   if (h.includes("machine learning") || h.includes("data scientist") || h.includes("data engineer") || h.includes("analytics") || /\bml\b/.test(h) || h.includes("ai ")) return "Data / AI";
   if (h.includes("growth") || h.includes("marketing") || h.includes("demand gen")) return "Marketing";
   if (h.includes("design") || /\bux\b/.test(h) || /\bui\b/.test(h)) return "Design";
   if (h.includes("sales") || h.includes("account executive") || h.includes("business development") || h.includes("partnerships")) return "Sales";
   if (h.includes("finance") || h.includes("accounting") || h.includes("controller") || h.includes("cfo")) return "Finance";
   if (h.includes("operations") || h.includes("recruiting") || h.includes("talent") || /\bhr\b/.test(h)) return "Operations";
-  if (h.includes("product")) return "Product"; // catch "product" without "manager"
+  if (h.includes("product")) return "Product";
   return null;
 }
 
@@ -266,12 +244,11 @@ function inferLevel(title: string): string | null {
   if (/\b(principal|staff engineer|distinguished|fellow)\b/.test(t)) return "Principal / Staff";
   if (/\b(senior|sr\.?)\b/.test(t)) return "Senior";
   if (/\b(lead|manager|director|head of|vp\b|vice president)\b/.test(t)) return "Lead / Manager";
-  // Default to Senior IC when headline exists but no level keywords found
   return "Senior IC";
 }
 
 interface Greeting {
-  headline: string; // may contain {name} placeholder
+  headline: string;
   line2: { pre?: string; em: string; post?: string };
 }
 
@@ -310,21 +287,17 @@ function getTimeGreeting(firstName: string | null): { headline: string; line2: G
   const now = new Date();
   const hour = now.getHours();
   const dow = now.getDay();
-
   let slotKey: string;
   if (hour >= 22 || hour < 6) slotKey = "late";
   else if (hour < 9) slotKey = "earlyMorning";
   else if (hour < 12) slotKey = "morning";
   else if (hour < 17) slotKey = "afternoon";
   else slotKey = "evening";
-
   const dowExtras = DOW_GREETINGS[dow] ?? [];
   const pool = [...TIME_POOLS[slotKey], ...dowExtras, ...UNIVERSAL_GREETINGS];
-
   const dateSeed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
   const slotOffset = slotKey.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
   const picked = pool[(dateSeed + slotOffset) % pool.length];
-
   const nameInsert = firstName ? `, ${firstName}` : "";
   return { headline: picked.headline.replace("{name}", nameInsert), line2: picked.line2 };
 }
@@ -370,8 +343,6 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
   const isFriendly = job.visa_tier === "friendly";
   const posted = timeAgo(job.posted_at);
   const displayCompany = normalizeCompanyName(job.company);
-  const level = inferLevel(job.title);
-  const department = inferDepartment(job.title);
   const lcaLastFiled = formatLcaDate(job.lca_last_filed);
 
   return (
@@ -379,7 +350,6 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
       className="border border-zinc-200 rounded-xl bg-white px-3.5 pt-3 pb-2.5 cursor-pointer hover:bg-zinc-50 active:bg-zinc-100 transition-colors"
       onClick={onClick}
     >
-      {/* Logo + company | bookmark + apply */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <CompanyAvatar name={job.company} domain={job.company_domain} />
@@ -397,71 +367,47 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
               className={`p-1.5 rounded-full border transition-all ${saved ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`}
               aria-label={saved ? "Unsave job" : "Save job"}
             >
-              <Bookmark size={14} className={saved ? "fill-current" : ""} />
+              <Bookmark size={13} className={saved ? "fill-current" : ""} />
             </button>
           </div>
           {job.url && (
-            <a href={job.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-zinc-900 text-white text-xs font-semibold hover:bg-zinc-700 transition-colors no-underline">
+            <a href={job.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-zinc-900 text-white text-xs font-semibold hover:bg-zinc-700 transition-colors no-underline">
               Apply <ExternalLink size={11} />
             </a>
           )}
         </div>
       </div>
-
-      {/* Title */}
-      <h3 className="text-base font-bold text-zinc-900 leading-snug mb-1.5">{job.title}</h3>
-
-      {/* Location · date posted */}
+      <h3 className="text-base font-bold text-zinc-900 leading-snug mb-1">{job.title}</h3>
       {(job.location || posted) && (
-        <div className="flex items-center gap-1 text-xs text-zinc-500 mb-2">
+        <div className="flex items-center gap-1 text-xs text-zinc-500 mb-1.5">
           <MapPin size={10} className="text-zinc-400 flex-shrink-0" />
           <span>{[job.location, posted ? `Posted ${posted}` : null].filter(Boolean).join(" · ")}</span>
         </div>
       )}
-
-      {/* Tags: salary, verified, friendly */}
-      {(job.salary_range || isVerified || isFriendly) && (
-        <div className="flex flex-wrap gap-1.5 mb-1.5">
-          {job.salary_range && (
-            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-              Salary: {job.salary_range}
+      <div className="flex flex-wrap gap-1.5">
+        {job.salary_range && (
+          <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+            Salary: {job.salary_range}
+          </span>
+        )}
+        {!job.salary_range && job.salary_estimate && job.salary_estimate > 50000 && (
+          <span className="text-xs text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded">{formatSalary(job.salary_estimate)}</span>
+        )}
+        {isVerified && (
+          <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
+            <span className="inline-flex items-center rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-zinc-900">
+              Verified LCA Filings With Similar Job Title
             </span>
-          )}
-          {isVerified && (
-            <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
-              <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
-                Verified LCA Filings With Similar Job Title
-              </span>
-            </span>
-          )}
-          {isFriendly && (
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
-              H-1B Friendly Employer
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* LCA stats: last filed + year count + PoC */}
-      {(lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0) || formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)) && (
-        <div className="flex flex-wrap gap-1.5 mb-1.5">
-          {lcaLastFiled && (
-            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-              Last LCA filed in {lcaLastFiled}
-            </span>
-          )}
-          {job.lca_count_2025 && job.lca_count_2025 > 0 && (
-            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-              {job.lca_count_2025} LCA filings in 2025
-            </span>
-          )}
-          {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
-            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-              PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}
-            </span>
-          )}
-        </div>
-      )}
+          </span>
+        )}
+        {isFriendly && (
+          <span className="text-xs font-medium text-[var(--ink-2)]">H-1B Friendly Employer</span>
+        )}
+        {lcaLastFiled && (
+          <span className="px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 text-xs">Last LCA: {lcaLastFiled}</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -470,29 +416,24 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const [descHtml, setDescHtml] = useState("");
   const [descText, setDescText] = useState("");
   const [descLoading, setDescLoading] = useState(true);
-  const displayCompany = normalizeCompanyName(job.company);
-  const posted = timeAgo(job.posted_at);
-  const level = inferLevel(job.title);
-  const department = inferDepartment(job.title);
-  const isVerified = job.visa_tier === "verified";
-  const isFriendly = job.visa_tier === "friendly";
-  const lcaLastFiled = formatLcaDate(job.lca_last_filed);
   const [apiSalary, setApiSalary] = useState<string | null>(null);
-  const extractedSalary = useMemo(() => extractPostedSalary(descHtml || descText), [descHtml, descText]);
-  const postedSalary = job.salary_range || apiSalary || extractedSalary;
   const [saved, setSaved] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [copied, setCopied] = useState(false);
+  const displayCompany = normalizeCompanyName(job.company);
+  const posted = timeAgo(job.posted_at);
+  const isVerified = job.visa_tier === "verified";
+  const isFriendly = job.visa_tier === "friendly";
+  const lcaLastFiled = formatLcaDate(job.lca_last_filed);
+  const extractedSalary = useMemo(() => extractPostedSalary(descHtml || descText), [descHtml, descText]);
+  const postedSalary = job.salary_range || apiSalary || extractedSalary;
+
   function handleSave() {
-    if (!saved) {
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 1500);
-    }
+    if (!saved) { setShowToast(true); setTimeout(() => setShowToast(false), 1500); }
     setSaved(v => !v);
   }
   function handleShare() {
-    const url = job.url ?? window.location.href;
-    navigator.clipboard.writeText(url).then(() => {
+    navigator.clipboard.writeText(job.url ?? window.location.href).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }).catch(() => {});
@@ -500,47 +441,25 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
 
   useEffect(() => {
     setDescLoading(true);
-    setDescHtml("");
-    setDescText("");
-    setApiSalary(null);
+    setDescHtml(""); setDescText(""); setApiSalary(null);
     (async () => {
       try {
-        // Amazon + Ashby + Workday: fetch live via proxy for full, formatted description
         if (job.ats_source === "amazon" && job.ats_job_id) {
           const res = await fetch(`/api/jobs/description?source=amazon&job_id=${encodeURIComponent(job.ats_job_id)}`);
-          if (res.ok) {
-            const { html } = await res.json();
-            if (html) { setDescHtml(html); setDescLoading(false); return; }
-          }
+          if (res.ok) { const { html } = await res.json(); if (html) { setDescHtml(html); return; } }
         } else if (job.ats_source === "ashby" && job.ats_job_id && job.url) {
           const slug = job.url.match(/jobs\.ashbyhq\.com\/([^/]+)\//)?.[1] ?? "";
           if (slug) {
             const res = await fetch(`/api/jobs/description?source=ashby&job_id=${encodeURIComponent(job.ats_job_id)}&slug=${encodeURIComponent(slug)}`);
-            if (res.ok) {
-              const { html, salary } = await res.json();
-              if (html) { setDescHtml(html); }
-              if (salary) { setApiSalary(salary); }
-              setDescLoading(false);
-              return;
-            }
+            if (res.ok) { const { html, salary } = await res.json(); if (html) setDescHtml(html); if (salary) setApiSalary(salary); return; }
           }
         } else if (job.ats_source === "workday" && job.url) {
           const res = await fetch(`/api/jobs/description?url=${encodeURIComponent(job.url)}`);
-          if (res.ok) {
-            const { html, text } = await res.json();
-            if (html) { setDescHtml(html); setDescLoading(false); return; }
-            if (text) { setDescText(text); setDescLoading(false); return; }
-          }
+          if (res.ok) { const { html, text } = await res.json(); if (html) { setDescHtml(html); return; } if (text) { setDescText(text); return; } }
         }
-        // Fallback: server-side DB fetch (avoids browser RLS variability)
         const res = await fetch(`/api/jobs/description?source=db&id=${job.id}`);
-        if (res.ok) {
-          const { html, text } = await res.json();
-          if (html) { setDescHtml(html); } else { setDescText(text ?? ""); }
-        }
-      } catch { /* graceful */ } finally {
-        setDescLoading(false);
-      }
+        if (res.ok) { const { html, text } = await res.json(); if (html) setDescHtml(html); else setDescText(text ?? ""); }
+      } catch { /* graceful */ } finally { setDescLoading(false); }
     })();
   }, [job.id, job.ats_source, job.ats_job_id, job.url]);
 
@@ -554,12 +473,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
     <>
       <div className={s["job-overlay"]} onClick={onClose} />
       <div className={s["job-panel"]}>
-        {/* Drag handle – mobile only */}
-        <div className={s["job-drag-handle"]}>
-          <div className="w-10 h-1 rounded-full bg-zinc-200" />
-        </div>
-
-        {/* Header */}
+        <div className={s["job-drag-handle"]}><div className="w-10 h-1 rounded-full bg-zinc-200" /></div>
         <div className="flex-shrink-0 px-5 pt-3 pb-4 border-b border-zinc-100">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -569,115 +483,46 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
             <div className="flex items-center gap-2 flex-shrink-0 ml-3">
               {posted && <span className="text-xs text-zinc-400">{posted}</span>}
               <div className="relative">
-                {copied && (
-                  <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none">
-                    Copied!
-                  </span>
-                )}
-                <button
-                  onClick={handleShare}
-                  className="p-2 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all"
-                  aria-label="Share job"
-                >
-                  <Share2 size={14} />
-                </button>
+                {copied && <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none">Copied!</span>}
+                <button onClick={handleShare} className="p-2 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all" aria-label="Share"><Share2 size={14} /></button>
               </div>
               <div className="relative">
-                {showToast && (
-                  <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none">
-                    Saved
-                  </span>
-                )}
-                <button
-                  onClick={handleSave}
-                  className={`p-2 rounded-full border transition-all ${saved ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`}
-                  aria-label={saved ? "Unsave job" : "Save job"}
-                >
-                  <Bookmark size={14} className={saved ? "fill-current" : ""} />
-                </button>
+                {showToast && <span className="absolute -top-7 left-1/2 -translate-x-1/2 bg-zinc-900 text-white text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap pointer-events-none">Saved</span>}
+                <button onClick={handleSave} className={`p-2 rounded-full border transition-all ${saved ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`} aria-label={saved ? "Unsave" : "Save"}><Bookmark size={14} className={saved ? "fill-current" : ""} /></button>
               </div>
-              <button
-                onClick={onClose}
-                className="p-2 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all"
-                aria-label="Close"
-              >
-                <X size={14} />
-              </button>
+              <button onClick={onClose} className="p-2 rounded-full border border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700 transition-all" aria-label="Close"><X size={14} /></button>
             </div>
           </div>
-
           <div className="flex items-start gap-4 mb-3">
             <h2 className="flex-1 text-xl font-bold text-zinc-900 leading-snug">{job.title}</h2>
             {job.url && (
-              <a
-                href={job.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-semibold rounded-lg transition-colors no-underline"
-              >
+              <a href={job.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-semibold rounded-lg transition-colors no-underline">
                 Apply <ExternalLink size={12} />
               </a>
             )}
           </div>
-
-          {job.location && (
-            <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-3">
-              <MapPin size={11} className="flex-shrink-0 text-zinc-400" />
-              <span>{job.location}</span>
-            </div>
-          )}
-
+          {job.location && <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-3"><MapPin size={11} className="flex-shrink-0 text-zinc-400" /><span>{job.location}</span></div>}
           <div className="flex flex-wrap gap-1.5 mb-3">
             {isVerified && (
               <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
-                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
-                  Verified LCA Filings With Similar Job Title
-                </span>
+                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">Verified LCA Filings With Similar Job Title</span>
               </span>
             )}
-            {isFriendly && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
-                H-1B Friendly Employer
-              </span>
-            )}
+            {isFriendly && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">H-1B Friendly Employer</span>}
           </div>
-
           {(postedSalary || job.lca_count_2025 || lcaLastFiled || formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)) && (
             <div className="flex flex-wrap gap-1.5">
-              {postedSalary && (
-                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                  Salary: {postedSalary}
-                </span>
-              )}
-              {job.lca_count_2025 && job.lca_count_2025 > 0 && (
-                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                  {job.lca_count_2025} LCA filings in 2025
-                </span>
-              )}
-              {lcaLastFiled && (
-                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                  Last LCA filed in {lcaLastFiled}
-                </span>
-              )}
-              {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
-                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                  PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}
-                </span>
-              )}
+              {postedSalary && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">Salary: {postedSalary}</span>}
+              {job.lca_count_2025 && job.lca_count_2025 > 0 && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{job.lca_count_2025} LCA filings in 2025</span>}
+              {lcaLastFiled && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">Last LCA filed in {lcaLastFiled}</span>}
+              {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}</span>}
             </div>
           )}
         </div>
-
-        {/* Description */}
         <div className="overflow-y-auto flex-1 px-5 py-4">
           <div className="text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">Job Description</div>
           {descLoading ? (
-            <div className="space-y-2">
-              {[80, 60, 90, 50, 70, 85, 45].map((w, i) => (
-                <div key={i} className="h-3 bg-zinc-100 rounded animate-pulse" style={{ width: `${w}%` }} />
-              ))}
-            </div>
+            <div className="space-y-2">{[80,60,90,50,70,85,45].map((w,i) => <div key={i} className="h-3 bg-zinc-100 rounded animate-pulse" style={{ width: `${w}%` }} />)}</div>
           ) : descHtml ? (
             <div className="text-xs text-zinc-600 leading-relaxed prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: descHtml }} />
           ) : descText ? (
@@ -706,22 +551,13 @@ function KaiText({ text, isStreaming }: { text: string; isStreaming?: boolean })
   );
 }
 
-// Scan checklist – shown inside a Kai bubble during the job search
 const SCAN_LABELS = [
   "Checking ATS feeds",
   "Filtering for active sponsors",
   "Matching seniority and comp range",
 ];
 
-function ScanChecklistBubble({
-  phase,
-  jobCount,
-  visa,
-}: {
-  phase: number;
-  jobCount: number | null;
-  visa: string | null;
-}) {
+function ScanChecklistBubble({ phase, jobCount, visa }: { phase: number; jobCount: number | null; visa: string | null }) {
   return (
     <div className={s["msg-row"]}>
       <div className={s["kai-avatar"]}>K</div>
@@ -729,93 +565,17 @@ function ScanChecklistBubble({
         {SCAN_LABELS.map((label, i) => {
           const isDone = phase > i + 1;
           const isActive = phase === i + 1;
-          const cls = isDone
-            ? s["scan-item-done"]
-            : isActive
-            ? s["scan-item-active"]
-            : s["scan-item"];
-          const text =
-            i === 1 && visa ? `Filtering for active ${visa} sponsors` : label;
-          return (
-            <div key={i} className={cls}>
-              {isDone ? "✓ " : ""}{text}{!isDone ? "..." : ""}
-            </div>
-          );
+          const cls = isDone ? s["scan-item-done"] : isActive ? s["scan-item-active"] : s["scan-item"];
+          const text = i === 1 && visa ? `Filtering for active ${visa} sponsors` : label;
+          return <div key={i} className={cls}>{isDone ? "✓ " : ""}{text}{!isDone ? "..." : ""}</div>;
         })}
         {phase >= 4 && jobCount !== null ? (
-          <div className={s["scan-item-active"]}>
-            Found {jobCount} match{jobCount !== 1 ? "es" : ""}. Ranking by sponsor reliability...
+          <div className={s["scan-item-active"]}>Found {jobCount} match{jobCount !== 1 ? "es" : ""}. Ranking by sponsor reliability...</div>
+        ) : phase < 4 && (
+          <div className={s["thinking-inline"]}>
+            <span className={s.dot} /><span className={s.dot} /><span className={s.dot} />
           </div>
-        ) : (
-          phase < 4 && (
-            <div className={s["thinking-inline"]}>
-              <span className={s.dot} />
-              <span className={s.dot} />
-              <span className={s.dot} />
-            </div>
-          )
         )}
-      </div>
-    </div>
-  );
-}
-
-// Support bottom sheet
-function SupportScreen({
-  email,
-  jobCount,
-  onClose,
-  onSent,
-}: {
-  email: string | null;
-  jobCount: number;
-  onClose: () => void;
-  onSent: () => void;
-}) {
-  const note = email ? `getdatjob+${encodeURIComponent(email)}` : "getdatjob";
-  const venmoDeepLink = `venmo://paycharge?txn=pay&recipients=letiendat&amount=10&note=${note}`;
-  const venmoWeb = "https://venmo.com/letiendat?txn=pay&amount=10";
-
-  const handleVenmoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault();
-    onSent();
-    // Try deep link; fall back to web after 1.5s if page stays visible
-    const fallback = setTimeout(() => {
-      window.open(venmoWeb, "_blank");
-    }, 1500);
-    const cleanup = () => { clearTimeout(fallback); document.removeEventListener("visibilitychange", cleanup); };
-    document.addEventListener("visibilitychange", cleanup);
-    window.location.href = venmoDeepLink;
-  };
-
-  return (
-    <div
-      className={s["support-overlay"]}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className={s["support-sheet"]}>
-        <p className={s["support-eyebrow"]}>Unlock the rest with $10 support</p>
-        <p className={s["support-hook"]}>
-          <em className={s["support-count"]}>{jobCount}</em>{" "}
-          jobs match your search<br />in the last 3 days
-        </p>
-        <p className={`${s["support-story"]} ${s["support-story-first"]}`}>
-          Hi there, I&apos;m Dat, a solo founder of getdatjob. I&apos;m also on a working visa.
-          I&apos;ve been building this on weeknights and weekends, on top of a
-          60-hour startup work week.
-        </p>
-        <p className={s["support-story"]}>
-          No VC, no team — your support of this LGBT-owned project means everything.
-        </p>
-        <a href={venmoDeepLink} onClick={handleVenmoClick} className={s["support-cta"]}>
-          Support with $10
-        </a>
-        <button className={s["support-sent"]} onClick={onClose}>
-          I&apos;m not a supporter
-        </button>
-        <p className={s["support-skip"]}>
-          No pressure. Come back tomorrow for 6 more — that&apos;s your daily limit.
-        </p>
       </div>
     </div>
   );
@@ -824,9 +584,9 @@ function SupportScreen({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const POST_RESULT_CHIPS = ["Show more", "Change location", "Higher salary only", "Posted this week"];
-const KAI_FIRST_HISTORY_KEY = "kai_first_chat_history";
+const KAI_PAY_HISTORY_KEY = "kai_pay_chat_history";
 
-export default function KaiFirstPage() {
+export default function KaiPayPage() {
   const [step, setStep] = useState<OnboardingStep>("init");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [quickReplies, setQuickReplies] = useState<QR[]>([]);
@@ -838,16 +598,16 @@ export default function KaiFirstPage() {
   const [total3dCount, setTotal3dCount] = useState<number>(0);
   const [scanPhase, setScanPhase] = useState(0);
   const [scanJobCount, setScanJobCount] = useState<number | null>(null);
-  const [showSupport, setShowSupport] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [userLoading, setUserLoading] = useState(true);
   const [linkedIn, setLinkedIn] = useState<LinkedInProfile | null>(null);
   const [enriched, setEnriched] = useState<EnrichedProfile | null>(null);
   const [timeGreeting, setTimeGreeting] = useState<{ headline: string; line2: Greeting["line2"] } | null>(null);
-
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [alertOptinPending, setAlertOptinPending] = useState(false);
+  const [alertOptinAnswered, setAlertOptinAnswered] = useState(false);
 
-  // Free-chat mode (after onboarding done)
+  // Free-chat mode
   const [chatInput, setChatInput] = useState("");
   const [isChatStreaming, setIsChatStreaming] = useState(false);
   const [showPostChips, setShowPostChips] = useState(false);
@@ -859,102 +619,60 @@ export default function KaiFirstPage() {
   const historyLoadedRef = useRef(false);
 
   const scrollToBottom = useCallback(() => {
-    if (threadRef.current) {
-      threadRef.current.scrollTop = threadRef.current.scrollHeight;
-    }
+    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
   }, []);
 
   useEffect(() => { scrollToBottom(); }, [messages, scanPhase, step, scrollToBottom]);
 
-  // Load persisted chat history (only restore if onboarding was fully completed)
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(KAI_FIRST_HISTORY_KEY);
+      const raw = localStorage.getItem(KAI_PAY_HISTORY_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as { step: OnboardingStep; messages: ChatMessage[] };
         if (saved.step === "done" && saved.messages?.length > 0) {
           const clean = saved.messages.filter((m) => !m.isThinking && !m.isStreaming);
-          if (clean.length > 0) {
-            setMessages(clean);
-            setStep("done");
-          }
+          if (clean.length > 0) { setMessages(clean); setStep("done"); }
         }
       }
-    } catch { /* ignore parse/storage errors */ }
+    } catch { /* ignore */ }
     historyLoadedRef.current = true;
   }, []);
 
-  // Persist chat history whenever messages settle (only after onboarding completes)
   useEffect(() => {
     if (!historyLoadedRef.current || step !== "done") return;
     const stable = messages.filter((m) => !m.isThinking && !m.isStreaming);
     try {
-      if (stable.length === 0) {
-        localStorage.removeItem(KAI_FIRST_HISTORY_KEY);
-      } else {
-        localStorage.setItem(KAI_FIRST_HISTORY_KEY, JSON.stringify({ step, messages: stable }));
-      }
-    } catch { /* storage full – silently skip */ }
+      if (stable.length === 0) localStorage.removeItem(KAI_PAY_HISTORY_KEY);
+      else localStorage.setItem(KAI_PAY_HISTORY_KEY, JSON.stringify({ step, messages: stable }));
+    } catch { /* storage full */ }
   }, [messages, step]);
 
-  // Load auth user + enriched profile in parallel
   useEffect(() => {
     const supabase = createSupabaseBrowser();
     supabase.auth.getUser().then(async ({ data }) => {
       if (data.user) {
         const meta = data.user.user_metadata ?? {};
         const fullName = meta.full_name ?? meta.name ?? null;
-        setUser({
-          id: data.user.id,
-          firstName: fullName ? fullName.split(" ")[0] : null,
-          email: data.user.email ?? null,
-          avatar: meta.avatar_url ?? meta.picture ?? null,
-        });
+        setUser({ id: data.user.id, firstName: fullName ? fullName.split(" ")[0] : null, email: data.user.email ?? null, avatar: meta.avatar_url ?? meta.picture ?? null });
 
-        // linkedin.profiles – populated synchronously in auth callback, always available
-        supabase
-          .schema("linkedin")
-          .from("profiles")
-          .select("headline")
-          .eq("id", data.user.id)
-          .maybeSingle()
-          .then(({ data: lp }) => {
-            if (lp?.headline) setLinkedIn({ headline: lp.headline });
-          });
+        supabase.schema("linkedin").from("profiles").select("headline").eq("id", data.user.id).maybeSingle()
+          .then(({ data: lp }) => { if (lp?.headline) setLinkedIn({ headline: lp.headline }); });
 
-        // enriched.profiles – PDL/Apollo async enrichment, available on re-visits
-        supabase
-          .schema("enriched")
-          .from("profiles")
-          .select("current_title, location, job_function, job_level")
-          .eq("user_id", data.user.id)
-          .eq("enrich_status", "done")
-          .maybeSingle()
-          .then(({ data: ep }) => {
-            if (ep) setEnriched(ep as EnrichedProfile);
-          });
+        supabase.schema("enriched").from("profiles").select("current_title, location, job_function, job_level").eq("user_id", data.user.id).eq("enrich_status", "done").maybeSingle()
+          .then(({ data: ep }) => { if (ep) setEnriched(ep as EnrichedProfile); });
       }
       setUserLoading(false);
     });
   }, []);
 
-  // Set time-aware greeting once on mount
-  useEffect(() => {
-    setTimeGreeting(getTimeGreeting(null));
-  }, []);
+  useEffect(() => { setTimeGreeting(getTimeGreeting(null)); }, []);
+  useEffect(() => { if (user?.firstName) setTimeGreeting(getTimeGreeting(user.firstName)); }, [user?.firstName]);
 
-  // Update greeting headline once we know the user's name
-  useEffect(() => {
-    if (user?.firstName) setTimeGreeting(getTimeGreeting(user.firstName));
-  }, [user?.firstName]);
-
-  // Start onboarding once user state is resolved
   useEffect(() => {
     if (userLoading || step !== "init") return;
     const firstName = user?.firstName ?? null;
-
-    let greeting: string;
     const headline = linkedIn?.headline ?? enriched?.current_title ?? null;
+    let greeting: string;
     if (firstName && headline) {
       greeting = `Hey ${firstName}! I'm Kai. I see you're a ${headline}. I'm an AI on a working visa too, and I'm here to help you land your next visa-sponsored role.`;
     } else if (firstName) {
@@ -967,10 +685,7 @@ export default function KaiFirstPage() {
       await delay(400);
       setMessages([{ id: "k-greeting", role: "assistant", content: greeting }]);
       await delay(1200);
-      setMessages((prev) => [
-        ...prev,
-        { id: "k-q1", role: "assistant", content: "What's got you looking right now?" },
-      ]);
+      setMessages((prev) => [...prev, { id: "k-q1", role: "assistant", content: "What's got you looking right now?" }]);
       setQuickReplies([
         { label: "I just got laid off.", value: "laid_off" },
         { label: "I'm employed, but actively looking.", value: "active" },
@@ -981,128 +696,86 @@ export default function KaiFirstPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userLoading, linkedIn, enriched]);
 
-  // ── Tile click handler (drives the full onboarding state machine) ────────────
-
   const handleTileClick = async (qr: QR) => {
     setQuickReplies([]);
 
-    // Q1 – intent
     if (step === "q1") {
       const intent = qr.value;
       setIntake((prev) => ({ ...prev, intent }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(450);
-
       if (intent === "laid_off") {
-        setMessages((prev) => [...prev, { id: `k-f1`, role: "assistant", content: "I'm sorry for this." }]);
+        setMessages((prev) => [...prev, { id: "k-f1", role: "assistant", content: "I'm sorry for this." }]);
         await delay(900);
         setMessages((prev) => [...prev, { id: "k-q1b", role: "assistant", content: "When did it happen? (MM/DD/YY)" }]);
         setStep("q1_layoff_date");
         setTimeout(() => dateInputRef.current?.focus(), 100);
         return;
       }
-
-      const filler =
-        intent === "active"
-          ? "Got it. I'm here to fast-track your search – visa sponsoring opportunities only, so you're not wasting time on companies that won't work for you."
-          : "That's the immigrant mindset. Aren't we all running a plan B in this economy?";
-      setMessages((prev) => [...prev, { id: `k-f1`, role: "assistant", content: filler }]);
+      const filler = intent === "active"
+        ? "Got it. I'm here to fast-track your search – visa sponsoring opportunities only, so you're not wasting time on companies that won't work for you."
+        : "That's the immigrant mindset. Aren't we all running a plan B in this economy?";
+      setMessages((prev) => [...prev, { id: "k-f1", role: "assistant", content: filler }]);
       await delay(900);
-      // Q2 is now visa
-      setMessages((prev) => [
-        ...prev,
-        { id: "k-q2", role: "assistant", content: "To match you with the right sponsors – what visa are you working with?" },
-      ]);
+      setMessages((prev) => [...prev, { id: "k-q2", role: "assistant", content: "To match you with the right sponsors – what visa are you working with?" }]);
       setQuickReplies([
         { label: "H-1B", value: "H-1B" },
-        { label: "E-3",  value: "E-3"  },
-        { label: "TN",   value: "TN"   },
-        { label: "OPT",  value: "OPT"  },
+        { label: "E-3", value: "E-3" },
+        { label: "TN", value: "TN" },
+        { label: "OPT", value: "OPT" },
       ]);
       setStep("q2");
 
-    // Q2 – visa
     } else if (step === "q2") {
       const visa = qr.value;
       setIntake((prev) => ({ ...prev, visa }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(450);
       const visaFiller: Record<string, string> = {
-        "h1b":  "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year – the good ones are in here.",
-        "e3":   "E-3 sponsors are a more specific group – I'll zero in on the ones with a strong Australian hire track record.",
-        "tn":   "TN sponsors are a more specific group – I'll zero in on the ones with a strong Canada/Mexico hire track record.",
-        "opt":  "Got it – OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
-        "o1":   "O-1 is for people with extraordinary ability – and honestly, it's the most flexible work visa out there. Most employers can hire you without going through the H-1B lottery or LCA process. Your options are wider than you might think. I'll pull from our full verified employer list.",
+        h1b: "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year – the good ones are in here.",
+        e3: "E-3 sponsors are a more specific group – I'll zero in on the ones with a strong Australian hire track record.",
+        tn: "TN sponsors are a more specific group – I'll zero in on the ones with a strong Canada/Mexico hire track record.",
+        opt: "Got it – OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
       };
       const visaKey = visa.toLowerCase().replace(/[-/ ]/g, "");
-      setMessages((prev) => [
-        ...prev,
-        { id: "k-f2", role: "assistant", content: visaFiller[visaKey] ?? "Got it – pulling the right sponsors." },
-      ]);
+      setMessages((prev) => [...prev, { id: "k-f2", role: "assistant", content: visaFiller[visaKey] ?? "Got it – pulling the right sponsors." }]);
       await delay(850);
-      // Q3 is now salary
-      setMessages((prev) => [
-        ...prev,
-        { id: "k-q3", role: "assistant", content: [
-            "What's the minimum base salary that would make a move worth it? Or are you open?",
-            "What's the minimum base salary that would make a move worth it? Or no minimum?",
-            "What's the minimum base salary that would make a move worth it? Or are you flexible on salary?",
-          ][Math.floor(Math.random() * 3)] },
-      ]);
+      setMessages((prev) => [...prev, { id: "k-q3", role: "assistant", content: ["What's the minimum base salary that would make a move worth it? Or are you open?", "What's the minimum base salary that would make a move worth it? Or no minimum?", "What's the minimum base salary that would make a move worth it? Or are you flexible on salary?"][Math.floor(Math.random() * 3)] }]);
       setQuickReplies([
-        { label: "No floor", value: "0"      },
-        { label: "$100K+",   value: "100000" },
-        { label: "$150K+",   value: "150000" },
-        { label: "$200K+",   value: "200000" },
+        { label: "No floor", value: "0" },
+        { label: "$100K+", value: "100000" },
+        { label: "$150K+", value: "150000" },
+        { label: "$200K+", value: "200000" },
       ]);
       setStep("q3");
 
-    // Q3 – salary → Q4 job function
     } else if (step === "q3") {
       const salaryMin = parseInt(qr.value, 10);
       setIntake((prev) => ({ ...prev, salaryMin: salaryMin > 0 ? salaryMin : null }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(400);
-
-      // Re-fetch headline — wait a moment to give the extension extra time to finish.
-      // Extension starts during the OAuth redirect, so by ~25s it should be done.
-      // The extra 3s here ensures we don't race against it.
       await delay(3000);
 
       let freshHeadline = linkedIn?.headline ?? null;
       if (!freshHeadline && user) {
         const supa = createSupabaseBrowser();
-        const { data: lp } = await supa
-          .schema("linkedin")
-          .from("profiles")
-          .select("headline")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (lp?.headline) {
-          freshHeadline = lp.headline;
-          setLinkedIn({ headline: lp.headline });
-        }
+        const { data: lp } = await supa.schema("linkedin").from("profiles").select("headline").eq("id", user.id).maybeSingle();
+        if (lp?.headline) { freshHeadline = lp.headline; setLinkedIn({ headline: lp.headline }); }
       }
 
       const inferredFunc = inferJobFunction(freshHeadline);
       const funcLabel: Record<string, string> = {
-        Engineering: "Engineering",
-        Product: "Product",
-        Marketing: "Marketing / Growth",
-        "Data / AI": "Data / AI",
-        Design: "Design",
-        Sales: "Sales",
-        Finance: "Finance",
-        Operations: "Operations",
+        Engineering: "Engineering", Product: "Product", Marketing: "Marketing / Growth",
+        "Data / AI": "Data / AI", Design: "Design", Sales: "Sales", Finance: "Finance", Operations: "Operations",
       };
       const q4Text = inferredFunc
         ? `Based on your profile, looks like you're in ${funcLabel[inferredFunc] ?? inferredFunc} — is that right?`
         : "What kind of role are you looking for?";
       const topFuncs: QR[] = [
-        { label: "Engineering",       value: "Engineering" },
-        { label: "Marketing / Growth", value: "Marketing"  },
-        { label: "Product",           value: "Product"     },
-        { label: "Design / Data / Other", value: "Other"   },
+        { label: "Engineering", value: "Engineering" },
+        { label: "Marketing / Growth", value: "Marketing" },
+        { label: "Product", value: "Product" },
+        { label: "Design / Data / Other", value: "Other" },
       ];
       const q4Replies: QR[] = inferredFunc
         ? [
@@ -1115,83 +788,51 @@ export default function KaiFirstPage() {
       setQuickReplies(q4Replies);
       setStep("q4");
 
-    // Q4 – job function → Q5 job level
     } else if (step === "q4") {
       const jobFunction = qr.value;
       setIntake((prev) => ({ ...prev, jobFunction }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(400);
 
-      // Re-fetch headline — Q4 answer is ~25-30s in, extension is done by now
       let q5Headline = linkedIn?.headline ?? null;
       if (!q5Headline && user) {
         const supa = createSupabaseBrowser();
-        const { data: lp } = await supa
-          .schema("linkedin")
-          .from("profiles")
-          .select("headline")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (lp?.headline) {
-          q5Headline = lp.headline;
-          setLinkedIn({ headline: lp.headline });
-        }
+        const { data: lp } = await supa.schema("linkedin").from("profiles").select("headline").eq("id", user.id).maybeSingle();
+        if (lp?.headline) { q5Headline = lp.headline; setLinkedIn({ headline: lp.headline }); }
       }
 
       const inferredLevel = inferLevel(q5Headline ?? "");
       const isManager = inferredLevel?.toLowerCase().includes("manager") || inferredLevel?.toLowerCase().includes("lead");
       const q5Text = inferredLevel
         ? isManager
-          ? `Looks like you're in a manager role — staying that path, or open to IC work too?`
+          ? "Looks like you're in a manager role — staying that path, or open to IC work too?"
           : `Looks like you're a ${inferredLevel} based on your profile — planning to stay that route, or open to people management?`
         : "Senior IC, or ready to lead a team?";
       const q5Replies: QR[] = inferredLevel
         ? isManager
-          ? [
-              { label: "Staying Manager / Lead", value: "manager"   },
-              { label: "Open to IC too",          value: "senior_ic" },
-              { label: "Either works",            value: "either"    },
-            ]
-          : [
-              { label: `Staying ${inferredLevel}`, value: "senior_ic" },
-              { label: "Open to Manager / Lead",   value: "manager"   },
-              { label: "Either works",             value: "either"    },
-            ]
-        : [
-            { label: "Senior IC",       value: "senior_ic" },
-            { label: "Manager / Lead",  value: "manager"   },
-            { label: "Either works",    value: "either"    },
-          ];
+          ? [{ label: "Staying Manager / Lead", value: "manager" }, { label: "Open to IC too", value: "senior_ic" }, { label: "Either works", value: "either" }]
+          : [{ label: `Staying ${inferredLevel}`, value: "senior_ic" }, { label: "Open to Manager / Lead", value: "manager" }, { label: "Either works", value: "either" }]
+        : [{ label: "Senior IC", value: "senior_ic" }, { label: "Manager / Lead", value: "manager" }, { label: "Either works", value: "either" }];
       setMessages((prev) => [...prev, { id: "k-q5", role: "assistant", content: q5Text }]);
       setQuickReplies(q5Replies);
       setStep("q5");
 
-    // Q5 – job level → Q6 location
     } else if (step === "q5") {
       const level = qr.value;
       setIntake((prev) => ({ ...prev, level }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
-
       if (level === "either") {
         await delay(450);
         setMessages((prev) => [...prev, { id: "k-f5", role: "assistant", content: "Flexible – that opens it up." }]);
       }
       await delay(level === "either" ? 700 : 400);
 
-      // Q6 – location: re-fetch from enrichment (extension has had ~25s by now)
       const supabase = createSupabaseBrowser();
       const { data: { user: authUser } } = await supabase.auth.getUser();
       let knownLocation: string | null = null;
       if (authUser) {
-        const { data: lp } = await supabase
-          .schema("linkedin")
-          .from("profiles")
-          .select("location")
-          .eq("id", authUser.id)
-          .maybeSingle();
+        const { data: lp } = await supabase.schema("linkedin").from("profiles").select("location").eq("id", authUser.id).maybeSingle();
         const raw = lp?.location ?? null;
-        // Discard single-word values — company names (e.g. "Caffeine") stored
-        // by older enrichment runs before the server-side guard was added.
         knownLocation = raw && (raw.includes(" ") || /^remote$/i.test(raw)) ? raw : null;
       }
 
@@ -1200,34 +841,29 @@ export default function KaiFirstPage() {
         : "Where are you based right now?";
       const q6Replies: QR[] = knownLocation
         ? [
-            { label: `${knownLocation.split(",")[0]} / local`, value: "local"   },
-            { label: "Remote only",                            value: "remote"  },
-            { label: "Open to other cities",                   value: "anywhere"},
+            { label: `${knownLocation.split(",")[0]} / local`, value: "local" },
+            { label: "Remote only", value: "remote" },
+            { label: "Open to other cities", value: "anywhere" },
           ]
         : [
-            { label: "Bay Area / SF",    value: "bay_area" },
-            { label: "NYC / East Coast", value: "nyc"      },
-            { label: "Remote only",      value: "remote"   },
-            { label: "Open anywhere",    value: "anywhere" },
+            { label: "Bay Area / SF", value: "bay_area" },
+            { label: "NYC / East Coast", value: "nyc" },
+            { label: "Remote only", value: "remote" },
+            { label: "Open anywhere", value: "anywhere" },
           ];
-
-      if (knownLocation) {
-        setIntake((prev) => ({ ...prev, location: knownLocation, locationMode: "local" }));
-      }
-
+      if (knownLocation) setIntake((prev) => ({ ...prev, location: knownLocation, locationMode: "local" }));
       setMessages((prev) => [...prev, { id: "k-q6", role: "assistant", content: q6Text }]);
       setQuickReplies(q6Replies);
       setStep("q6");
 
-    // Q6 – location → kicks off scan
     } else if (step === "q6") {
       const level = intake.level ?? "either";
       const locMap: Record<string, { location: string | null; locationMode: string }> = {
-        local:    { location: intake.location, locationMode: "local"    },
-        bay_area: { location: "San Francisco", locationMode: "local"    },
-        nyc:      { location: "New York",      locationMode: "local"    },
-        remote:   { location: null,            locationMode: "remote"   },
-        anywhere: { location: null,            locationMode: "anywhere" },
+        local:    { location: intake.location, locationMode: "local" },
+        bay_area: { location: "San Francisco", locationMode: "local" },
+        nyc:      { location: "New York", locationMode: "local" },
+        remote:   { location: null, locationMode: "remote" },
+        anywhere: { location: null, locationMode: "anywhere" },
       };
       const loc = locMap[qr.value] ?? { location: null, locationMode: "anywhere" };
       const updatedIntake = { ...intake, ...loc, level };
@@ -1239,65 +875,35 @@ export default function KaiFirstPage() {
       const dept = updatedIntake.jobFunction && updatedIntake.jobFunction !== "Other"
         ? (funcLabelMap[updatedIntake.jobFunction] ?? updatedIntake.jobFunction.toLowerCase())
         : inferDepartment(linkedIn?.headline ?? enriched?.current_title ?? null);
-      const salaryStr = updatedIntake.salaryMin
-        ? `$${Math.round(updatedIntake.salaryMin / 1000)}K+`
-        : "any salary";
-      const levelStr =
-        level === "senior_ic" ? "Senior IC" :
-        level === "manager"   ? "Manager / Lead" : "all levels";
-      const locStr =
-        updatedIntake.locationMode === "remote"   ? "remote" :
-        updatedIntake.locationMode === "anywhere" ? "anywhere in the US" :
-        updatedIntake.location ?? "all locations";
-
+      const salaryStr = updatedIntake.salaryMin ? `$${Math.round(updatedIntake.salaryMin / 1000)}K+` : "any salary";
+      const levelStr = level === "senior_ic" ? "Senior IC" : level === "manager" ? "Manager / Lead" : "all levels";
+      const locStr = updatedIntake.locationMode === "remote" ? "remote" : updatedIntake.locationMode === "anywhere" ? "anywhere in the US" : updatedIntake.location ?? "all locations";
       const filterTokens = [dept, locStr, salaryStr, levelStr].filter(Boolean);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: "k-scan-announce",
-          role: "assistant",
-          content: `Running a pass across ${filterTokens.join(" · ")}.\n\nI'm looking at the last 3 days – so everything I bring back is fresh. Give me a sec.`,
-        },
-      ]);
+      setMessages((prev) => [...prev, {
+        id: "k-scan-announce",
+        role: "assistant",
+        content: `Running a pass across ${filterTokens.join(" · ")}.\n\nI'm looking at the last 3 days – so everything I bring back is fresh. Give me a sec.`,
+      }]);
       setStep("scanning");
 
-      // Fire-and-forget: persist intake preferences to enriched.profiles
+      // Persist intake
       createSupabaseBrowser().auth.getUser().then(({ data }) => {
         if (!data.user) return;
-        const levelMap: Record<string, string> = {
-          senior_ic: "Senior IC",
-          manager: "Manager/Lead",
-          either: "Either",
-        };
-        const visaMap: Record<string, string> = {
-          "H-1B": "H-1B",
-          "OPT": "OPT",
-          "E-3": "E-3/TN",
-        };
-        const prefLocStr =
-          updatedIntake.locationMode === "remote" ? "Remote" :
-          updatedIntake.locationMode === "anywhere" ? null :
-          updatedIntake.location;
-        createSupabaseBrowser()
-          .schema("enriched")
-          .from("profiles")
-          .upsert(
-            {
-              user_id: data.user.id,
-              visa_type: visaMap[updatedIntake.visa ?? ""] ?? "Other",
-              salary_floor: updatedIntake.salaryMin ?? null,
-              job_function: updatedIntake.jobFunction !== "Other" ? updatedIntake.jobFunction : null,
-              job_level: levelMap[updatedIntake.level ?? ""] ?? null,
-              location: prefLocStr ?? null,
-              onboarding_complete: true,
-            },
-            { onConflict: "user_id" }
-          )
-          .then(() => {});
+        const levelMap: Record<string, string> = { senior_ic: "Senior IC", manager: "Manager/Lead", either: "Either" };
+        const visaMap: Record<string, string> = { "H-1B": "H-1B", "OPT": "OPT", "E-3": "E-3/TN" };
+        const prefLocStr = updatedIntake.locationMode === "remote" ? "Remote" : updatedIntake.locationMode === "anywhere" ? null : updatedIntake.location;
+        createSupabaseBrowser().schema("enriched").from("profiles").upsert({
+          user_id: data.user.id,
+          visa_type: visaMap[updatedIntake.visa ?? ""] ?? "Other",
+          salary_floor: updatedIntake.salaryMin ?? null,
+          job_function: updatedIntake.jobFunction !== "Other" ? updatedIntake.jobFunction : null,
+          job_level: levelMap[updatedIntake.level ?? ""] ?? null,
+          location: prefLocStr ?? null,
+          onboarding_complete: true,
+        }, { onConflict: "user_id" }).then(() => {});
       });
 
-      // Animate checklist concurrently with API call
       const jobsPromise: Promise<{ jobs: Job[]; total_3d_count: number }> = fetch("/api/onboarding/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1315,7 +921,17 @@ export default function KaiFirstPage() {
         .catch(() => ({ jobs: [], total_3d_count: 0 }));
 
       setScanPhase(1);
-      await delay(1100);
+      await delay(800);
+
+      // Job alert opt-in during scanning
+      setMessages((prev) => [...prev, {
+        id: "k-alert-optin",
+        role: "assistant",
+        content: "While I'm searching for your matches, can I ping you when new matches come in? Your daily batch resets at midnight.",
+      }]);
+      setAlertOptinPending(true);
+
+      await delay(300);
       setScanPhase(2);
       await delay(1000);
       setScanPhase(3);
@@ -1328,7 +944,7 @@ export default function KaiFirstPage() {
       setScanPhase(4);
       await delay(1300);
 
-      // Reveal batch 1 – one job per company
+      // Batch 1 — 5 unique-company cards
       setScanPhase(0);
       const seenCos = new Set<string>();
       const batch1 = jobs.filter((j) => {
@@ -1336,7 +952,8 @@ export default function KaiFirstPage() {
         if (seenCos.has(key)) return false;
         seenCos.add(key);
         return true;
-      }).slice(0, 3);
+      }).slice(0, 5);
+
       const count = batch1.length;
       const hasVerified = batch1.some((j) => j.visa_tier === "verified");
       const freshLabel = postedWithin(batch1);
@@ -1344,55 +961,27 @@ export default function KaiFirstPage() {
       const revealText = count > 0
         ? `Okay, found ${count} job${count !== 1 ? "s" : ""} ${jobsDesc}.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before – so the sponsorship signal is extremely high." : ""}`
         : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks.";
-      setMessages((prev) => [
-        ...prev,
-        { id: "k-reveal1", role: "assistant", content: revealText, jobs: batch1 },
-      ]);
+      setMessages((prev) => [...prev, { id: "k-reveal1", role: "assistant", content: revealText, jobs: batch1 }]);
       setStep("batch1");
 
-    // Email opt-in
-    } else if (step === "email_optin") {
+    } else if (step === "see_more") {
+      setQuickReplies([]);
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
-      await delay(450);
+      await delay(300);
       if (qr.value === "yes") {
-        setMessages((prev) => [
-          ...prev,
-          { id: "k-optin-yes", role: "assistant", content: "Perfect – I'll ping you daily when new matches hit. Won't spam you." },
-        ]);
-        // Best-effort save preference
-        try {
-          const supabase = createSupabaseBrowser();
-          const { data: { user: authUser } } = await supabase.auth.getUser();
-          if (authUser) {
-            await supabase.from("profiles").update({ email_alerts: true }).eq("id", authUser.id);
-          }
-        } catch { /* graceful */ }
+        setStep("paywall");
       } else {
-        setMessages((prev) => [
-          ...prev,
-          { id: "k-optin-no", role: "assistant", content: "Got it – no pressure." },
-        ]);
-      }
-      await delay(600);
-
-      const batch2 = allJobs.slice(3, 6);
-      if (batch2.length > 0) {
-        setMessages((prev) => [
-          ...prev,
-          { id: "k-reveal2", role: "assistant", content: (() => { const fl = postedWithin(batch2); return fl ? `Here are ${batch2.length} more, posted within ${fl}.` : `Here are ${batch2.length} more worth a look.`; })(), jobs: batch2 },
-        ]);
-        setStep("batch2");
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { id: "k-no-more", role: "assistant", content: "That's all the matches for today – new ones drop daily." },
-        ]);
+        setMessages((prev) => [...prev, {
+          id: "k-no-more",
+          role: "assistant",
+          content: "No worries — new matches drop daily. Come back tomorrow!",
+        }]);
         setStep("done");
       }
     }
   };
 
-  // ── Date input for layoff date (q1_layoff_date step) ─────────────────────────
+  // ── Date input handler ────────────────────────────────────────────────────────
 
   const handleDateInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let v = e.target.value.replace(/[^\d]/g, "");
@@ -1405,100 +994,79 @@ export default function KaiFirstPage() {
   const handleDateSubmit = async () => {
     const trimmed = dateInput.trim();
     if (!trimmed) return;
-
     const valid = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{2}$/.test(trimmed);
     if (!valid) {
       setDateInput("");
-      setMessages((prev) => [
-        ...prev,
+      setMessages((prev) => [...prev,
         { id: `u-${Date.now()}`, role: "user", content: trimmed },
         { id: `k-date-err-${Date.now()}`, role: "assistant", content: "Hmm, that doesn't look right. Try MM/DD/YY – for example, 05/25/25." },
       ]);
       setTimeout(() => dateInputRef.current?.focus(), 100);
       return;
     }
-
     setDateInput("");
     setIntake((prev) => ({ ...prev, layoffDate: trimmed }));
     setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: trimmed }]);
-    // Best-effort save – requires layoff_date column on profiles table
     try {
       const supabase = createSupabaseBrowser();
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        await supabase.from("profiles").update({ layoff_date: trimmed }).eq("id", authUser.id);
-      }
+      if (authUser) await supabase.from("profiles").update({ layoff_date: trimmed }).eq("id", authUser.id);
     } catch { /* graceful */ }
     await delay(500);
-    setMessages((prev) => [...prev, { id: `k-f1b`, role: "assistant", content: "Okay – 30, 60, 90 days matters here. I'm pulling for roles that can move fast." }]);
+    setMessages((prev) => [...prev, { id: "k-f1b", role: "assistant", content: "Okay – 30, 60, 90 days matters here. I'm pulling for roles that can move fast." }]);
     await delay(900);
     setMessages((prev) => [...prev, { id: "k-q2", role: "assistant", content: "To match you with the right sponsors – what visa are you working with?" }]);
     setQuickReplies([
       { label: "H-1B", value: "H-1B" },
-      { label: "E-3",  value: "E-3"  },
-      { label: "TN",   value: "TN"   },
-      { label: "OPT",  value: "OPT"  },
+      { label: "E-3", value: "E-3" },
+      { label: "TN", value: "TN" },
+      { label: "OPT", value: "OPT" },
     ]);
     setStep("q2");
   };
 
-  // ── Show-more handlers ────────────────────────────────────────────────────────
+  // ── See-more handler ──────────────────────────────────────────────────────────
 
-  const handleShowMore1 = async () => {
-    setStep("email_optin");
+  const handleSeeMore = async () => {
+    const remaining = Math.max(0, total3dCount - 5);
+    const total = total3dCount || allJobs.length;
+    setStep("see_more");
     await delay(300);
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: "k-optin-ask",
-        role: "assistant",
-        content: "Before I pull the next batch – want me to ping you when new matches come in? Your daily batch resets at midnight.",
-      },
-    ]);
+    setMessages((prev) => [...prev, {
+      id: "k-see-more",
+      role: "assistant",
+      content: `We found ${total} visa-sponsored jobs posted in the last 3 days that match your preferences. Want to see the other ${remaining}?`,
+    }]);
     setQuickReplies([
-      { label: "Yes, keep me posted", value: "yes" },
-      { label: "Maybe later", value: "no" },
+      { label: "Yes, show me", value: "yes" },
+      { label: "Not now", value: "no" },
     ]);
   };
 
-  const handleShowMore2 = () => {
-    setShowSupport(true);
-    setStep("support");
-  };
+  // ── Alert opt-in handler (during scanning) ────────────────────────────────────
 
-  const handleSupportClose = async () => {
-    setShowSupport(false);
-    setStep("done");
-    await delay(300);
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: "k-skip-support",
+  const handleAlertOptin = async (value: string) => {
+    setAlertOptinAnswered(true);
+    setMessages((prev) => [...prev, {
+      id: `u-alert-${Date.now()}`,
+      role: "user",
+      content: value === "yes" ? "Yes, ping me" : "Maybe later",
+    }]);
+    if (value === "yes") {
+      await delay(300);
+      setMessages((prev) => [...prev, {
+        id: "k-alert-ok",
         role: "assistant",
-        content: "No worries – that's today's batch. New matches drop daily, come back tomorrow and I'll pull fresh ones.",
-      },
-    ]);
-  };
-
-  const handleISentIt = async () => {
-    setShowSupport(false);
-    setStep("done");
-    try {
-      const supabase = createSupabaseBrowser();
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        await supabase.from("profiles").update({ is_supporter: true }).eq("id", authUser.id);
-      }
-    } catch { /* graceful */ }
-    await delay(300);
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: "k-supporter",
-        role: "assistant",
-        content: "You're in – thank you! Unlimited Kai starting now. What else can I find you?",
-      },
-    ]);
+        content: "Perfect — I'll ping you daily when new matches hit. Won't spam you.",
+      }]);
+      try {
+        const supabase = createSupabaseBrowser();
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+          await supabase.schema("enriched").from("profiles").update({ email_alerts: true }).eq("user_id", authUser.id);
+        }
+      } catch { /* graceful */ }
+    }
   };
 
   // ── Free chat (after onboarding done) ────────────────────────────────────────
@@ -1515,26 +1083,18 @@ export default function KaiFirstPage() {
       if (!trimmed || isChatStreaming) return;
       setChatInput("");
       if (chatInputRef.current) chatInputRef.current.style.height = "auto";
-
-      if (step === "q2") {
-        await handleTileClick({ label: trimmed, value: trimmed });
-        return;
-      }
-
+      if (step === "q2") { await handleTileClick({ label: trimmed, value: trimmed }); return; }
       setShowPostChips(false);
 
       const userMsgId = `u-${Date.now()}`;
       const thinkingId = `k-${Date.now() + 1}`;
-      setMessages((prev) => [
-        ...prev,
+      setMessages((prev) => [...prev,
         { id: userMsgId, role: "user", content: trimmed },
         { id: thinkingId, role: "assistant", content: "", isThinking: true },
       ]);
       setIsChatStreaming(true);
 
-      const history = [...messages, { role: "user" as const, content: trimmed }].map((m) => ({
-        role: m.role, content: m.content,
-      }));
+      const history = [...messages, { role: "user" as const, content: trimmed }].map((m) => ({ role: m.role, content: m.content }));
 
       try {
         const res = await fetch("/api/chat", {
@@ -1549,9 +1109,7 @@ export default function KaiFirstPage() {
         let buffer = "";
         let receivedJobs = false;
 
-        setMessages((prev) =>
-          prev.map((m) => m.id === thinkingId ? { ...m, isThinking: false, isStreaming: true } : m)
-        );
+        setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, isThinking: false, isStreaming: true } : m));
 
         while (true) {
           const { done, value } = await reader.read();
@@ -1564,59 +1122,40 @@ export default function KaiFirstPage() {
             try {
               const event = JSON.parse(line.slice(6));
               if (event.type === "text") {
-                setMessages((prev) =>
-                  prev.map((m) => m.id === thinkingId ? { ...m, content: m.content + event.text } : m)
-                );
+                setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, content: m.content + event.text } : m));
                 scrollToBottom();
               } else if (event.type === "tool_start") {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === thinkingId
-                      ? { ...m, content: m.content ? m.content.trimEnd() + "\n\n" : "", isThinking: true, isStreaming: false }
-                      : m
-                  )
-                );
+                setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, content: m.content ? m.content.trimEnd() + "\n\n" : "", isThinking: true, isStreaming: false } : m));
               } else if (event.type === "jobs") {
                 receivedJobs = true;
-                setMessages((prev) =>
-                  prev.map((m) => m.id === thinkingId ? { ...m, jobs: event.jobs } : m)
-                );
+                setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, jobs: event.jobs } : m));
               } else if (event.type === "done") {
-                setMessages((prev) =>
-                  prev.map((m) => m.id === thinkingId ? { ...m, isStreaming: false } : m)
-                );
+                setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, isStreaming: false } : m));
                 if (receivedJobs) setShowPostChips(true);
               }
             } catch { /* skip malformed SSE */ }
           }
         }
       } catch {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === thinkingId
-              ? { ...m, isThinking: false, isStreaming: false, content: "Something went wrong. Try again?" }
-              : m
-          )
-        );
+        setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, isThinking: false, isStreaming: false, content: "Something went wrong. Try again?" } : m));
       } finally {
         setIsChatStreaming(false);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [messages, isChatStreaming, scrollToBottom, user, step]
   );
 
   const handleChatKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendChatMessage(chatInput);
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(chatInput); }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
+  const remaining = Math.max(0, total3dCount - 5);
+
   return (
     <div className={s.page}>
-      {/* Nav */}
       <nav className={s.nav}>
         <div className={s["nav-inner"]}>
           <Link href="/me" className={s["exit-btn"]} aria-label="Exit">
@@ -1630,23 +1169,17 @@ export default function KaiFirstPage() {
         </div>
       </nav>
 
-      {/* Chat thread */}
       <div className={s.thread} ref={threadRef}>
         <div className={s["thread-inner"]}>
-          {/* Time-aware greeting headline */}
           {timeGreeting && (
             <div className={s["page-greeting"]}>
               <h1 className={s["page-headline"]}>
-                {timeGreeting.headline}
-                <br />
-                {timeGreeting.line2.pre}
-                <em>{timeGreeting.line2.em}</em>
-                {timeGreeting.line2.post}
+                {timeGreeting.headline}<br />
+                {timeGreeting.line2.pre}<em>{timeGreeting.line2.em}</em>{timeGreeting.line2.post}
               </h1>
             </div>
           )}
 
-          {/* Rendered conversation */}
           {messages.map((msg) => {
             if (msg.isThinking) {
               return (
@@ -1654,20 +1187,13 @@ export default function KaiFirstPage() {
                   <div className={s["kai-avatar"]}>K</div>
                   <div className={`${s.bubble} ${s["bubble-kai"]} ${msg.content ? "" : s.thinking}`}>
                     {msg.content && <KaiText text={msg.content} />}
-                    {msg.content ? (
-                      <div className={s["thinking-inline"]}>
-                        <span className={s.dot} /><span className={s.dot} /><span className={s.dot} />
-                      </div>
-                    ) : (
-                      <>
-                        <span className={s.dot} /><span className={s.dot} /><span className={s.dot} />
-                      </>
-                    )}
+                    {msg.content
+                      ? <div className={s["thinking-inline"]}><span className={s.dot} /><span className={s.dot} /><span className={s.dot} /></div>
+                      : <><span className={s.dot} /><span className={s.dot} /><span className={s.dot} /></>}
                   </div>
                 </div>
               );
             }
-
             return (
               <div key={msg.id}>
                 <div className={`${s["msg-row"]} ${msg.role === "user" ? s["msg-row-user"] : ""}`}>
@@ -1684,7 +1210,6 @@ export default function KaiFirstPage() {
                     {msg.role === "user" ? msg.content : <KaiText text={msg.content} isStreaming={msg.isStreaming} />}
                   </div>
                 </div>
-                {/* Job cards below Kai messages */}
                 {msg.role === "assistant" && msg.jobs && msg.jobs.length > 0 && (
                   <div className={s["msg-row"]} style={{ paddingLeft: 50 }}>
                     <div className={s["jobs-wrap"]}>
@@ -1696,51 +1221,65 @@ export default function KaiFirstPage() {
             );
           })}
 
-          {/* Scan checklist (inline during job search) */}
           {step === "scanning" && scanPhase > 0 && (
             <ScanChecklistBubble phase={scanPhase} jobCount={scanJobCount} visa={intake.visa} />
           )}
 
-          {/* Batch 1 show-more */}
-          {step === "batch1" && (
-            <div className={s["show-more-row"]}>
-              <button className={s["show-more-btn"]} onClick={handleShowMore1}>
-                Show more →
-              </button>
-            </div>
-          )}
-
-          {/* Batch 2 show-more */}
-          {step === "batch2" && (
-            <div className={s["show-more-row"]}>
-              <button className={s["show-more-btn"]} onClick={handleShowMore2}>
-                Show more →
-              </button>
-            </div>
-          )}
-
-          {/* Inline quick-reply chips – tree connector style, anchored to last Kai question */}
-          {quickReplies.length > 0 && (
+          {/* Job alert opt-in chips during scanning */}
+          {step === "scanning" && alertOptinPending && !alertOptinAnswered && (
             <div className={s["inline-replies"]}>
               <div className={s["inline-stem"]} />
               <div className={s["inline-tree"]}>
-                {quickReplies.map((qr, i) => (
-                  <div
-                    key={qr.value}
-                    className={i === quickReplies.length - 1
-                      ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}`
-                      : s["inline-tree-item"]}
-                  >
-                    <button className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>
-                      {qr.label}
-                    </button>
+                {[{ label: "Yes, ping me", value: "yes" }, { label: "Maybe later", value: "no" }].map((qr, i, arr) => (
+                  <div key={qr.value} className={i === arr.length - 1 ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}` : s["inline-tree-item"]}>
+                    <button className={s["inline-chip"]} onClick={() => handleAlertOptin(qr.value)}>{qr.label}</button>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Post-result chips in free-chat mode */}
+          {/* See [N-5] more → after batch 1 */}
+          {step === "batch1" && (
+            <div className={s["show-more-row"]}>
+              <button className={s["show-more-btn"]} onClick={handleSeeMore}>
+                {remaining > 0 ? `See ${remaining} more →` : "See more →"}
+              </button>
+            </div>
+          )}
+
+          {/* PaywallScreen — inline in thread */}
+          {step === "paywall" && (
+            <div style={{ paddingLeft: 50, paddingBottom: 24 }}>
+              <PaywallScreen
+                jobCount={remaining}
+                email={user?.email ?? undefined}
+                onContinueFree={() => {
+                  setStep("done");
+                  setMessages((prev) => [...prev, {
+                    id: "k-continue-free",
+                    role: "assistant",
+                    content: "No worries — your 5 free daily matches are always here. Come back tomorrow for fresh ones.",
+                  }]);
+                }}
+              />
+            </div>
+          )}
+
+          {/* Inline quick-reply chips */}
+          {quickReplies.length > 0 && (
+            <div className={s["inline-replies"]}>
+              <div className={s["inline-stem"]} />
+              <div className={s["inline-tree"]}>
+                {quickReplies.map((qr, i) => (
+                  <div key={qr.value} className={i === quickReplies.length - 1 ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}` : s["inline-tree-item"]}>
+                    <button className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>{qr.label}</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {showPostChips && step === "done" && (
             <div className={s.chips} style={{ justifyContent: "flex-start", paddingLeft: 50 }}>
               {POST_RESULT_CHIPS.map((c) => (
@@ -1751,7 +1290,6 @@ export default function KaiFirstPage() {
         </div>
       </div>
 
-      {/* Date input bar (layoff date step) */}
       {step === "q1_layoff_date" && (
         <div className={s["input-bar"]}>
           <div className={s["input-bar-inner"]}>
@@ -1783,8 +1321,7 @@ export default function KaiFirstPage() {
         </div>
       )}
 
-      {/* Input bar – visible throughout conversation except init/scanning/date-entry */}
-      {step !== "init" && step !== "scanning" && step !== "q1_layoff_date" && (
+      {step !== "init" && step !== "scanning" && step !== "q1_layoff_date" && step !== "paywall" && (
         <div className={s["input-bar"]}>
           <div className={s["input-bar-inner"]}>
             <div className={s["input-wrap"]}>
@@ -1813,20 +1350,7 @@ export default function KaiFirstPage() {
         </div>
       )}
 
-      {/* Support bottom sheet */}
-      {showSupport && (
-        <SupportScreen
-          email={user?.email ?? null}
-          jobCount={total3dCount || allJobs.length}
-          onClose={handleSupportClose}
-          onSent={handleISentIt}
-        />
-      )}
-
-      {/* Job detail modal */}
-      {selectedJob && (
-        <JobDetailModal job={selectedJob} onClose={() => setSelectedJob(null)} />
-      )}
+      {selectedJob && <JobDetailModal job={selectedJob} onClose={() => setSelectedJob(null)} />}
     </div>
   );
 }

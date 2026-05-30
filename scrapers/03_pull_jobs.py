@@ -41,7 +41,7 @@ _NON_US_COUNTRY_RE = re.compile(
     r"italy|italia|uk|united kingdom|england|france|germany|spain|netherlands|"
     r"australia|canada|india|singapore|japan|brazil|ireland|poland|sweden|denmark|"
     r"norway|finland|switzerland|austria|belgium|portugal|israel|dubai|uae|"
-    r"south korea|korea|new zealand|mexico|emea|apac|latam|"
+    r"south korea|korea|new zealand|mexico|chile|emea|apac|latam|"
     # Countries (added)
     r"taiwan|china|egypt|philippines|malaysia|indonesia|argentina|romania|hungary|"
     r"czech republic|czechia|hong kong|saudi arabia|colombia|luxembourg|pakistan|"
@@ -91,6 +91,8 @@ _NON_US_COUNTRY_RE = re.compile(
     r"shanghai|beijing|shenzhen|"
     # Non-US cities — Indonesia
     r"jakarta|"
+    # Non-US cities — Chile
+    r"santiago|valparaiso|concepcion|"
     # Non-US cities — Argentina
     r"buenos aires|"
     # Non-US cities — Brazil

@@ -86,15 +86,60 @@ type IntakeData = {
 const LOGO_DEV_TOKEN = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN ?? "";
 const DOMAIN_OVERRIDES: Record<string, string> = { block: "block.xyz" };
 
+const COMPANY_NAME_OVERRIDES: Record<string, string> = {
+  "social finance": "SoFi",
+  "at&t services": "AT&T",
+  "at&t mobility services": "AT&T",
+  "at&t": "AT&T",
+  "bank of america": "Bank of America",
+  "the pnc financial services group": "PNC",
+  "united services automobile association": "USAA",
+  "american express travel related services company": "American Express",
+  "standard & poor's financial services": "S&P Global",
+  "s&p global market intelligence": "S&P Global",
+  "laboratory corporation of america holdings": "LabCorp",
+  "intercontinental exchange holdings": "ICE",
+  "susquehanna international group": "SIG",
+  "citadel enterprise americas services": "Citadel",
+  "citadel securities americas services": "Citadel Securities",
+  "bernstein institutional services": "AllianceBernstein",
+  "galileo financial technologies": "Galileo",
+  "deloitte touche tohmatsu services": "Deloitte",
+  "deloitte transactions and business analytics": "Deloitte",
+  "pricewaterhousecoopers advisory services": "PwC",
+  "pricewaterhousecoopers": "PwC",
+  "mckinsey & company united states": "McKinsey",
+  "mckinsey & company": "McKinsey",
+  "space exploration technologies": "SpaceX",
+  "flextronics international usa": "Flex",
+  "environmental systems research institute": "Esri",
+  "cognizant trizetto software group": "Cognizant",
+  "cognizant technology solutions us": "Cognizant",
+  "hsbc technology & services": "HSBC",
+  "cigna health and life insurance company": "Cigna",
+  "united parcel service general services": "UPS",
+  "foot locker corporate services": "Foot Locker",
+  "macy's systems and technology": "Macy's",
+  "openai opco": "OpenAI",
+  "london stock exchange group holdings": "LSEG",
+  "general dynamics information technology": "GDIT",
+  "robinhood markets": "Robinhood",
+};
+
 function normalizeCompanyName(name: string): string {
   const cleaned = name
-    .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|corporation|corp\.?|limited|ltd\.?|co\.|l\.p\.?|\blp\b|pbc|p\.c\.|pllc)\.?\s*$/i, "")
+    .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|l\.?l\.?p\.?|corporation|corp\.?|limited|ltd\.?|co\.|l\.p\.?|\blp\b|pbc|p\.c\.|pllc|n\.a\.?|\bopco\b)\.?\s*$/i, "")
     .trim();
+  const override = COMPANY_NAME_OVERRIDES[cleaned.toLowerCase()];
+  if (override) return override;
   const letters = cleaned.replace(/[^a-zA-Z]/g, "");
   if (letters.length > 0 && letters === letters.toUpperCase()) {
-    return cleaned.split(/\s+/).map((w) =>
-      /^[A-Z]{1,4}$/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-    ).join(" ");
+    return cleaned.split(/\s+/).map((w) => {
+      const alpha = w.replace(/[^a-zA-Z]/g, "");
+      const isAcronym = /^[A-Z]{1,4}$/.test(w);
+      const isSymbolAcronym = alpha.length > 0 && alpha === alpha.toUpperCase() && w.length > alpha.length;
+      return isAcronym || isSymbolAcronym ? w : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    }).join(" ");
   }
   return cleaned;
 }

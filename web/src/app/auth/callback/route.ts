@@ -51,8 +51,9 @@ export async function GET(request: NextRequest) {
     // here. Redirect to the client-side session page; browsers preserve the
     // original fragment through same-origin 302 redirects, so the page will
     // receive #access_token=... and call setSession() to establish the session.
-    const next = request.cookies.get("li_oauth_next")?.value ?? "/kai-first";
-    const sessionUrl = next !== "/kai-first"
+    const defaultDest = process.env.NEXT_PUBLIC_PAYWALL_PAGE === "paywall" ? "/kai-pay" : "/kai-first";
+    const next = request.cookies.get("li_oauth_next")?.value ?? defaultDest;
+    const sessionUrl = next !== defaultDest
       ? `${origin}/auth/linkedin/session?next=${encodeURIComponent(next)}`
       : `${origin}/auth/linkedin/session`;
     const res = NextResponse.redirect(sessionUrl);
@@ -137,7 +138,13 @@ export async function GET(request: NextRequest) {
     await enrichUser(userId, email, firstName, lastName, linkedinUrl, meta.locale ?? null);
   });
 
-  const next = request.cookies.get("li_oauth_next")?.value ?? "/kai-first";
+  const rawNext = request.cookies.get("li_oauth_next")?.value;
+  let next: string;
+  if (rawNext) {
+    next = rawNext;
+  } else {
+    next = process.env.NEXT_PUBLIC_PAYWALL_PAGE === "paywall" ? "/kai-pay" : "/kai-first";
+  }
   const finalRes = NextResponse.redirect(`${origin}${next}`);
   finalRes.cookies.delete("li_oauth_next");
   return finalRes;

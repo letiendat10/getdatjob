@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
@@ -14,6 +14,10 @@ type Profile = {
   email: string | null;
   avatar_url: string | null;
   is_supporter: boolean;
+  subscription_tier?: string;
+  subscription_status?: string | null;
+  stripe_customer_id?: string | null;
+  current_tier_expires_at?: string | null;
   preferences: {
     visa_type: string | null;
     salary_floor: number | null;
@@ -466,50 +470,215 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
 
 // ── Matches Tab ───────────────────────────────────────────────────────────────
 
-function MatchesTab({ isSupporter }: { isSupporter: boolean }) {
-  if (isSupporter) {
-    return (
-      <div className={s["matches-scroll"]}>
-        <div style={{ padding: "32px 20px", maxWidth: 800, margin: "0 auto" }}>
-          <p style={{ fontSize: 14, color: "var(--ink-3)" }}>
-            Your personalized matches —{" "}
-            <Link href="/jobs" style={{ color: "var(--accent)", textDecoration: "underline" }}>
-              browse all jobs
-            </Link>
-          </p>
-        </div>
-      </div>
-    );
-  }
+const VISIBLE_FREE = 5;
+
+function MatchesTab({ isUnlocked, preferences }: {
+  isUnlocked: boolean;
+  preferences: Profile["preferences"];
+}) {
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const params: Record<string, string | number> = {};
+    if (preferences?.visa_type) params.visa = preferences.visa_type;
+    if (preferences?.location) params.location = preferences.location;
+    if (preferences?.salary_floor) params.salary_min = preferences.salary_floor;
+
+    fetch("/api/onboarding/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...params, locationMode: preferences?.location ? "local" : "anywhere" }),
+    })
+      .then((r) => r.json())
+      .then((d) => { setJobs(d.jobs ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const visibleJobs = isUnlocked ? jobs : jobs.slice(0, VISIBLE_FREE);
+  const hiddenCount = isUnlocked ? 0 : Math.max(0, jobs.length - VISIBLE_FREE);
 
   return (
     <div className={s["matches-scroll"]}>
-      <div className={s["lock-screen"]}>
-        <div className={s["lock-icon-wrap"]}>
-          <LockIcon />
-        </div>
-        <h2 className={s["lock-title"]}>Job Matches</h2>
-        <p className={s["lock-desc"]}>
-          Kai filters the full job board down to roles that match your visa status, location, and target level.{" "}
-          <span className={s["lock-count"]}>Support getdatjob for $10</span>{" "}
-          to unlock daily matches and keep this project running.
+      <div style={{ padding: "24px 20px 40px", maxWidth: 640, margin: "0 auto" }}>
+        {/* Header */}
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)", margin: "0 0 4px", letterSpacing: "-0.02em" }}>
+          Your matches
+        </h2>
+        <p style={{ fontSize: 13, color: "var(--ink-3)", margin: "0 0 16px" }}>
+          Roles verified against USCIS sponsorship data, updated daily.
         </p>
-        <a
-          href="venmo://paycharge?txn=pay&recipients=letiendat&amount=10&note=getdatjob"
-          className={s["venmo-btn"]}
-        >
-          <VenmoIcon />
-          Support on Venmo — $10 👊
-        </a>
-        <p className={s["lock-skip"]}>
-          Kai job search still works — this just unlocks the filtered view.
-        </p>
+
+        {/* Preference filter chips */}
+        {preferences && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 20 }}>
+            {preferences.visa_type && (
+              <span style={{ fontSize: 12, fontWeight: 500, padding: "4px 10px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}>
+                {preferences.visa_type}
+              </span>
+            )}
+            {preferences.location && (
+              <span style={{ fontSize: 12, fontWeight: 500, padding: "4px 10px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}>
+                {preferences.location}
+              </span>
+            )}
+            {preferences.salary_floor && preferences.salary_floor > 0 && (
+              <span style={{ fontSize: 12, fontWeight: 500, padding: "4px 10px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}>
+                ${Math.round(preferences.salary_floor / 1000)}K+
+              </span>
+            )}
+            {preferences.job_level && (
+              <span style={{ fontSize: 12, fontWeight: 500, padding: "4px 10px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}>
+                {preferences.job_level}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Job list */}
+        {loading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[1, 2, 3].map((i) => (
+              <div key={i} style={{ height: 80, borderRadius: 12, background: "var(--bg-2)", animation: "pulse 1.5s ease-in-out infinite" }} />
+            ))}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {visibleJobs.map((job) => (
+                <JobCard key={job.id} job={job} />
+              ))}
+            </div>
+
+            {/* Blurred extras + upgrade CTA */}
+            {!isUnlocked && hiddenCount > 0 && (
+              <>
+                <div style={{ position: "relative", marginTop: 10 }}>
+                  <div style={{ filter: "blur(5px)", pointerEvents: "none", userSelect: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+                    {jobs.slice(VISIBLE_FREE, VISIBLE_FREE + 3).map((job) => (
+                      <JobCard key={job.id} job={job} />
+                    ))}
+                  </div>
+                  <div style={{
+                    position: "absolute", inset: 0,
+                    background: "linear-gradient(to bottom, transparent 0%, var(--bg) 80%)",
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end",
+                    paddingBottom: 12,
+                  }}>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", margin: "0 0 10px", textAlign: "center" }}>
+                      {hiddenCount} more match{hiddenCount !== 1 ? "es" : ""} — upgrade to apply for more jobs
+                    </p>
+                    <Link
+                      href="/kai-pay"
+                      style={{
+                        display: "inline-block", background: "var(--accent)", color: "#F4F0E8",
+                        padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                        textDecoration: "none",
+                      }}
+                    >
+                      Upgrade →
+                    </Link>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Empty state */}
+            {jobs.length === 0 && (
+              <p style={{ fontSize: 13, color: "var(--ink-3)", textAlign: "center", marginTop: 32 }}>
+                No matches yet — complete the onboarding to personalize your results.{" "}
+                <Link href="/kai-pay" style={{ color: "var(--accent)", textDecoration: "underline" }}>Get started →</Link>
+              </p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 // ── Profile Tab ───────────────────────────────────────────────────────────────
+
+function MembershipSection({ profile }: { profile: Profile }) {
+  const [portalLoading, setPortalLoading] = useState(false);
+  const tier = profile.subscription_tier ?? "free";
+  const isPaid = tier !== "free" || profile.is_supporter;
+  const isTrialing = profile.subscription_status === "trialing";
+  const trialEnd = profile.current_tier_expires_at
+    ? new Date(profile.current_tier_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : null;
+
+  const RAINBOW = "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)";
+
+  const TIER_LABELS: Record<string, string> = { free: "Free", passed: "Passed", preferred: "Preferred" };
+  const TIER_FEATURES: Record<string, string[]> = {
+    free: ["6 job matches/day", "USCIS-verified sponsorship data", "All visa types"],
+    passed: ["Unlimited job matches", "USCIS-verified sponsorship data", "All visa types"],
+    preferred: ["Unlimited job matches", "Daily job alerts", "Salary benchmarking"],
+  };
+
+  const handleManage = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const { url } = await res.json() as { url?: string };
+      if (url) window.location.href = url;
+    } catch { /* graceful */ } finally { setPortalLoading(false); }
+  };
+
+  return (
+    <div className={s["profile-card"]}>
+      <div className={s["profile-card-head"]}>
+        <h3 className={s["profile-card-title"]}>Membership</h3>
+      </div>
+      <div className={s["profile-card-body"]}>
+        {/* Tier badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          {isPaid ? (
+            <span style={{ display: "inline-flex", borderRadius: 100, padding: "1px", background: RAINBOW }}>
+              <span style={{ background: "var(--card)", borderRadius: 100, padding: "3px 12px", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>
+                {TIER_LABELS[tier] ?? "Supporter"} plan
+              </span>
+            </span>
+          ) : (
+            <span style={{ fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-3)", border: "1px solid var(--line)" }}>
+              Free plan
+            </span>
+          )}
+          {isTrialing && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Trial ends {trialEnd}</span>}
+        </div>
+
+        {/* Features */}
+        <ul style={{ listStyle: "none", padding: 0, margin: "0 0 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+          {(TIER_FEATURES[tier] ?? TIER_FEATURES.free).map((f) => (
+            <li key={f} style={{ fontSize: 12, color: "var(--ink-3)", display: "flex", gap: 5 }}>
+              <span style={{ color: "#6bcb77", fontWeight: 700 }}>✓</span> {f}
+            </li>
+          ))}
+        </ul>
+
+        {/* CTA */}
+        {!isPaid ? (
+          <Link
+            href="/kai-pay"
+            style={{ display: "inline-block", background: "var(--accent)", color: "#F4F0E8", padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, textDecoration: "none" }}
+          >
+            Upgrade →
+          </Link>
+        ) : (
+          <button
+            onClick={handleManage}
+            disabled={portalLoading}
+            style={{ background: "none", border: "1px solid var(--line)", color: "var(--ink-3)", padding: "8px 16px", borderRadius: 10, fontSize: 12, cursor: "pointer" }}
+          >
+            {portalLoading ? "Loading…" : "Manage subscription"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () => void }) {
   const name = firstName(profile.full_name);
@@ -606,6 +775,9 @@ function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () 
             </button>
           </div>
         </div>
+
+        {/* Membership */}
+        <MembershipSection profile={profile} />
       </div>
     </div>
   );
@@ -805,11 +977,6 @@ export default function MeClient({ profile }: { profile: Profile }) {
             onClick={() => setActiveTab("matches")}
           >
             Job Matches
-            {!profile.is_supporter && (
-              <span className={s["tab-lock"]}>
-                <LockIconSmall />
-              </span>
-            )}
           </button>
           <button
             className={`${s.tab} ${activeTab === "profile" ? s["tab-active"] : ""}`}
@@ -837,7 +1004,10 @@ export default function MeClient({ profile }: { profile: Profile }) {
           />
         )}
         {activeTab === "matches" && (
-          <MatchesTab isSupporter={profile.is_supporter} />
+          <MatchesTab
+            isUnlocked={profile.is_supporter || (profile.subscription_tier ?? "free") !== "free"}
+            preferences={profile.preferences}
+          />
         )}
         {activeTab === "profile" && (
           <ProfileTab

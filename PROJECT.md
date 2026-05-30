@@ -293,6 +293,101 @@ Project-specific skills live in `.claude/skills/`. Invoke by name or trigger phr
 
 
 
+## Update as of 5/29:
+
+### 1. Done since last update (5/25 → 5/29)
+
+**Landing page**
+- Hero section rebuilt — Figma iframe embed with ResizeObserver responsive scaling ([GET-44](https://linear.app/getdatjob/issue/GET-44/landing-page-hero-section-rebuild-figma-iframe-embed-responsive))
+- Polish fixes: laural font size, header spacing, job count zero bug ([GET-45](https://linear.app/getdatjob/issue/GET-45/landing-page-polish-fixes-font-size-header-spacing-job-count-zero))
+
+**Kai**
+- Job freshness messaging improved — clearer time frame language for visa holders ([GET-47](https://linear.app/getdatjob/issue/GET-47/kai-copy-improvements-job-freshness-messaging-time-frame-explanation))
+- Email capture deployed via Kai onboarding opt-in screen + LinkedIn OAuth signup ([GET-8](https://linear.app/getdatjob/issue/GET-8/sign-up-email-capture-gate))
+
+**Jobs page**
+- Job card display bugs fixed: /kai-first card not rendering, company name formatting, Nvidia salary range ([GET-46](https://linear.app/getdatjob/issue/GET-46/job-card-display-bugs-kai-first-card-missing-company-names-nvidia))
+- Search criteria bug fixed — specific queries returning no results ([GET-48](https://linear.app/getdatjob/issue/GET-48/search-criteria-bug-queries-returning-no-results))
+
+**UI**
+- Support popup redesigned ([GET-49](https://linear.app/getdatjob/issue/GET-49/support-popup-redesign))
+- Green typography audit — all incorrect green text instances fixed ([GET-50](https://linear.app/getdatjob/issue/GET-50/green-typography-audit-fix-all-incorrect-green-text))
+
+**Data pipeline**
+- ATS detection scaled to hourly (was once/day) — 212 new employers confirmed this sprint: workday +80, greenhouse +50, iCIMS +21, SR +15, oracle_hcm +13, ashby +10, jobvite +7 ([GET-52](https://linear.app/getdatjob/issue/GET-52/ats-detection-scale-up-hourly-routines-2-new-daily-reporting-crons))
+- 2 new daily reporting routines: `getdatjob-ats-review-digest` + `getdatjob-daily-pull-report`
+- LinkedIn enrichment via ScrapingDog API deployed — location data fix, more testing in progress ([GET-51](https://linear.app/getdatjob/issue/GET-51/linkedin-enrichment-scrapingdog-api-integration-for-location-data))
+
+**Bug fixes**
+- Single-word location values (company names slipping in as locations) now rejected at ingest
+- Supabase timeout caught per-employer so one bad row doesn't abort the full pull run
+
+### 2. What we learned
+- ATS detection at hourly frequency produced 212 new employer mappings in 4 days — the bottleneck was cadence, not logic. Chrome SERP scan (Approach B) at scale works.
+- New ATS types appearing in data (oracle_hcm, jobvite, taleo, successfactors, teamtailor, eightfold) but `03_pull_jobs.py` doesn't support them yet — 322 confirmed employers but only ~282 are pullable today.
+- Workable dropped from 42 to 0 records in `employer_ats` — likely overwritten during a scraper run. Parked for now; GET-12 blocked until investigated.
+- Email is captured two ways (Kai opt-in + LinkedIn OAuth) but the actual alert send logic (GET-10) still needs building.
+- Community launch was the Week 3 goal — still hasn't happened. The product is launch-ready; the bottleneck is time, not quality.
+- 5 routines running (was 3): `getdatjob-daily-pull` + `getdatjob-no-ats-employer-intake` both now hourly, plus `jobs-page-perf-monitor`, `getdatjob-ats-review-digest`, `getdatjob-daily-pull-report` daily.
+- 6 project skills active.
+
+### 3. Week 3 remaining — in order
+
+| # | Task | Why it's next |
+|---|---|---|
+| 1 | Fix GET-5: posted_at null display | Workday/iCIMS jobs invisible under 7-day filter — silent conversion killer |
+| 2 | Landing page: benefit images (×4) + founder photo | Benefits section is copy-only — images close the credibility gap |
+| 3 | /me page revamp | Current page is barebones — needs to feel like a real account hub |
+| 4 | Paywall MV flow: show wall + promo code bypass | Can't collect payments yet, but can gate the experience and prove willingness-to-pay with a free promo code |
+| 5 | Job alerts (GET-10): frequency preference + CRM email system | Email is captured — need preference UI and the actual send infrastructure |
+| 6 | Kai onboarding: add job search duration question | Buy time for LinkedIn enrichment to return; lets users self-select freshness preference; stressed users want last-3-days by default |
+| 7 | QA LinkedIn enrichment | Deployed but needs validation before trusting the data downstream |
+
+### 4. Sprint breakdown
+
+**Sprint 3 (5/25 → 6/1) — current, 19 shipped so far**
+
+| | Landing page | Jobs page | Kai/Onboarding | Auth | Pipeline | UI | Infra/Legal |
+|---|---|---|---|---|---|---|---|
+| `build` | 2 | 1 | 2 | 1 | 2 | 1 | 0 |
+| `Bug` | 1 | 2 | 0 | 0 | 0 | 2 | 0 |
+| `optimize` | 0 | 0 | 1 | 0 | 1 | 0 | 0 |
+| `infra` | 0 | 0 | 0 | 0 | 2 | 0 | 1 |
+
+**Sprint 2 (5/18 → 5/25) — 22 shipped**
+
+| | Landing page | Jobs page | Kai | Product | Pipeline | Infra/Tooling |
+|---|---|---|---|---|---|---|
+| `build` | 2 | 3 | 0 | 2 | 1 | 0 |
+| `Bug` | 0 | 1 | 0 | 1 | 1 | 0 |
+| `optimize` | 1 | 2 | 1 | 0 | 2 | 0 |
+| `infra` | 0 | 0 | 0 | 0 | 2 | 2 |
+
+> Balance: Sprint 3 is Bug-heavy (5) — healthy cleanup. Next sprint needs to shift back to `build`: paywall, job alerts, and expanding pull support to new ATS types are the remaining revenue-driving items.
+
+### 5. Pipeline health
+
+| Metric | Sprint 2 (5/18–5/25) | Sprint 3 to date (5/25–5/29) |
+|---|---|---|
+| New jobs pulled | 8,713 | 15,065 |
+| Total active jobs | — | **109,690** |
+| New employers ATS-confirmed | 89 | **212** |
+| Total employers confirmed ATS | 158 | **322** (workday 126 · greenhouse 93 · SR 24 · icims 23 · oracle_hcm 13 · ashby 13 · jobvite 7 · lever 6 · amazon 5 · + 7 more types) |
+| Employers in manual review queue | 403 | **390** |
+| Employers scanned, no ATS found | — | **265** |
+
+The 158 → 322 confirmed ATS jump (+104%) is entirely from hourly cadence — same logic, 24× more runs. Jobs followed: 81K → 110K active (+35%). Workable records dropped from 42 to 0 — parked for future investigation.
+
+### 6. The bottleneck
+
+Community launch. The product has 110K jobs from 322 verified employers, a working onboarding flow with email capture, and a polished landing page. The only thing between now and real user feedback is a Reddit post. Every day without launch is a day without signal on what to build next — and for a visa holder in a 60-day grace period, that delay actually matters.
+
+### 7. Week 3 goal
+
+First post live on r/h1b or r/f1visa — even a soft one — and 5 real people through the Kai onboarding flow.
+
+---
+
 ## Update as of 5/25:
 
 ### 1. Done since last update (5/23 → 5/25)

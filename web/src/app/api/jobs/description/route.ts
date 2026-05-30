@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
 
   if (source === "amazon") return handleAmazon(jobId);
   if (source === "ashby") return handleAshby(jobId, sp.get("slug") ?? "");
+  if (source === "smartrecruiters") return handleSmartRecruiters(url);
   if (source === "db") return handleDb(sp.get("id") ?? "");
   if (url) return handleWorkday(url);
   return Response.json({ error: "missing params" }, { status: 400 });
@@ -117,6 +118,48 @@ async function handleAmazon(jobId: string) {
   }
 }
 
+// ── SmartRecruiters ───────────────────────────────────────────────────────────
+
+async function handleSmartRecruiters(jobUrl: string) {
+  // URL format: https://jobs.smartrecruiters.com/{company}/{job-id}
+  let company = "";
+  let jobId = "";
+  try {
+    const parsed = new URL(jobUrl);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    // parts = ["CompanySlug", "744000115709972"]
+    if (parts.length < 2) return Response.json({ html: "", text: "" });
+    company = parts[0];
+    jobId = parts[1];
+  } catch {
+    return Response.json({ html: "", text: "" });
+  }
+
+  if (!company || !jobId) return Response.json({ html: "", text: "" });
+
+  try {
+    const res = await fetch(
+      `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(company)}/postings/${encodeURIComponent(jobId)}`,
+      { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(10000) }
+    );
+    if (!res.ok) return Response.json({ html: "", text: "" });
+    const data = await res.json();
+    const sections = data?.jobAd?.sections ?? {};
+    const html = [
+      sections.companyDescription?.text ?? "",
+      sections.jobDescription?.text ?? "",
+      sections.qualifications?.text ?? "",
+      sections.additionalInformation?.text ?? "",
+    ].filter(Boolean).join("").slice(0, 20000);
+    return Response.json(
+      { html },
+      { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=3600" } }
+    );
+  } catch {
+    return Response.json({ html: "", text: "" });
+  }
+}
+
 // ── Workday ──────────────────────────────────────────────────────────────────
 
 async function handleWorkday(url: string) {
@@ -131,14 +174,18 @@ async function handleWorkday(url: string) {
     return Response.json({ error: "disallowed host" }, { status: 400 });
   }
 
-  // Workday CXS API returns HTML description
+  // Workday CXS API returns HTML description.
+  // Use redirect:"manual" so we detect bot-blocking redirects (303→maintenance) instantly
+  // rather than following them and burning the full timeout.
+  let cxsBlocked = false;
   try {
     const tenant = parsed.hostname.split(".")[0];
     const apiUrl = `${parsed.origin}/wday/cxs/${tenant}${parsed.pathname}`;
 
     const res = await fetch(apiUrl, {
+      redirect: "manual",
       headers: { "User-Agent": UA, Accept: "application/json", "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(8000),
     });
     if (res.ok) {
       const data = await res.json();
@@ -149,27 +196,33 @@ async function handleWorkday(url: string) {
           { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=3600" } }
         );
       }
+    } else if (res.status >= 300 && res.status < 400) {
+      // Bot-blocked redirect — skip HTML fallback too, it'll be blocked the same way
+      cxsBlocked = true;
     }
   } catch {
     // fall through to JSON-LD fallback
   }
 
-  // Fallback: JSON-LD plain text
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml" },
-      signal: AbortSignal.timeout(12000),
-    });
-    if (res.ok) {
-      const pageHtml = await res.text();
-      const text = extractJsonLdDescription(pageHtml);
-      return Response.json(
-        { html: "", text },
-        { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=3600" } }
-      );
+  // Fallback: JSON-LD plain text (skip if CXS was blocked — HTML page redirects too)
+  if (!cxsBlocked) {
+    try {
+      const res = await fetch(url, {
+        redirect: "manual",
+        headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        const pageHtml = await res.text();
+        const text = extractJsonLdDescription(pageHtml);
+        return Response.json(
+          { html: "", text },
+          { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=3600" } }
+        );
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
 
   return Response.json({ html: "", text: "" });

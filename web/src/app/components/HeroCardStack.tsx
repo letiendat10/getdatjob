@@ -23,6 +23,7 @@ interface CardData {
   salary: string;
   lastLca: string;
   lcaCount: string;
+  poc: string;
 }
 
 const CARDS: CardData[] = [
@@ -34,6 +35,7 @@ const CARDS: CardData[] = [
     salary: 'Salary: $280K — $385K',
     lastLca: 'Last LCA: Jan 2026',
     lcaCount: '14 LCA in 2025',
+    poc: 'PoC: Jared K (jared.***@anthropic.com)',
   },
   {
     domain: 'stripe.com',
@@ -43,6 +45,7 @@ const CARDS: CardData[] = [
     salary: 'Salary: $245K — $310K',
     lastLca: 'Last LCA: Nov 2025',
     lcaCount: '67 LCA in 2025',
+    poc: 'PoC: Claire M (claire.***@stripe.com)',
   },
   {
     domain: 'airbnb.com',
@@ -52,6 +55,7 @@ const CARDS: CardData[] = [
     salary: 'Salary: $191K — $223K',
     lastLca: 'Last LCA filed: March 2026',
     lcaCount: '1,211 LCAs filed in 2025',
+    poc: 'PoC: Vanessa W (vanessa.***@airbnb.com)',
   },
 ];
 
@@ -180,14 +184,17 @@ function CardInner({ data, nowrap }: { data: CardData; nowrap?: boolean }) {
         {data.location}
       </div>
       <div className={s.chips}>
-        <span className={s.rpill}>Verified LCA Filings With Same Job Title</span>
+        <span className={s.chip}>{data.salary}</span>
       </div>
       <div className={s.chips}>
-        <span className={s.chip}>{data.salary}</span>
+        <span className={s.rpill}>Verified LCA Filings With Same Job Title</span>
       </div>
       <div className={s.chips} style={nowrap ? { flexWrap: 'nowrap' } : undefined}>
         <span className={s.chip}>{data.lastLca}</span>
         <span className={s.chip}>{data.lcaCount}</span>
+      </div>
+      <div className={s.chips}>
+        <span className={s.chip}>{data.poc}</span>
       </div>
     </>
   );

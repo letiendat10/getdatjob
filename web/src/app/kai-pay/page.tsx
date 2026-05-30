@@ -39,7 +39,7 @@ type ChatMessage = {
   isStreaming?: boolean;
 };
 
-type QR = { label: string; value: string };
+type QR = { label: string; value: string; row?: number };
 
 type UserProfile = {
   id: string;
@@ -60,7 +60,7 @@ type EnrichedProfile = {
 };
 
 // kai-pay uses a different step sequence — no email_optin/batch2/support;
-// instead: see_more → paywall
+// instead: alert_optin → scanning → batch1 → see_more → paywall
 type OnboardingStep =
   | "init"
   | "q1"
@@ -70,6 +70,7 @@ type OnboardingStep =
   | "q4"
   | "q5"
   | "q6"
+  | "alert_optin"
   | "scanning"
   | "batch1"
   | "see_more"
@@ -392,20 +393,20 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
           </span>
         )}
         {!job.salary_range && job.salary_estimate && job.salary_estimate > 50000 && (
-          <span className="text-xs text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded">{formatSalary(job.salary_estimate)}</span>
+          <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{formatSalary(job.salary_estimate)}</span>
         )}
         {isVerified && (
           <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
-            <span className="inline-flex items-center rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-zinc-900">
+            <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
               Verified LCA Filings With Similar Job Title
             </span>
           </span>
         )}
         {isFriendly && (
-          <span className="text-xs font-medium text-[var(--ink-2)]">H-1B Friendly Employer</span>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">H-1B Friendly Employer</span>
         )}
         {lcaLastFiled && (
-          <span className="px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 text-xs">Last LCA: {lcaLastFiled}</span>
+          <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">Last LCA: {lcaLastFiled}</span>
         )}
       </div>
     </div>
@@ -604,8 +605,6 @@ export default function KaiPayPage() {
   const [enriched, setEnriched] = useState<EnrichedProfile | null>(null);
   const [timeGreeting, setTimeGreeting] = useState<{ headline: string; line2: Greeting["line2"] } | null>(null);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [alertOptinPending, setAlertOptinPending] = useState(false);
-  const [alertOptinAnswered, setAlertOptinAnswered] = useState(false);
 
   // Free-chat mode
   const [chatInput, setChatInput] = useState("");
@@ -617,6 +616,10 @@ export default function KaiPayPage() {
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const historyLoadedRef = useRef(false);
+  const pendingScanRef = useRef<{
+    jobsPromise: Promise<{ jobs: Job[]; total_3d_count: number }>;
+    filterTokens: string[];
+  } | null>(null);
 
   const scrollToBottom = useCallback(() => {
     if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
@@ -732,7 +735,7 @@ export default function KaiPayPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(450);
       const visaFiller: Record<string, string> = {
-        h1b: "That narrows the pool to companies with a real H-1B track record. Thousands of companies filed H-1B LCAs last year – the good ones are in here.",
+        h1b: "That narrows the pool to companies with a real H-1B track record. But don't worry — over 47,000 companies filed H-1B LCAs in 2025, and the good ones are in here.",
         e3: "E-3 sponsors are a more specific group – I'll zero in on the ones with a strong Australian hire track record.",
         tn: "TN sponsors are a more specific group – I'll zero in on the ones with a strong Canada/Mexico hire track record.",
         opt: "Got it – OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
@@ -772,15 +775,18 @@ export default function KaiPayPage() {
         ? `Based on your profile, looks like you're in ${funcLabel[inferredFunc] ?? inferredFunc} — is that right?`
         : "What kind of role are you looking for?";
       const topFuncs: QR[] = [
-        { label: "Engineering", value: "Engineering" },
-        { label: "Marketing / Growth", value: "Marketing" },
-        { label: "Product", value: "Product" },
-        { label: "Design / Data / Other", value: "Other" },
+        { label: "Engineering", value: "Engineering", row: 1 },
+        { label: "Product",     value: "Product",     row: 1 },
+        { label: "Data",        value: "Data",        row: 1 },
+        { label: "Marketing",   value: "Marketing",   row: 2 },
+        { label: "Growth",      value: "Growth",      row: 2 },
+        { label: "Design",      value: "Design",      row: 2 },
+        { label: "Other",       value: "Other",       row: 2 },
       ];
       const q4Replies: QR[] = inferredFunc
         ? [
             { label: `Yes, ${funcLabel[inferredFunc] ?? inferredFunc}`, value: inferredFunc },
-            ...topFuncs.filter(c => c.value !== inferredFunc).slice(0, 2),
+            ...topFuncs.filter(c => c.value !== inferredFunc).slice(0, 2).map(c => ({ label: c.label, value: c.value })),
             { label: "Something else", value: "Other" },
           ]
         : topFuncs;
@@ -876,23 +882,36 @@ export default function KaiPayPage() {
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(500);
 
-      const funcLabelMap: Record<string, string> = { Marketing: "marketing / growth", "Data / AI": "data / AI" };
+      const funcLabelMap: Record<string, string> = { Marketing: "marketing / growth", Growth: "marketing / growth", Data: "data / AI", "Data / AI": "data / AI" };
       const dept = updatedIntake.jobFunction && updatedIntake.jobFunction !== "Other"
         ? (funcLabelMap[updatedIntake.jobFunction] ?? updatedIntake.jobFunction.toLowerCase())
         : inferDepartment(linkedIn?.headline ?? enriched?.current_title ?? null);
       const salaryStr = updatedIntake.salaryMin ? `$${Math.round(updatedIntake.salaryMin / 1000)}K+` : "any salary";
       const levelStr = level === "senior_ic" ? "Senior IC" : level === "manager" ? "Manager / Lead" : "all levels";
       const locStr = updatedIntake.locationMode === "remote" ? "remote" : updatedIntake.locationMode === "anywhere" ? "anywhere in the US" : updatedIntake.location ?? "all locations";
-      const filterTokens = [dept, locStr, salaryStr, levelStr].filter(Boolean);
+      const filterTokens = [dept, locStr, salaryStr, levelStr].filter((t): t is string => Boolean(t));
 
-      setMessages((prev) => [...prev, {
-        id: "k-scan-announce",
-        role: "assistant",
-        content: `Running a pass across ${filterTokens.join(" · ")}.\n\nI'm looking at the last 3 days – so everything I bring back is fresh. Give me a sec.`,
-      }]);
-      setStep("scanning");
+      // Fire jobs fetch immediately so it runs while the user answers the alert question
+      pendingScanRef.current = {
+        jobsPromise: fetch("/api/onboarding/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            visa: updatedIntake.visa,
+            location: updatedIntake.location,
+            locationMode: updatedIntake.locationMode,
+            salary_min: updatedIntake.salaryMin,
+            intent: updatedIntake.intent,
+            department: dept ?? undefined,
+          }),
+        })
+          .then((r) => r.json())
+          .then((d) => ({ jobs: d.jobs ?? [], total_3d_count: d.total_3d_count ?? 0 }))
+          .catch(() => ({ jobs: [], total_3d_count: 0 })),
+        filterTokens,
+      };
 
-      // Persist intake
+      // Persist intake (fire-and-forget)
       createSupabaseBrowser().auth.getUser().then(({ data }) => {
         if (!data.user) return;
         const levelMap: Record<string, string> = { senior_ic: "Senior IC", manager: "Manager/Lead", either: "Either" };
@@ -909,65 +928,13 @@ export default function KaiPayPage() {
         }, { onConflict: "user_id" }).then(() => {});
       });
 
-      const jobsPromise: Promise<{ jobs: Job[]; total_3d_count: number }> = fetch("/api/onboarding/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          visa: updatedIntake.visa,
-          location: updatedIntake.location,
-          locationMode: updatedIntake.locationMode,
-          salary_min: updatedIntake.salaryMin,
-          intent: updatedIntake.intent,
-          department: dept ?? undefined,
-        }),
-      })
-        .then((r) => r.json())
-        .then((d) => ({ jobs: d.jobs ?? [], total_3d_count: d.total_3d_count ?? 0 }))
-        .catch(() => ({ jobs: [], total_3d_count: 0 }));
-
-      setScanPhase(1);
-      await delay(800);
-
-      // Job alert opt-in during scanning
+      // Ask about job alerts FIRST — scan starts after user answers
       setMessages((prev) => [...prev, {
         id: "k-alert-optin",
         role: "assistant",
-        content: "While I'm searching for your matches, can I ping you when new matches come in? Your daily batch resets at midnight.",
+        content: "Before I start searching — want me to ping you when new matches come in? Your daily batch resets at midnight.",
       }]);
-      setAlertOptinPending(true);
-
-      await delay(300);
-      setScanPhase(2);
-      await delay(1000);
-      setScanPhase(3);
-      await delay(1000);
-
-      const { jobs, total_3d_count } = await jobsPromise;
-      setAllJobs(jobs);
-      setTotal3dCount(total_3d_count);
-      setScanJobCount(jobs.length);
-      setScanPhase(4);
-      await delay(1300);
-
-      // Batch 1 — 5 unique-company cards
-      setScanPhase(0);
-      const seenCos = new Set<string>();
-      const batch1 = jobs.filter((j) => {
-        const key = j.company.toLowerCase().trim();
-        if (seenCos.has(key)) return false;
-        seenCos.add(key);
-        return true;
-      }).slice(0, 5);
-
-      const count = batch1.length;
-      const hasVerified = batch1.some((j) => j.visa_tier === "verified");
-      const freshLabel = postedWithin(batch1);
-      const jobsDesc = freshLabel ? `posted within ${freshLabel}` : "worth your time";
-      const revealText = count > 0
-        ? `Okay, found ${count} job${count !== 1 ? "s" : ""} ${jobsDesc}.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before – so the sponsorship signal is extremely high." : ""}`
-        : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks.";
-      setMessages((prev) => [...prev, { id: "k-reveal1", role: "assistant", content: revealText, jobs: batch1 }]);
-      setStep("batch1");
+      setStep("alert_optin");
 
     } else if (step === "see_more") {
       setQuickReplies([]);
@@ -1048,15 +1015,16 @@ export default function KaiPayPage() {
     ]);
   };
 
-  // ── Alert opt-in handler (during scanning) ────────────────────────────────────
+  // ── Alert opt-in handler — triggers the scan after user answers ───────────────
 
   const handleAlertOptin = async (value: string) => {
-    setAlertOptinAnswered(true);
+    const label = value === "yes" ? "Yes, sign me up for freshest job alert" : "No, I don't want to be updated";
     setMessages((prev) => [...prev, {
       id: `u-alert-${Date.now()}`,
       role: "user",
-      content: value === "yes" ? "Yes, ping me" : "Maybe later",
+      content: label,
     }]);
+
     if (value === "yes") {
       await delay(300);
       setMessages((prev) => [...prev, {
@@ -1071,7 +1039,57 @@ export default function KaiPayPage() {
           await supabase.schema("enriched").from("profiles").update({ email_alerts: true }).eq("user_id", authUser.id);
         }
       } catch { /* graceful */ }
+      await delay(500);
+    } else {
+      await delay(300);
     }
+
+    // Retrieve stored context and start scan
+    const ctx = pendingScanRef.current;
+    pendingScanRef.current = null;
+    const filterTokens = ctx?.filterTokens ?? [];
+    const jobsPromise = ctx?.jobsPromise ?? Promise.resolve({ jobs: [], total_3d_count: 0 });
+
+    setMessages((prev) => [...prev, {
+      id: "k-scan-announce",
+      role: "assistant",
+      content: `Running a pass across ${filterTokens.join(" · ")}.\n\nI'm looking at the last 3 days – so everything I bring back is fresh. Give me a sec.`,
+    }]);
+    setStep("scanning");
+
+    setScanPhase(1);
+    await delay(800);
+    setScanPhase(2);
+    await delay(1000);
+    setScanPhase(3);
+    await delay(1000);
+
+    const { jobs, total_3d_count } = await jobsPromise;
+    setAllJobs(jobs);
+    setTotal3dCount(total_3d_count);
+    setScanJobCount(jobs.length);
+    setScanPhase(4);
+    await delay(1300);
+
+    // Batch 1 — 5 unique-company cards
+    setScanPhase(0);
+    const seenCos = new Set<string>();
+    const batch1 = jobs.filter((j) => {
+      const key = j.company.toLowerCase().trim();
+      if (seenCos.has(key)) return false;
+      seenCos.add(key);
+      return true;
+    }).slice(0, 5);
+
+    const count = batch1.length;
+    const hasVerified = batch1.some((j) => j.visa_tier === "verified");
+    const freshLabel = postedWithin(batch1);
+    const jobsDesc = freshLabel ? `posted within ${freshLabel}` : "worth your time";
+    const revealText = count > 0
+      ? `Okay, found ${count} job${count !== 1 ? "s" : ""} ${jobsDesc}.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before – so the sponsorship signal is extremely high." : ""}`
+      : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks.";
+    setMessages((prev) => [...prev, { id: "k-reveal1", role: "assistant", content: revealText, jobs: batch1 }]);
+    setStep("batch1");
   };
 
   // ── Free chat (after onboarding done) ────────────────────────────────────────
@@ -1230,12 +1248,15 @@ export default function KaiPayPage() {
             <ScanChecklistBubble phase={scanPhase} jobCount={scanJobCount} visa={intake.visa} />
           )}
 
-          {/* Job alert opt-in chips during scanning */}
-          {step === "scanning" && alertOptinPending && !alertOptinAnswered && (
+          {/* Job alert opt-in chips — shown before scan starts */}
+          {step === "alert_optin" && (
             <div className={s["inline-replies"]}>
               <div className={s["inline-stem"]} />
               <div className={s["inline-tree"]}>
-                {[{ label: "Yes, ping me", value: "yes" }, { label: "Maybe later", value: "no" }].map((qr, i, arr) => (
+                {[
+                  { label: "Yes, sign me up for freshest job alert", value: "yes" },
+                  { label: "No, I don't want to be updated", value: "no" },
+                ].map((qr, i, arr) => (
                   <div key={qr.value} className={i === arr.length - 1 ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}` : s["inline-tree-item"]}>
                     <button className={s["inline-chip"]} onClick={() => handleAlertOptin(qr.value)}>{qr.label}</button>
                   </div>
@@ -1272,18 +1293,33 @@ export default function KaiPayPage() {
           )}
 
           {/* Inline quick-reply chips */}
-          {quickReplies.length > 0 && (
-            <div className={s["inline-replies"]}>
-              <div className={s["inline-stem"]} />
-              <div className={s["inline-tree"]}>
-                {quickReplies.map((qr, i) => (
-                  <div key={qr.value} className={i === quickReplies.length - 1 ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}` : s["inline-tree-item"]}>
-                    <button className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>{qr.label}</button>
-                  </div>
-                ))}
+          {quickReplies.length > 0 && (() => {
+            const rows: QR[][] = [];
+            quickReplies.forEach((qr) => {
+              if (qr.row !== undefined) {
+                const existing = rows.find(r => r[0].row === qr.row);
+                if (existing) { existing.push(qr); return; }
+              }
+              rows.push([qr]);
+            });
+            return (
+              <div className={s["inline-replies"]}>
+                <div className={s["inline-stem"]} />
+                <div className={s["inline-tree"]}>
+                  {rows.map((rowChips, i) => (
+                    <div key={rowChips[0].value} className={i === rows.length - 1 ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}` : s["inline-tree-item"]}>
+                      {rowChips.map((qr, ci) => (
+                        <div key={qr.value} style={{ display: "contents" }}>
+                          {ci > 0 && <span className={s["inline-chip-connector"]} aria-hidden="true" />}
+                          <button className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>{qr.label}</button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {showPostChips && step === "done" && (
             <div className={s.chips} style={{ justifyContent: "flex-start", paddingLeft: 50 }}>
@@ -1326,7 +1362,7 @@ export default function KaiPayPage() {
         </div>
       )}
 
-      {step !== "init" && step !== "scanning" && step !== "q1_layoff_date" && step !== "paywall" && (
+      {step !== "init" && step !== "alert_optin" && step !== "scanning" && step !== "q1_layoff_date" && step !== "paywall" && (
         <div className={s["input-bar"]}>
           <div className={s["input-bar-inner"]}>
             <div className={s["input-wrap"]}>

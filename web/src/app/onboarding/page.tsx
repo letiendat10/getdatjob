@@ -839,9 +839,9 @@ export default function OnboardingPage() {
       await delay(450);
       const visaFiller: Record<string, string> = {
         "h1b": "That narrows the pool to companies with a real H-1B track record. But don't worry – over 47,000 companies filed H-1B LCAs in 2025, and the good ones are in here.",
-        "e3":  "E-3 sponsors are a more specific group – I'll zero in on the ones with a strong Australian hire track record.",
-        "tn":  "TN sponsors are a more specific group – I'll zero in on the ones with a strong Canada/Mexico hire track record.",
-        "opt": "Got it – OPT-friendly companies are in the mix. I'll prioritize the ones with strong recent filing history.",
+        "e3":  "E-3 sponsors are a more specific group, but don't worry – over 4,000 companies filed E-3 LCAs in 2025. I'll zero in on the ones with the strongest Australian hire track record.",
+        "tn":  "Good news – TN has no H-1B lottery and no LCA requirement, so you're not locked out by a quota. Any verified employer with a qualifying role can hire you on TN status. I'll surface the best matches.",
+        "opt": "Got it – I'll prioritize the companies with the strongest H-1B filing track record, since that's the clearest path to long-term status. Over 47,000 companies filed H-1B LCAs in 2025 – the active sponsors are in here.",
       };
       const visaKey = visa.toLowerCase().replace(/[-/ ]/g, "");
       setMessages((prev) => [...prev, { id: "k-f2", role: "assistant", content: visaFiller[visaKey] ?? "Got it – pulling the right sponsors." }]);

@@ -278,6 +278,8 @@ const SIGNAL_OPTIONS = [
 const POSTED_DATE_OPTIONS = [
   { label: "Any time", value: "all" },
   { label: "Past 24 hours", value: "1d" },
+  { label: "Past 2 days", value: "2d" },
+  { label: "Past 3 days", value: "3d" },
   { label: "Past week", value: "7d" },
   { label: "Past month", value: "30d" },
   { label: "Past 3 months", value: "90d" },
@@ -583,13 +585,13 @@ function JobCard({ job, isSelected, isViewed, isFilled, onClick }: {
             </span>
           )}
           {isFriendly && (
-            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-[var(--ink-2)]">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
               H-1B Friendly Employer
             </span>
           )}
           {tnCategory && (
-            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-emerald-700">
-              TN eligible
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-xs font-medium border border-blue-200">
+              TN Friendly
             </span>
           )}
           {isViewed && <span className="text-xs text-zinc-400">Viewed</span>}
@@ -611,6 +613,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
   const experience = useMemo(() => extractExperience(descHtml), [descHtml]);
   const level = inferLevel(job.title);
   const department = inferDepartment(job.title);
+  const tnCategory = getTnCategory(job.title);
 
   return (
     <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden flex flex-col h-full">
@@ -671,8 +674,13 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
             </span>
           )}
           {job.confidence_tier === "friendly" && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
               H-1B Friendly Employer
+            </span>
+          )}
+          {tnCategory && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium border border-blue-200">
+              TN Friendly
             </span>
           )}
         </div>

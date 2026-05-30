@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const PAGE_SIZE = 30;
 
-const POSTED_DAYS: Record<string, number> = { "1d": 1, "7d": 7, "30d": 30, "90d": 90 };
+const POSTED_DAYS: Record<string, number> = { "1d": 1, "2d": 2, "3d": 3, "7d": 7, "30d": 30, "90d": 90 };
 
 const LOC_PATTERNS: Record<string, string[]> = {
   "Remote":                  ["remote"],
@@ -36,14 +36,14 @@ const VISA_PATTERNS: Record<string, string> = {
 // Order matters: more-specific depts are listed before "Engineering" to avoid
 // over-broad matches (e.g. "Data Engineer" should match "Data", not "Engineering").
 const DEPT_PATTERNS: Record<string, string[]> = {
-  "AI / ML":           ["machine learning", "ai ", " ml ", "artificial intelligence", "nlp", "llm", "research scientist"],
+  "AI / ML":           ["machine learning", "ai ", " ml ", "artificial intelligence", "nlp", "llm", "research scientist", "applied scientist", " scientist"],
   "Data":              ["data engineer", "data scientist", "data analyst", "analytics", "business intelligence"],
   "Security":          ["security", "infosec", "cybersecurity", "appsec", "devsecops"],
   "Product":           ["product manager", "product owner", " pm ", "product lead"],
   "Design":            ["design", "ux ", "ui ", "designer", "user experience"],
   "Platform / DevOps": ["devops", "site reliability", "platform engineer", "infrastructure", "cloud engineer", " sre"],
   "Sales":             ["sales", "account executive", "business development"],
-  "Marketing":         ["marketing", "growth", "demand generation"],
+  "Marketing":         ["marketing", "growth marketing", "growth hacker", "demand generation"],
   "Finance":           ["finance", "accounting", "financial analyst"],
   "Facilities":        ["facilities", "mailroom", "real estate", "workplace", "janitorial", "custodial", "maintenance tech"],
   "Operations":        ["operations", " ops", "logistics", "supply chain", "fulfillment", "warehouse"],
@@ -128,7 +128,7 @@ export async function queryJobs(params: {
   } else if (visaPrefix === "E-3") {
     dbq = dbq.gt("e3_lca_count", 0);
   } else if (visaPrefix === "TN") {
-    dbq = dbq.gt("tn_lca_count", 0);
+    dbq = dbq.eq("tn_eligible", true);
   }
 
   if (location !== "all") {

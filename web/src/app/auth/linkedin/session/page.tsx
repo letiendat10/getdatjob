@@ -14,7 +14,8 @@ import { createSupabaseBrowser } from "@/lib/supabase-browser";
 function SessionHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/kai-first";
+  const defaultDest = process.env.NEXT_PUBLIC_PAYWALL_PAGE === "paywall" ? "/kai-pay" : "/kai-first";
+  const next = searchParams.get("next") ?? defaultDest;
 
   useEffect(() => {
     const supabase = createSupabaseBrowser();

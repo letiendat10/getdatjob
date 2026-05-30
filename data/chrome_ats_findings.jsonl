@@ -535,3 +535,90 @@
 {"name": "Sally Beauty Supply LLC", "ats": "oracle_hcm", "slug": "eigx", "score": null, "needs_review": true}
 {"name": "Magna Services of America, Inc.", "ats": "workday", "slug": "magna.wd3/magna", "score": null, "needs_review": true}
 {"name": "UNIVERSITY OF THE PACIFIC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "AuditBoard, Inc.", "ats": "greenhouse", "slug": "auditboard", "score": 0.71, "needs_review": false}
+{"name": "Deckers Outdoor Corporation", "ats": "workday", "slug": "deckers.wd5.myworkdayjobs.com/deckers", "score": null, "needs_review": true}
+{"name": "CWC Travel, Inc.", "ats": "taleo", "slug": "tbe", "score": null, "needs_review": true}
+{"name": "The Productivity Team LLC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Cargill, Incorporated (US)", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Kashiv BioSciences LLC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "ClientServer Technology Solutions LLC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Marketech International Corporation USA", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "NESTLE REGIONAL GLOBE OFFICE NORTH AMERICA, INC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Pinnacle Technical Resources, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "AMERITEK GLOBAL INC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Maveric NXT Inc", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Deckers Outdoor Corporation", "ats": "workday", "slug": "deckers.wd5/deckers", "score": null, "needs_review": true}
+{"name": "AuditBoard, Inc.", "ats": "greenhouse", "slug": "auditboard", "score": null, "needs_review": true}
+{"name": "Independent School District 1 of Tulsa", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Continental Casualty Company", "ats": "workday", "slug": "cna.wd1/cna_careers", "score": null, "needs_review": true}
+{"name": "The Nielsen Company (US), LLC", "ats": "lever", "slug": "nielsen", "score": null, "needs_review": false}
+{"name": "Omron Robotics and Safety Technologies, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "V3Tech Solutions Inc", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Tenet Employment Inc.", "ats": "oracle_hcm", "slug": "eodr", "score": null, "needs_review": true}
+{"name": "PeopleSERVE, Inc", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Swinerton Management & Consulting, LLC", "ats": "workday", "slug": "swinerton.wd1/swinerton_external_career", "score": null, "needs_review": true}
+{"name": "Best Western International, Inc.", "ats": "recruitee", "slug": "bwhhotelsemea", "score": null, "needs_review": true}
+{"name": "FASTENAL COMPANY", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "SVATS, Inc", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Aurora Medical Group, Inc.", "ats": "workday", "slug": "aah.wd5/external", "score": null, "needs_review": true}
+{"name": "Ocean Blue Solutions, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "RedShift Technologies LLC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Albatross America Inc.", "ats": "teamtailor", "slug": "cainiao", "score": null, "needs_review": true}
+{"name": "Blue Cross Blue Shield of Massachusetts", "ats": "workday", "slug": "bcbsma.wd5/bcbsma", "score": null, "needs_review": true}
+{"name": "FTI, LLC", "ats": "workday", "slug": "fticonsulting.wd108/fticonsultingcareers", "score": null, "needs_review": true}
+{"name": "PDI Technologies, Inc.", "ats": "lever", "slug": "pditechnologies", "score": null, "needs_review": false}
+{"name": "HiLabs, Inc", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "DRACS CONSULTING GROUP INC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Eversana Life Science Services LLC", "ats": "smartrecruiters", "slug": "eversana1", "score": null, "needs_review": false}
+{"name": "Midcontinent Independent System Operator, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "EvolutionIQ LLC", "ats": "workday", "slug": "cccis.wd1/broadbean_external", "score": null, "needs_review": true}
+{"name": "Arcadis Inc.", "ats": "oracle_hcm", "slug": "ebcs", "score": null, "needs_review": true}
+{"name": "Santander Bank, N.A.", "ats": "workday", "slug": "santander.wd3/santandercareers", "score": 20.0, "needs_review": false}
+{"name": "PODS Enterprises, LLC", "ats": "workday", "slug": "pods.wd1/pods", "score": 20.0, "needs_review": false}
+{"name": "Pella Corporation", "ats": "workday", "slug": "pella.wd1/careers_external", "score": 20.0, "needs_review": false}
+{"name": "Denali Therapeutics Inc.", "ats": "workday", "slug": "denali.wd1/denali_careers", "score": 20.0, "needs_review": false}
+{"name": "William Blair & Company, LLC", "ats": "workday", "slug": "williamblair.wd1/williamblaircareers", "score": 20.0, "needs_review": false}
+{"name": "Research Triangle Institute (U.S.)", "ats": "workday", "slug": "rti.wd5/rti_careers", "score": 20.0, "needs_review": false}
+{"name": "Acclaim Systems, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Uktha Global, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "The Permanente Medical Group, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "GLOBAL NURSING RECRUITERS", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "MICROINFO INC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Excelsior University", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "ABBOTT CARDIOVASCULAR SYSTEMS INC.", "ats": "workday", "slug": "abbott.wd5/abbottcareers", "score": null, "needs_review": true}
+{"name": "ECHELON IT INC.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Savin Technologies,Inc", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Exeliq Consulting Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Aveva Drug Delivery Systems, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "SISMOS SOLUTIONS, INC.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Michael Allen Company", "ats": "greenhouse", "slug": "m3", "score": 0.087, "needs_review": true}
+{"name": "Trinity West", "ats": "icims", "slug": "commonspirit", "score": null, "needs_review": false}
+{"name": "WEX Inc.", "ats": "workday", "slug": "wexinc.wd5/wexinc", "score": null, "needs_review": true}
+{"name": "Ancile Inc", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Innovation Squad Inc", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Oracle Financial Services Software, Inc.", "ats": "oracle_hcm", "slug": "eeho", "score": null, "needs_review": true}
+{"name": "N2 Services, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Etleap Inc.", "ats": "smartrecruiters", "slug": "etleapinc", "score": null, "needs_review": false}
+{"name": "Capital Research and Management Company", "ats": "workday", "slug": "capgroup.wd1/capitalgroupcareers", "score": null, "needs_review": true}
+{"name": "InnovAccer Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "NIKE USA Inc.", "ats": "workday", "slug": "nike.wd1/nke", "score": null, "needs_review": true}
+{"name": "SIFA Learning Academy Charter School, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Acadia Technologies, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "EVEREST COMPUTERS INC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "ZAPCOM GROUP, INC.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Capital IT Solutions INC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Pattern, Inc.", "ats": "lever", "slug": "pattern", "score": null, "needs_review": false}
+{"name": "WWEX Franchise Holdings, LLC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "N Space LLC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Ernst & Young LLP (EY GUAM)", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Creative Information Technology Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Midland Credit Management, Inc", "ats": "workday", "slug": "encore.wd1/externalnew", "score": null, "needs_review": true}
+{"name": "Children's Hospital Pediatric Associates, Inc.", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Euclid Innovations Inc", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "Sensormatic Electronics, LLC", "ats": "workday", "slug": "jci.wd5/jci", "score": null, "needs_review": true}
+{"name": "Panera LLC", "ats": "workday", "slug": "panerabread.wd5/panera_careers", "score": null, "needs_review": true}
+{"name": "Everquote, Inc.", "ats": "greenhouse", "slug": "everquote", "score": 0.75, "needs_review": false}
+{"name": "NRG Entergy, Inc.", "ats": "smartrecruiters", "slug": "vivint", "score": null, "needs_review": false}
+{"name": "TANVI IT SOLUTIONS INC", "ats": "no-ats-tried-once", "slug": "", "score": null, "needs_review": false}
+{"name": "TMEIC CORPORATION AMERICAS", "ats": "workable", "slug": "tmeic-corporation-americas", "score": 1.0, "needs_review": false}
+{"name": "Twist Bioscience Corporation", "ats": "greenhouse", "slug": "twistbioscience", "score": 0.7272727272727273, "needs_review": false}

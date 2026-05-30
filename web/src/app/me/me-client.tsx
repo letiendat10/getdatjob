@@ -97,6 +97,87 @@ function firstName(fullName: string | null): string | null {
   return fullName.split(" ")[0] ?? null;
 }
 
+function buildReturnGreeting(name: string | null): ChatMessage {
+  const greetings = [
+    "You're back on the track! Want me to pull fresh matches, or anything different from last time?",
+    "Good to see you again. New matches since yesterday — want me to pull today's batch?",
+    "Job market is tough, but you are tougher. Ready to pull fresh matches?",
+    "You got this. Back for more matches? I'll pull the latest for you.",
+  ];
+  const msg = greetings[Math.floor(Math.random() * greetings.length)];
+  return {
+    id: "kai-return-0",
+    role: "assistant",
+    content: name ? `Hey ${name}! ${msg}` : msg,
+  };
+}
+
+// ── SVG Icons ─────────────────────────────────────────────────────────────────
+
+function MessageIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+function BriefcaseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+    </svg>
+  );
+}
+
+function PersonIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function LinkedInIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+      <rect x="2" y="9" width="4" height="12" />
+      <circle cx="4" cy="4" r="2" />
+    </svg>
+  );
+}
+
+function SignOutIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
 function KaiText({ text, isStreaming }: { text: string; isStreaming?: boolean }) {
@@ -213,21 +294,6 @@ const RETURN_CHIPS = [
   "Higher salary",
   "Posted this week",
 ];
-
-function buildReturnGreeting(name: string | null): ChatMessage {
-  const greetings = [
-    "You're back on the track! Want me to pull fresh matches, or anything different from last time?",
-    "Good to see you again. New matches since yesterday — want me to pull today's batch?",
-    "Job market is tough, but you are tougher. Ready to pull fresh matches?",
-    "You got this. Back for more matches? I'll pull the latest for you.",
-  ];
-  const msg = greetings[Math.floor(Math.random() * greetings.length)];
-  return {
-    id: "kai-return-0",
-    role: "assistant",
-    content: name ? `Hey ${name}! ${msg}` : msg,
-  };
-}
 
 function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: () => void }) {
   const name = firstName(profile.full_name);
@@ -491,7 +557,7 @@ function MatchesTab({ isUnlocked, preferences }: {
       body: JSON.stringify({ ...params, locationMode: preferences?.location ? "local" : "anywhere" }),
     })
       .then((r) => r.json())
-      .then((d) => { setJobs(d.jobs ?? []); setLoading(false); })
+      .then((d) => { setJobs((d as { jobs?: Job[] }).jobs ?? []); setLoading(false); })
       .catch(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -502,7 +568,6 @@ function MatchesTab({ isUnlocked, preferences }: {
   return (
     <div className={s["matches-scroll"]}>
       <div style={{ padding: "24px 20px 40px", maxWidth: 640, margin: "0 auto" }}>
-        {/* Header */}
         <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)", margin: "0 0 4px", letterSpacing: "-0.02em" }}>
           Your matches
         </h2>
@@ -510,7 +575,6 @@ function MatchesTab({ isUnlocked, preferences }: {
           Roles verified against USCIS sponsorship data, updated daily.
         </p>
 
-        {/* Preference filter chips */}
         {preferences && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 20 }}>
             {preferences.visa_type && (
@@ -536,7 +600,6 @@ function MatchesTab({ isUnlocked, preferences }: {
           </div>
         )}
 
-        {/* Job list */}
         {loading ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[1, 2, 3].map((i) => (
@@ -551,7 +614,6 @@ function MatchesTab({ isUnlocked, preferences }: {
               ))}
             </div>
 
-            {/* Blurred extras + upgrade CTA */}
             {!isUnlocked && hiddenCount > 0 && (
               <>
                 <div style={{ position: "relative", marginTop: 10 }}>
@@ -584,7 +646,6 @@ function MatchesTab({ isUnlocked, preferences }: {
               </>
             )}
 
-            {/* Empty state */}
             {jobs.length === 0 && (
               <p style={{ fontSize: 13, color: "var(--ink-3)", textAlign: "center", marginTop: 32 }}>
                 No matches yet — complete the onboarding to personalize your results.{" "}
@@ -633,7 +694,6 @@ function MembershipSection({ profile }: { profile: Profile }) {
         <h3 className={s["profile-card-title"]}>Membership</h3>
       </div>
       <div className={s["profile-card-body"]}>
-        {/* Tier badge */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
           {isPaid ? (
             <span style={{ display: "inline-flex", borderRadius: 100, padding: "1px", background: RAINBOW }}>
@@ -649,7 +709,6 @@ function MembershipSection({ profile }: { profile: Profile }) {
           {isTrialing && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Trial ends {trialEnd}</span>}
         </div>
 
-        {/* Features */}
         <ul style={{ listStyle: "none", padding: 0, margin: "0 0 14px", display: "flex", flexDirection: "column", gap: 4 }}>
           {(TIER_FEATURES[tier] ?? TIER_FEATURES.free).map((f) => (
             <li key={f} style={{ fontSize: 12, color: "var(--ink-3)", display: "flex", gap: 5 }}>
@@ -658,7 +717,6 @@ function MembershipSection({ profile }: { profile: Profile }) {
           ))}
         </ul>
 
-        {/* CTA */}
         {!isPaid ? (
           <Link
             href="/kai-pay"
@@ -685,7 +743,6 @@ function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () 
   return (
     <div className={s["profile-scroll"]}>
       <div className={s["profile-inner"]}>
-        {/* Personal info */}
         <div className={s["profile-card"]}>
           <div className={s["profile-card-head"]}>
             <h3 className={s["profile-card-title"]}>Personal Info</h3>
@@ -712,7 +769,6 @@ function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () 
           </div>
         </div>
 
-        {/* Preferences */}
         <div className={s["profile-card"]}>
           <div className={s["profile-card-head"]}>
             <h3 className={s["profile-card-title"]}>Job Preferences</h3>
@@ -761,7 +817,6 @@ function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () 
           </div>
         </div>
 
-        {/* Work experience */}
         <div className={s["profile-card"]}>
           <div className={s["profile-card-head"]}>
             <h3 className={s["profile-card-title"]}>Work Experience</h3>
@@ -776,7 +831,6 @@ function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () 
           </div>
         </div>
 
-        {/* Membership */}
         <MembershipSection profile={profile} />
       </div>
     </div>
@@ -789,7 +843,6 @@ function SettingsTab({ profile, onSignOut }: { profile: Profile; onSignOut: () =
   return (
     <div className={s["settings-scroll"]}>
       <div className={s["settings-inner"]}>
-        {/* Connected accounts */}
         <div className={s["settings-card"]}>
           <div className={s["settings-card-head"]}>
             <h3 className={s["settings-card-title"]}>Connected Accounts</h3>
@@ -806,7 +859,6 @@ function SettingsTab({ profile, onSignOut }: { profile: Profile; onSignOut: () =
           </div>
         </div>
 
-        {/* Supporter status */}
         <div className={s["settings-card"]}>
           <div className={s["settings-card-head"]}>
             <h3 className={s["settings-card-title"]}>Account</h3>
@@ -834,7 +886,6 @@ function SettingsTab({ profile, onSignOut }: { profile: Profile; onSignOut: () =
           </div>
         </div>
 
-        {/* Notifications */}
         <div className={s["settings-card"]}>
           <div className={s["settings-card-head"]}>
             <h3 className={s["settings-card-title"]}>Notifications</h3>
@@ -844,7 +895,6 @@ function SettingsTab({ profile, onSignOut }: { profile: Profile; onSignOut: () =
           </p>
         </div>
 
-        {/* Sign out */}
         <div className={s["settings-card"]}>
           <div className={s["settings-footer"]}>
             <button className={s["sign-out-btn"]} onClick={onSignOut}>
@@ -858,62 +908,14 @@ function SettingsTab({ profile, onSignOut }: { profile: Profile; onSignOut: () =
   );
 }
 
-// ── SVG icons ─────────────────────────────────────────────────────────────────
+// ── Sidebar tab config ────────────────────────────────────────────────────────
 
-function LockIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
-
-function LockIconSmall() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
-
-function GearIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
-  );
-}
-
-function LinkedInIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
-      <rect x="2" y="9" width="4" height="12" />
-      <circle cx="4" cy="4" r="2" />
-    </svg>
-  );
-}
-
-function VenmoIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M19.5 3C20.9 5.4 21.5 7.8 21.5 10.8c0 6-5.1 13.8-9.2 13.8-3.9 0-5-4.5-7.4-9.6L7 13c1.3 2.8 2.1 4.8 3.3 4.8 1.5 0 3.3-3 3.3-6.5 0-2.3-.8-3.5-2.5-3.5-.9 0-1.7.3-2.5.6L10.1 3c1.8-.7 9.4-2.7 9.4 0z" />
-    </svg>
-  );
-}
-
-function SignOutIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  );
-}
+const TABS: { id: Tab; label: string; mobileLabel: string; icon: React.ReactNode }[] = [
+  { id: "chat", label: "Chat with Kai", mobileLabel: "Kai", icon: <MessageIcon /> },
+  { id: "matches", label: "Job Matches", mobileLabel: "Matches", icon: <BriefcaseIcon /> },
+  { id: "profile", label: "Profile", mobileLabel: "Profile", icon: <PersonIcon /> },
+  { id: "settings", label: "Settings", mobileLabel: "Settings", icon: <GearIcon /> },
+];
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -928,23 +930,49 @@ export default function MeClient({ profile }: { profile: Profile }) {
   };
 
   const name = firstName(profile.full_name);
+  const tier = profile.subscription_tier ?? "free";
+  const isPaid = tier !== "free" || profile.is_supporter;
+  const tierLabel = isPaid
+    ? (tier === "passed" ? "Passed" : tier === "preferred" ? "Preferred" : "Supporter")
+    : "Free";
 
   return (
     <div className={s.page}>
-      {/* Nav */}
-      <nav className={s.nav}>
-        <div className={s["nav-inner"]}>
-          <Link href="/" className={s.brand}>getdatjob</Link>
-          <div className={s["nav-right"]}>
-            <Link href="/jobs" className={s["nav-link"]}>Browse jobs</Link>
-          </div>
+      {/* Mobile top header */}
+      <header className={s["mobile-header"]}>
+        <Link href="/" className={s["mobile-brand"]}>getdatjob</Link>
+        <div className={s["mobile-avatar"]}>
+          {profile.avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={profile.avatar_url} alt={profile.full_name ?? ""} />
+          ) : (
+            (name ?? "?")[0].toUpperCase()
+          )}
         </div>
-      </nav>
+      </header>
 
-      {/* Me header */}
-      <div className={s["me-header-wrap"]}>
-        <div className={s["me-header"]}>
-          <div className={s["me-avatar"]}>
+      {/* Left sidebar */}
+      <aside className={s.sidebar}>
+        <div className={s["sidebar-top"]}>
+          <Link href="/" className={s["sidebar-brand"]}>getdatjob</Link>
+        </div>
+
+        <nav className={s["sidebar-nav"]}>
+          {TABS.map(({ id, label, mobileLabel, icon }) => (
+            <button
+              key={id}
+              className={`${s["sidebar-tab"]} ${activeTab === id ? s["sidebar-tab-active"] : ""}`}
+              onClick={() => setActiveTab(id)}
+            >
+              <span className={s["sidebar-tab-icon"]}>{icon}</span>
+              <span className={s["sidebar-tab-label"]}>{label}</span>
+              <span className={s["sidebar-tab-mobile-label"]}>{mobileLabel}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className={s["sidebar-user"]}>
+          <div className={s["sidebar-avatar"]}>
             {profile.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={profile.avatar_url} alt={profile.full_name ?? ""} />
@@ -952,73 +980,37 @@ export default function MeClient({ profile }: { profile: Profile }) {
               (name ?? "?")[0].toUpperCase()
             )}
           </div>
-          <div className={s["me-greeting"]}>
-            <span className={s["me-greeting-name"]}>
-              Hey {name ?? "there"},
-            </span>
-            <span className={s["me-greeting-sub"]}>
-              land your next role, visa-sponsored.
-            </span>
+          <div className={s["sidebar-user-info"]}>
+            <span className={s["sidebar-user-name"]}>{profile.full_name ?? name ?? "Account"}</span>
+            <span className={s["sidebar-user-tier"]}>{tierLabel} plan</span>
           </div>
         </div>
-      </div>
+      </aside>
 
-      {/* Tab bar */}
-      <div className={s["tabs-wrap"]}>
-        <div className={s.tabs}>
-          <button
-            className={`${s.tab} ${activeTab === "chat" ? s["tab-active"] : ""}`}
-            onClick={() => setActiveTab("chat")}
-          >
-            Chat with Kai
-          </button>
-          <button
-            className={`${s.tab} ${activeTab === "matches" ? s["tab-active"] : ""}`}
-            onClick={() => setActiveTab("matches")}
-          >
-            Job Matches
-          </button>
-          <button
-            className={`${s.tab} ${activeTab === "profile" ? s["tab-active"] : ""}`}
-            onClick={() => setActiveTab("profile")}
-          >
-            Profile
-          </button>
-          <button
-            className={`${s.tab} ${s["tab-settings"]} ${activeTab === "settings" ? s["tab-active"] : ""}`}
-            onClick={() => setActiveTab("settings")}
-            aria-label="Settings"
-          >
-            <GearIcon />
-            <span className="sr-only">Settings</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Tab content */}
-      <div className={s["tab-content"]}>
-        {activeTab === "chat" && (
+      {/* Main content — all panels always mounted for state persistence */}
+      <main className={s.main}>
+        <div className={`${s["tab-panel"]} ${activeTab !== "chat" ? s["tab-panel-hidden"] : ""}`}>
           <ChatTab
             profile={profile}
             onGoToMatches={() => setActiveTab("matches")}
           />
-        )}
-        {activeTab === "matches" && (
+        </div>
+        <div className={`${s["tab-panel"]} ${activeTab !== "matches" ? s["tab-panel-hidden"] : ""}`}>
           <MatchesTab
             isUnlocked={profile.is_supporter || (profile.subscription_tier ?? "free") !== "free"}
             preferences={profile.preferences}
           />
-        )}
-        {activeTab === "profile" && (
+        </div>
+        <div className={`${s["tab-panel"]} ${activeTab !== "profile" ? s["tab-panel-hidden"] : ""}`}>
           <ProfileTab
             profile={profile}
             onGoToChat={() => setActiveTab("chat")}
           />
-        )}
-        {activeTab === "settings" && (
+        </div>
+        <div className={`${s["tab-panel"]} ${activeTab !== "settings" ? s["tab-panel-hidden"] : ""}`}>
           <SettingsTab profile={profile} onSignOut={handleSignOut} />
-        )}
-      </div>
+        </div>
+      </main>
     </div>
   );
 }

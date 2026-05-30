@@ -607,6 +607,19 @@
   padding-left: 20px; /* room for the connector lines */
   padding-top: 5px;
   padding-bottom: 5px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+}
+.inline-chip-connector {
+  display: block;
+  width: 14px;
+  height: 1.5px;
+  background: var(--line);
+  flex-shrink: 0;
+  margin: 0 2px;
 }
 /* Non-last items: full vertical line (├ shape) */
 .inline-tree-item:not(.inline-tree-item-last)::before {

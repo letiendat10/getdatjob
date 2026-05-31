@@ -11,6 +11,7 @@ import {
 import type { JobRow } from "@/lib/query-jobs";
 import { getTnCategory } from "@/lib/tn-eligible";
 import { JobChips } from "@/app/components/JobChips";
+import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -343,35 +344,6 @@ const VISA_OPTIONS = [
   { label: "E-3", value: "E3" },
   { label: "TN", value: "TN" },
 ];
-
-const LOGO_DEV_TOKEN = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN ?? "";
-
-// ── Components ───────────────────────────────────────────────────────────────
-
-function CompanyAvatar({ name, domain, size = "sm" }: { name: string; domain?: string | null; size?: "sm" | "md" | "lg" }) {
-  const [imgError, setImgError] = useState(false);
-  const sizeClass =
-    size === "lg" ? "w-14 h-14 rounded-xl"
-    : size === "md" ? "w-10 h-10 rounded-lg"
-    : "w-8 h-8 rounded";
-  const textClass = size === "lg" ? "text-base" : "text-xs";
-  const resolvedDomain = domain || companyDomain(name);
-  const logoOverride = LOGO_OVERRIDES[resolvedDomain];
-  if ((LOGO_DEV_TOKEN || logoOverride) && !imgError) {
-    const px = size === "lg" ? 128 : 64;
-    const src = logoOverride ?? `https://img.logo.dev/${resolvedDomain}?token=${LOGO_DEV_TOKEN}&size=${px}&format=png&fallback=monogram`;
-    return (
-      <div className={`${sizeClass} flex-shrink-0 border border-zinc-100 bg-white overflow-hidden flex items-center justify-center`}>
-        <img src={src} alt={name} onError={() => setImgError(true)} className="w-full h-full object-contain p-0.5" />
-      </div>
-    );
-  }
-  return (
-    <div className={`${sizeClass} flex-shrink-0 bg-zinc-100 border border-zinc-100 flex items-center justify-center font-bold ${textClass} text-zinc-500 uppercase`}>
-      {name.slice(0, 2)}
-    </div>
-  );
-}
 
 // ── Filter Icons (dot-grid style, 24×24 viewbox, currentColor) ──────────────
 

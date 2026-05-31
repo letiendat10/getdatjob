@@ -6,6 +6,7 @@ import s from "./kai.module.css";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { Bookmark, MapPin, ExternalLink, X, Share2 } from "lucide-react";
 import { JobChips } from "@/app/components/JobChips";
+import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 import PaywallScreen from "@/app/components/PaywallScreen";
 
 // Feature flag: "paywall" → Stripe gate after batch1 (5 jobs shown)
@@ -337,29 +338,6 @@ function getTimeGreeting(firstName: string | null): { headline: string; line2: G
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-
-function CompanyAvatar({ name, domain }: { name: string; domain: string | null }) {
-  const [imgError, setImgError] = useState(false);
-  const resolved = domain || companyDomain(name);
-  if (LOGO_DEV_TOKEN && !imgError) {
-    return (
-      <div className="w-10 h-10 rounded-lg flex-shrink-0 border border-zinc-100 bg-white overflow-hidden flex items-center justify-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={`https://img.logo.dev/${resolved}?token=${LOGO_DEV_TOKEN}&size=64&format=png&fallback=monogram`}
-          alt={name}
-          onError={() => setImgError(true)}
-          className="w-full h-full object-contain p-0.5"
-        />
-      </div>
-    );
-  }
-  return (
-    <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-zinc-100 border border-zinc-100 flex items-center justify-center font-bold text-xs text-zinc-500 uppercase">
-      {name.slice(0, 2)}
-    </div>
-  );
-}
 
 function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
   const [saved, setSaved] = useState(false);

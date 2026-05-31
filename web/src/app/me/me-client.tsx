@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { MatchesPanel } from "./matches-panel";
 import { JobChips } from "@/app/components/JobChips";
+import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 import s from "./me.module.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -272,29 +273,6 @@ function KaiText({ text, isStreaming }: { text: string; isStreaming?: boolean })
       })}
       {isStreaming && <span className={s.cursor} />}
     </>
-  );
-}
-
-function CompanyAvatar({ name, domain }: { name: string; domain: string | null }) {
-  const [imgError, setImgError] = useState(false);
-  const resolved = domain || companyDomain(name);
-  if (LOGO_DEV_TOKEN && !imgError) {
-    return (
-      <div className="w-10 h-10 rounded-lg flex-shrink-0 border border-zinc-100 bg-white overflow-hidden flex items-center justify-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={`https://img.logo.dev/${resolved}?token=${LOGO_DEV_TOKEN}&size=64&format=png&fallback=monogram`}
-          alt={name}
-          onError={() => setImgError(true)}
-          className="w-full h-full object-contain p-0.5"
-        />
-      </div>
-    );
-  }
-  return (
-    <div className="w-10 h-10 rounded-lg flex-shrink-0 bg-zinc-100 border border-zinc-100 flex items-center justify-center font-bold text-xs text-zinc-500 uppercase">
-      {name.slice(0, 2)}
-    </div>
   );
 }
 

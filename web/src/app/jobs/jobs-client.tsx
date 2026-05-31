@@ -821,10 +821,18 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
       });
   }, []);
 
-  // Restore selected job from URL
+  // Restore selected job, visa filter, and search query from URL
   useEffect(() => {
     const jobParam = searchParams.get("job");
     if (jobParam) setSelectedJobId(Number(jobParam));
+    const visaParam = searchParams.get("visa");
+    if (visaParam) {
+      const map: Record<string, string> = { h1b: "H1B", e3: "E3", tn: "TN", opt: "all" };
+      const mapped = map[visaParam.toLowerCase()];
+      if (mapped) setVisa(mapped);
+    }
+    const qParam = searchParams.get("q");
+    if (qParam) setQuery(qParam);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

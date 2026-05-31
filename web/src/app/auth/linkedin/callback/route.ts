@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 60;
 import { createSupabaseAdmin } from "@/lib/supabase-admin";
 import { trySerpAPI } from "@/lib/enrich-apollo";
+import { verifyOAuthState } from "@/lib/oauth-state";
 
 const LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken";
 const LINKEDIN_ME_URL =
@@ -113,13 +114,14 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
 
-  // Read and clear state cookie
-  const cookieHeader = request.cookies.get("li_oauth_state")?.value;
-  const response = NextResponse.redirect(`${origin}/auth/signin?error=invalid_state`);
-  response.cookies.delete("li_oauth_state");
+  if (!code || !state) {
+    return NextResponse.redirect(`${origin}/auth/signin?error=invalid_state`);
+  }
 
-  if (!code || !state || state !== cookieHeader) {
-    return response;
+  const parsed = verifyOAuthState(state);
+  if (!parsed) {
+    console.warn("[linkedin-custom] invalid_state — HMAC verification failed");
+    return NextResponse.redirect(`${origin}/auth/signin?error=invalid_state`);
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL!;
@@ -217,7 +219,5 @@ export async function GET(request: NextRequest) {
     console.warn("[linkedin-custom] no LinkedIn URL found — skipping queue insert");
   }
 
-  const finalResponse = NextResponse.redirect(linkData.properties.action_link);
-  finalResponse.cookies.delete("li_oauth_state");
-  return finalResponse;
+  return NextResponse.redirect(linkData.properties.action_link);
 }

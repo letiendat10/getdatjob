@@ -232,7 +232,7 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
             </div>
 
             {/* 3 – Know your worth */}
-            <div className={s["benefit-row"]}>
+            <div id="salary" className={s["benefit-row"]}>
               <div className={s["benefit-image"]}>
                 <div className={s["ph-stripes"]} />
               </div>
@@ -249,7 +249,7 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
             </div>
 
             {/* 4 – Plan ahead */}
-            <div className={`${s["benefit-row"]} ${s.reverse}`}>
+            <div id="laidoff" className={`${s["benefit-row"]} ${s.reverse}`}>
               <div className={s["benefit-image"]}>
                 <div className={s["ph-stripes"]} />
               </div>
@@ -409,7 +409,7 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
 
             <details>
               <summary>How often are listings updated?<span className={s.plus}>+</span></summary>
-              <div className={s.ans}>Every 6 hours. Jobs older than 30 days without re-verification are automatically archived. You&rsquo;ll never apply to a posting that&rsquo;s already closed.</div>
+              <div className={s.ans}>Daily. Jobs older than 30 days without re-verification are automatically archived. You&rsquo;ll never apply to a posting that&rsquo;s already closed.</div>
             </details>
 
             <details>
@@ -486,12 +486,12 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
             <div className={s.fcol}>
               <h4>Jobs by category</h4>
               <div className={s["fcol-links"]}>
-                <Link href="/jobs?cat=ai">AI jobs</Link>
-                <Link href="/jobs?cat=tech">Tech jobs</Link>
-                <Link href="/jobs?cat=eng">Engineering jobs</Link>
-                <Link href="/jobs?cat=design">Design jobs</Link>
-                <Link href="/jobs?cat=product">Product jobs</Link>
-                <Link href="/jobs?cat=finance">Finance jobs</Link>
+                <Link href="/jobs?q=AI+Engineer">AI jobs</Link>
+                <Link href="/jobs?q=Software+Engineer">Tech jobs</Link>
+                <Link href="/jobs?q=Engineering">Engineering jobs</Link>
+                <Link href="/jobs?q=Designer">Design jobs</Link>
+                <Link href="/jobs?q=Product+Manager">Product jobs</Link>
+                <Link href="/jobs?q=Finance">Finance jobs</Link>
               </div>
             </div>
           </div>
@@ -501,7 +501,7 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
             <h4>Resources</h4>
             <div className={s["fcol-links"]}>
               <a href="#laidoff">&ldquo;I just got laid off&rdquo; plan</a>
-              <a href="#grace">60-day grace period</a>
+              <a href="#laidoff">60-day grace period</a>
               <a href="#salary">Salary data</a>
             </div>
           </div>

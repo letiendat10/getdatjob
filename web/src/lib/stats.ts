@@ -1,31 +1,38 @@
 import { unstable_cache } from "next/cache";
 import { supabase } from "./supabase";
 
+export interface VisaStat { jobs: number; employers: number }
+
 export const getStats = unstable_cache(
   async () => {
-    const [jobsRes, employersRes] = await Promise.all([
-      supabase
-        .from("jobs")
-        .select("id", { count: "exact", head: true })
-        .eq("is_active", true),
-      supabase
-        .from("employers")
-        .select("id", { count: "exact", head: true }),
-    ]);
+    const { data, error } = await supabase
+      .from("stats_shelf")
+      .select("visa_type, job_count, employer_count");
 
-    if (jobsRes.error) console.error("[stats] jobs count error:", jobsRes.error);
-    if (employersRes.error) console.error("[stats] employers count error:", employersRes.error);
+    if (error) throw new Error(`[stats] shelf error: ${error.message}`);
+    if (!data || data.length === 0) throw new Error("[stats] shelf empty");
 
-    const totalJobs = jobsRes.count ?? 0;
-    const employerCount = employersRes.count ?? 0;
+    const byVisa = Object.fromEntries(
+      data.map((r) => [r.visa_type, { jobs: r.job_count as number, employers: r.employer_count as number }])
+    );
 
-    // Refuse to cache obviously-wrong values — Next.js won't cache a thrown error,
-    // so the next request will retry instead of serving zeros for an hour.
-    if (totalJobs === 0) throw new Error("[stats] jobs count came back 0, skipping cache");
+    const all = byVisa["all"];
+    const totalSponsors = byVisa["total_sponsors"];
+    if (!all || all.jobs === 0) throw new Error("[stats] total jobs came back 0, skipping cache");
 
-    return { totalJobs, employerCount };
+    return {
+      totalJobs: all.jobs,
+      // Hero laurel: all USCIS-verified sponsors in DB (not just those with active jobs)
+      employerCount: totalSponsors?.employers ?? all.employers,
+      byVisa: {
+        h1b: byVisa["h1b"] ?? { jobs: 0, employers: 0 },
+        e3:  byVisa["e3"]  ?? { jobs: 0, employers: 0 },
+        tn:  byVisa["tn"]  ?? { jobs: 0, employers: 0 },
+        opt: byVisa["opt"] ?? { jobs: 0, employers: 0 },
+      } as Record<string, VisaStat>,
+    };
   },
-  ["site-stats-v3"],
+  ["site-stats-v6"],
   { revalidate: 300 }
 );
 

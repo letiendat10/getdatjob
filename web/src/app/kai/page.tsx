@@ -68,7 +68,7 @@ type EnrichedProfile = {
 };
 
 // All steps from both flows — only the relevant subset is reachable per PAYWALL_MODE.
-// Paywall flow:  q6 → alert_optin → scanning → batch1 → see_more → paywall → done
+// Paywall flow:  q6 → alert_optin → scanning → batch1 → (auto) see_more → paywall → done
 // Venmo flow:    q6 → scanning → batch1 → email_optin → batch2 → support → done
 type OnboardingStep =
   | "init"
@@ -77,6 +77,7 @@ type OnboardingStep =
   | "q2"
   | "q3"
   | "q4"
+  | "q4b"  // pivot target — shown when user picks "Other" at Q4
   | "q5"
   | "q6"
   | "scanning"
@@ -741,9 +742,12 @@ export default function KaiPage() {
   const restoredFromLocalRef = useRef(false);
   const onboardingSyncedRef = useRef(false);
   const messagesRef = useRef<ChatMessage[]>([]);
+  // Prevents the onboarding useEffect from double-firing when linkedIn/enriched
+  // state resolves during the ~1.6s delay before setStep("q1") runs.
+  const onboardingStartedRef = useRef(false);
   // Paywall mode: jobs fetch starts during Q6 so it runs while user answers alert_optin
   const pendingScanRef = useRef<{
-    jobsPromise: Promise<{ jobs: Job[]; total_3d_count: number }>;
+    jobsPromise: Promise<{ jobs: Job[]; total_count: number; window_days: number }>;
     filterTokens: string[];
   } | null>(null);
 
@@ -834,9 +838,14 @@ export default function KaiPage() {
   useEffect(() => { setTimeGreeting(getTimeGreeting(null)); }, []);
   useEffect(() => { if (user?.firstName) setTimeGreeting(getTimeGreeting(user.firstName)); }, [user?.firstName]);
 
-  // Start onboarding once user state is resolved
+  // Start onboarding once user state is resolved.
+  // onboardingStartedRef prevents a double-start if linkedIn/enriched resolve
+  // during the ~1.6s async delay before setStep("q1") fires.
   useEffect(() => {
     if (userLoading || step !== "init") return;
+    if (onboardingStartedRef.current) return;
+    onboardingStartedRef.current = true;
+
     const firstName = user?.firstName ?? null;
     const headline = linkedIn?.headline ?? enriched?.current_title ?? null;
 
@@ -946,22 +955,21 @@ export default function KaiPage() {
         "Data / AI": "Data / AI", Design: "Design", Sales: "Sales", Finance: "Finance", Operations: "Operations",
       };
       const q4Text = inferredFunc
-        ? `Based on your profile, looks like you're in ${funcLabel[inferredFunc] ?? inferredFunc} — is that right?`
+        ? `I see you're in ${funcLabel[inferredFunc] ?? inferredFunc} on your profile. Are you staying in that direction, or looking to pivot?`
         : "What kind of role are you looking for?";
       const topFuncs: QR[] = [
-        { label: "Engineering", value: "Engineering", row: 1 },
-        { label: "Product",     value: "Product",     row: 1 },
-        { label: "Data",        value: "Data",        row: 1 },
-        { label: "Marketing",   value: "Marketing",   row: 2 },
-        { label: "Growth",      value: "Growth",      row: 2 },
-        { label: "Design",      value: "Design",      row: 2 },
-        { label: "Other",       value: "Other",       row: 2 },
+        { label: "Engineering",    value: "Engineering", row: 1 },
+        { label: "Product",        value: "Product",     row: 1 },
+        { label: "Data",           value: "Data",        row: 1 },
+        { label: "Marketing",      value: "Marketing",   row: 2 },
+        { label: "Growth",         value: "Growth",      row: 2 },
+        { label: "Design",         value: "Design",      row: 3 },
+        { label: "Something else", value: "Other",       row: 3 },
       ];
       const q4Replies: QR[] = inferredFunc
         ? [
-            { label: `Yes, ${funcLabel[inferredFunc] ?? inferredFunc}`, value: inferredFunc },
-            ...topFuncs.filter(c => c.value !== inferredFunc).slice(0, 2).map(c => ({ label: c.label, value: c.value })),
-            { label: "Something else", value: "Other" },
+            { label: `Staying in ${funcLabel[inferredFunc] ?? inferredFunc}`, value: inferredFunc },
+            { label: "Pivoting to something new", value: "Other" },
           ]
         : topFuncs;
       setMessages((prev) => [...prev, { id: "k-q4", role: "assistant", content: q4Text }]);
@@ -970,9 +978,25 @@ export default function KaiPage() {
 
     } else if (step === "q4") {
       const jobFunction = qr.value;
-      setIntake((prev) => ({ ...prev, jobFunction }));
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(400);
+
+      // "Pivoting to something new" / "Something else" → ask what field they want
+      if (jobFunction === "Other") {
+        setMessages((prev) => [...prev, { id: "k-q4b", role: "assistant", content: "What field are you looking to move into?" }]);
+        setQuickReplies([
+          { label: "Engineering", value: "Engineering", row: 1 },
+          { label: "Product",     value: "Product",     row: 1 },
+          { label: "Data",        value: "Data",        row: 1 },
+          { label: "Marketing",   value: "Marketing",   row: 2 },
+          { label: "Growth",      value: "Growth",      row: 2 },
+          { label: "Design",      value: "Design",      row: 2 },
+        ]);
+        setStep("q4b");
+        return;
+      }
+
+      setIntake((prev) => ({ ...prev, jobFunction }));
 
       let q5Headline = linkedIn?.headline ?? null;
       if (!q5Headline && user) {
@@ -995,6 +1019,36 @@ export default function KaiPage() {
         : [{ label: "Senior IC", value: "senior_ic" }, { label: "Manager / Lead", value: "manager" }, { label: "Either works", value: "either" }];
       setMessages((prev) => [...prev, { id: "k-q5", role: "assistant", content: q5Text }]);
       setQuickReplies(q5Replies);
+      setStep("q5");
+
+    } else if (step === "q4b") {
+      // User picked their pivot target field
+      const jobFunction = qr.value;
+      setIntake((prev) => ({ ...prev, jobFunction }));
+      setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
+      await delay(400);
+
+      let q5Headline = linkedIn?.headline ?? null;
+      if (!q5Headline && user) {
+        const supa = createSupabaseBrowser();
+        const { data: lp } = await supa.schema("linkedin").from("profiles").select("headline").eq("id", user.id).maybeSingle();
+        if (lp?.headline) { q5Headline = lp.headline; setLinkedIn({ headline: lp.headline }); }
+      }
+
+      const inferredLevel4b = inferLevel(q5Headline ?? "");
+      const isManager4b = inferredLevel4b?.toLowerCase().includes("manager") || inferredLevel4b?.toLowerCase().includes("lead");
+      const q5Text4b = inferredLevel4b
+        ? isManager4b
+          ? "Looks like you're in a manager role — staying that path, or open to IC work too?"
+          : `Looks like you're a ${inferredLevel4b} based on your profile — planning to stay that route, or open to people management?`
+        : "Senior IC, or ready to lead a team?";
+      const q5Replies4b: QR[] = inferredLevel4b
+        ? isManager4b
+          ? [{ label: "Staying Manager / Lead", value: "manager" }, { label: "Open to IC too", value: "senior_ic" }, { label: "Either works", value: "either" }]
+          : [{ label: `Staying ${inferredLevel4b}`, value: "senior_ic" }, { label: "Open to Manager / Lead", value: "manager" }, { label: "Either works", value: "either" }]
+        : [{ label: "Senior IC", value: "senior_ic" }, { label: "Manager / Lead", value: "manager" }, { label: "Either works", value: "either" }];
+      setMessages((prev) => [...prev, { id: "k-q5", role: "assistant", content: q5Text4b }]);
+      setQuickReplies(q5Replies4b);
       setStep("q5");
 
     } else if (step === "q5") {
@@ -1022,19 +1076,19 @@ export default function KaiPage() {
       }
 
       const q6Text = knownLocation
-        ? `You're in ${knownLocation} – staying local, or open to remote and other cities?`
-        : "Where are you based right now?";
+        ? `Where are you looking to work from? Staying in ${knownLocation.split(",")[0]}, open to relocating, or remote only?`
+        : "Do you have any location preferences?";
       const q6Replies: QR[] = knownLocation
         ? [
-            { label: `${knownLocation.split(",")[0]} / local`, value: "local"    },
-            { label: "Remote only",                            value: "remote"   },
-            { label: "Open to other cities",                   value: "anywhere" },
+            { label: `Staying in ${knownLocation.split(",")[0]}`, value: "local"    },
+            { label: "Remote only",                               value: "remote"   },
+            { label: "Open to relocating",                        value: "anywhere" },
           ]
         : [
-            { label: "Bay Area / SF",    value: "bay_area" },
-            { label: "NYC / East Coast", value: "nyc"      },
-            { label: "Remote only",      value: "remote"   },
-            { label: "Open anywhere",    value: "anywhere" },
+            { label: "San Francisco Bay Area", value: "bay_area" },
+            { label: "East Coast / NYC",       value: "nyc"      },
+            { label: "Remote only",            value: "remote"   },
+            { label: "Open to anywhere",       value: "anywhere" },
           ];
       if (knownLocation) setIntake((prev) => ({ ...prev, location: knownLocation, locationMode: "local" }));
       setMessages((prev) => [...prev, { id: "k-q6", role: "assistant", content: q6Text }]);
@@ -1060,12 +1114,15 @@ export default function KaiPage() {
       const dept = updatedIntake.jobFunction && updatedIntake.jobFunction !== "Other"
         ? (funcLabelMap[updatedIntake.jobFunction] ?? updatedIntake.jobFunction.toLowerCase())
         : inferDepartment(linkedIn?.headline ?? enriched?.current_title ?? null);
-      const salaryStr = updatedIntake.salaryMin ? `$${Math.round(updatedIntake.salaryMin / 1000)}K+` : "any salary";
+      // Order: department · level · earning minimum $X · location
+      const salaryStr = updatedIntake.salaryMin
+        ? `earning minimum $${Math.round(updatedIntake.salaryMin / 1000)}K+`
+        : null;
       const levelStr = level === "senior_ic" ? "Senior IC" : level === "manager" ? "Manager / Lead" : "all levels";
       const locStr = updatedIntake.locationMode === "remote" ? "remote" : updatedIntake.locationMode === "anywhere" ? "anywhere in the US" : updatedIntake.location ?? "all locations";
-      const filterTokens = [dept, locStr, salaryStr, levelStr].filter((t): t is string => Boolean(t));
+      const filterTokens = [dept, levelStr, salaryStr, locStr].filter((t): t is string => Boolean(t));
 
-      const jobsFetch: Promise<{ jobs: Job[]; total_3d_count: number }> = fetch("/api/onboarding/jobs", {
+      const jobsFetch: Promise<{ jobs: Job[]; total_count: number; window_days: number }> = fetch("/api/onboarding/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1075,11 +1132,16 @@ export default function KaiPage() {
           salary_min: updatedIntake.salaryMin,
           intent: updatedIntake.intent,
           department: dept ?? undefined,
+          level: updatedIntake.level ?? undefined,
         }),
       })
         .then((r) => r.json())
-        .then((d) => ({ jobs: (d.jobs ?? []) as Job[], total_3d_count: (d.total_3d_count ?? 0) as number }))
-        .catch(() => ({ jobs: [] as Job[], total_3d_count: 0 }));
+        .then((d) => ({
+          jobs: (d.jobs ?? []) as Job[],
+          total_count: (d.total_count ?? 0) as number,
+          window_days: (d.window_days ?? 0) as number,
+        }))
+        .catch(() => ({ jobs: [] as Job[], total_count: 0, window_days: 0 }));
 
       // Fire-and-forget: persist intake preferences
       createSupabaseBrowser().auth.getUser().then(({ data }) => {
@@ -1108,11 +1170,11 @@ export default function KaiPage() {
         }]);
         setStep("alert_optin");
       } else {
-        // Venmo mode: announce and scan immediately
+        // Venmo mode: bubble 1 — always shown immediately
         setMessages((prev) => [...prev, {
           id: "k-scan-announce",
           role: "assistant",
-          content: `Running a pass across ${filterTokens.join(" · ")}.\n\nI'm looking at the last 3 days – so everything I bring back is fresh. Give me a sec.`,
+          content: `Running a pass across ${filterTokens.join(" · ")}.`,
         }]);
         setStep("scanning");
 
@@ -1123,28 +1185,35 @@ export default function KaiPage() {
         setScanPhase(3);
         await delay(1000);
 
-        const { jobs, total_3d_count } = await jobsFetch;
+        const { jobs, total_count, window_days } = await jobsFetch;
         setAllJobs(jobs);
-        setTotal3dCount(total_3d_count);
+        setTotal3dCount(total_count);
         setScanJobCount(jobs.length);
         setScanPhase(4);
         await delay(1300);
 
         setScanPhase(0);
-        const seenCos = new Set<string>();
-        const batch1 = jobs.filter((j) => {
-          const key = j.company.toLowerCase().trim();
-          if (seenCos.has(key)) return false;
-          seenCos.add(key);
-          return true;
-        }).slice(0, 3);
+        // API already returns company-unique results sorted by recency
+        const batch1 = jobs.slice(0, 3);
         const count = batch1.length;
         const hasVerified = batch1.some((j) => j.visa_tier === "verified");
+
+        // Bubble 2 — context window message, only if 5+ jobs were found
+        if (window_days > 0 && jobs.length >= 5) {
+          const windowMsg = window_days === 3
+            ? "I'm looking at the last 3 days – so everything I bring back is fresh."
+            : window_days === 7
+            ? "Not many in the last 3 days – I expanded to 7 days to get you more options."
+            : "Light on recent postings – pulling from the last 2 weeks.";
+          setMessages((prev) => [...prev, { id: "k-window-msg", role: "assistant", content: windowMsg }]);
+          await delay(700);
+        }
+
         const freshLabel = postedWithin(batch1);
         const jobsDesc = freshLabel ? `posted within ${freshLabel}` : "worth your time";
         const revealText = count > 0
           ? `Okay, found ${count} job${count !== 1 ? "s" : ""} ${jobsDesc}.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before – so the sponsorship signal is extremely high." : ""}`
-          : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks.";
+          : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks. Or try adjusting your job search preferences.";
         setMessages((prev) => [...prev, { id: "k-reveal1", role: "assistant", content: revealText, jobs: batch1 }]);
         setStep("batch1");
       }
@@ -1158,7 +1227,8 @@ export default function KaiPage() {
         try {
           const supabase = createSupabaseBrowser();
           const { data: { user: authUser } } = await supabase.auth.getUser();
-          if (authUser) await supabase.from("profiles").update({ email_alerts: true }).eq("id", authUser.id);
+          if (authUser) await supabase.from("user_job_alert_prefs")
+            .upsert({ user_id: authUser.id, email_alerts: true, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
         } catch { /* graceful */ }
       } else {
         setMessages((prev) => [...prev, { id: "k-optin-no", role: "assistant", content: "Got it – no pressure." }]);
@@ -1289,23 +1359,7 @@ export default function KaiPage() {
     }]);
   };
 
-  // ── Paywall mode: alert opt-in + see-more handlers ───────────────────────────
-
-  const handleSeeMore = async () => {
-    const remaining = Math.max(0, total3dCount - 5);
-    const total = total3dCount || allJobs.length;
-    setStep("see_more");
-    await delay(300);
-    setMessages((prev) => [...prev, {
-      id: "k-see-more",
-      role: "assistant",
-      content: `We found ${total} visa-sponsored jobs posted in the last 3 days that match your preferences. Want to see the other ${remaining}?`,
-    }]);
-    setQuickReplies([
-      { label: "Yes, show me", value: "yes" },
-      { label: "Not now",      value: "no"  },
-    ]);
-  };
+  // ── Paywall mode: alert opt-in handler ──────────────────────────────────────
 
   const handleAlertOptin = async (value: string) => {
     const label = value === "yes" ? "Absolutely, keep me updated on new matches" : "No thanks, I'll check manually";
@@ -1317,7 +1371,8 @@ export default function KaiPage() {
       try {
         const supabase = createSupabaseBrowser();
         const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (authUser) await supabase.schema("enriched").from("profiles").update({ email_alerts: true }).eq("user_id", authUser.id);
+        if (authUser) await supabase.from("user_job_alert_prefs")
+          .upsert({ user_id: authUser.id, email_alerts: true, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
       } catch { /* graceful */ }
       await delay(500);
     } else {
@@ -1327,12 +1382,13 @@ export default function KaiPage() {
     const ctx = pendingScanRef.current;
     pendingScanRef.current = null;
     const filterTokens = ctx?.filterTokens ?? [];
-    const jobsPromise = ctx?.jobsPromise ?? Promise.resolve({ jobs: [] as Job[], total_3d_count: 0 });
+    const jobsPromise = ctx?.jobsPromise ?? Promise.resolve({ jobs: [] as Job[], total_count: 0, window_days: 0 });
 
+    // Bubble 1 — scan announcement, always shown
     setMessages((prev) => [...prev, {
       id: "k-scan-announce",
       role: "assistant",
-      content: `Running a pass across ${filterTokens.join(" · ")}.\n\nI'm looking at the last 3 days – so everything I bring back is fresh. Give me a sec.`,
+      content: `Running a pass across ${filterTokens.join(" · ")}.`,
     }]);
     setStep("scanning");
 
@@ -1343,31 +1399,53 @@ export default function KaiPage() {
     setScanPhase(3);
     await delay(1000);
 
-    const { jobs, total_3d_count } = await jobsPromise;
+    const { jobs, total_count, window_days } = await jobsPromise;
     setAllJobs(jobs);
-    setTotal3dCount(total_3d_count);
+    setTotal3dCount(total_count);
     setScanJobCount(jobs.length);
     setScanPhase(4);
     await delay(1300);
 
     setScanPhase(0);
-    const seenCos = new Set<string>();
-    const batch1 = jobs.filter((j) => {
-      const key = j.company.toLowerCase().trim();
-      if (seenCos.has(key)) return false;
-      seenCos.add(key);
-      return true;
-    }).slice(0, 5);
-
+    // API already returns company-unique results sorted by recency
+    const batch1 = jobs.slice(0, 5);
     const count = batch1.length;
     const hasVerified = batch1.some((j) => j.visa_tier === "verified");
+
+    // Bubble 2 — window context message, only if 5+ jobs found
+    if (window_days > 0 && jobs.length >= 5) {
+      const windowMsg = window_days === 3
+        ? "I'm looking at the last 3 days – so everything I bring back is fresh."
+        : window_days === 7
+        ? "Not many in the last 3 days – I expanded to 7 days to get you more options."
+        : "Light on recent postings – pulling from the last 2 weeks.";
+      setMessages((prev) => [...prev, { id: "k-window-msg", role: "assistant", content: windowMsg }]);
+      await delay(700);
+    }
+
     const freshLabel = postedWithin(batch1);
     const jobsDesc = freshLabel ? `posted within ${freshLabel}` : "worth your time";
     const revealText = count > 0
       ? `Okay, found ${count} job${count !== 1 ? "s" : ""} ${jobsDesc}.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before – so the sponsorship signal is extremely high." : ""}`
-      : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks.";
+      : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks. Or try adjusting your job search preferences.";
     setMessages((prev) => [...prev, { id: "k-reveal1", role: "assistant", content: revealText, jobs: batch1 }]);
     setStep("batch1");
+
+    // Paywall auto-advance: show "Want to see all?" directly after cards render
+    if (count > 0) {
+      await delay(900);
+      const windowLabel = window_days === 7 ? "7" : window_days === 14 ? "14" : "3";
+      setMessages((prev) => [...prev, {
+        id: "k-see-more-auto",
+        role: "assistant",
+        content: `We found ${total_count} jobs from visa-sponsoring employers posted in the last ${windowLabel} days that match your preferences. Want to see all of them?`,
+      }]);
+      setQuickReplies([
+        { label: "Yes, show me", value: "yes" },
+        { label: "Not now",      value: "no"  },
+      ]);
+      setStep("see_more");
+    }
   };
 
   // ── Free chat ─────────────────────────────────────────────────────────────────
@@ -1570,18 +1648,12 @@ export default function KaiPage() {
             </div>
           )}
 
-          {/* batch1 show-more */}
-          {step === "batch1" && (
+          {/* batch1 show-more — venmo mode only (paywall auto-advances without a button) */}
+          {step === "batch1" && !PAYWALL_MODE && (
             <div className={s["show-more-row"]}>
-              {PAYWALL_MODE ? (
-                <button className={s["show-more-btn"]} onClick={handleSeeMore}>
-                  {remaining > 0 ? `See ${remaining} more →` : "See more →"}
-                </button>
-              ) : (
-                <button className={s["show-more-btn"]} onClick={handleShowMore1}>
-                  Show more →
-                </button>
-              )}
+              <button className={s["show-more-btn"]} onClick={handleShowMore1}>
+                Show more →
+              </button>
             </div>
           )}
 

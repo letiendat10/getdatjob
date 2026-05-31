@@ -78,7 +78,7 @@ type SearchJobsInput = {
   industry?: string;
   salary_min?: number;
   visa_category?: string;
-  posted_within?: "1d" | "3d" | "7d" | "30d";
+  posted_within?: "1d" | "3d" | "7d" | "14d" | "30d";
   limit?: number;
 };
 
@@ -91,6 +91,13 @@ const DEPT_KEYWORDS: Record<string, string[]> = {
   marketing:   ["marketing", "growth", "seo", "content", "brand"],
   finance:     ["finance", "financial", "accounting", "accountant", "controller", "cfo"],
   security:    ["security", "infosec", "cybersecurity", "soc "],
+};
+
+// Level → title keyword map for countMatchingJobsInWindow.
+// Only applied when level is "senior_ic" or "manager"; "either" skips filtering.
+const LEVEL_KEYWORDS: Record<string, string[]> = {
+  senior_ic: ["senior", "sr.", "staff", "principal"],
+  manager:   ["manager", "director", "head of", "vp ", "vice president"],
 };
 
 // Industry → company name keyword map.
@@ -112,7 +119,7 @@ const INDUSTRY_COMPANY_KEYWORDS: Record<string, string[]> = {
 
 export async function handleSearchJobs(input: SearchJobsInput) {
   const limit = Math.min(input.limit ?? 5, 10);
-  const POSTED_DAYS: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "30d": 30 };
+  const POSTED_DAYS: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "14d": 14, "30d": 30 };
 
   const postedWithin = input.posted_within ?? "7d";
   const days = POSTED_DAYS[postedWithin];
@@ -193,12 +200,15 @@ export async function handleSearchJobs(input: SearchJobsInput) {
   };
 }
 
-export async function countMatchingJobs3d(params: {
+export async function countMatchingJobsInWindow(params: {
   visa_category?: string;
   salary_min?: number;
   location?: string;
+  department?: string;
+  level?: string;  // "senior_ic" | "manager" | "either"
+  days: number;
 }): Promise<number> {
-  const cutoff = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const cutoff = new Date(Date.now() - params.days * 86_400_000).toISOString();
 
   let query = supabaseServer
     .from("jobs_kai_view")
@@ -215,6 +225,26 @@ export async function countMatchingJobs3d(params: {
     query = query.ilike("location", "%remote%");
   } else if (params.location) {
     query = query.ilike("location", `%${params.location}%`);
+  }
+
+  // Department filter — mirrors the DEPT_KEYWORDS lookup in handleSearchJobs
+  if (params.department) {
+    const deptKey = params.department.toLowerCase().split(/\s*\/\s*/)[0].trim();
+    const titleKeywords =
+      DEPT_KEYWORDS[params.department.toLowerCase()] ??
+      DEPT_KEYWORDS[deptKey] ??
+      [params.department.toLowerCase()];
+    if (titleKeywords.length) {
+      query = query.or(titleKeywords.map((kw) => `title.ilike.%${kw}%`).join(","));
+    }
+  }
+
+  // Level filter
+  if (params.level && params.level !== "either") {
+    const levelKeywords = LEVEL_KEYWORDS[params.level];
+    if (levelKeywords?.length) {
+      query = query.or(levelKeywords.map((kw) => `title.ilike.%${kw}%`).join(","));
+    }
   }
 
   const { count, error } = await query;

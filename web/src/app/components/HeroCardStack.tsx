@@ -83,9 +83,10 @@ const ANIM = [
 ];
 
 // Natural visual footprint of the 3-card cluster at scale(1)
-const CLUSTER_W = 370;
+// CLUSTER_W tuned low so height is always the binding constraint → fills vertically
+const CLUSTER_W = 305;
 const CLUSTER_H = 245;
-const FILL = 0.80;
+const FILL = 0.90;
 
 export default function HeroCardStack() {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -130,8 +131,9 @@ export default function HeroCardStack() {
 
     const ro = new ResizeObserver(update);
     ro.observe(wrap);
-    update();
-    return () => ro.disconnect();
+    // rAF defers until after flex layout resolves so getBoundingClientRect is accurate
+    const raf = requestAnimationFrame(update);
+    return () => { ro.disconnect(); cancelAnimationFrame(raf); };
   }, []);
 
   return (

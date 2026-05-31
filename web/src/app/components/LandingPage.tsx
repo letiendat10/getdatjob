@@ -373,7 +373,7 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
             <p>Then I switched to H-1B visa on the first lottery (very lucky).</p>
             <p>Then I got laid off, three times (here comes bad luck).</p>
             <p>Each time, I found a new job to transfer my H-1B – always in status, without leaving the US.</p>
-            <p>Each time, I wished there was a tool that helps the panic at 2am less terrifying.</p>
+            <p>Each time, I wished there was a tool that helps the panic attack at 2am less terrifying.</p>
             <p>There wasn&rsquo;t. So I built one for all of us.</p>
           </div>
         </div>
@@ -395,27 +395,27 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
 
             <details>
               <summary>What is getdatjob?<span className={s.plus}>+</span></summary>
-              <div className={s.ans}>getdatjob is a US job board built specifically for working visa holders and visa seekers. Every listing is verified for sponsorship history — H-1B, E-3, TN, OPT, O-1, and Green Card friendly roles.</div>
+              <div className={s.ans}>getdatjob is a curated job board built specifically for working visa holders. Every employer on the board is verified for sponsorship history including H-1B, E-3, TN, and OPT. So you can save time from reading ghost jobs and interviewing with companies that won&rsquo;t sponsor your visas.</div>
             </details>
 
             <details>
               <summary>How do you know which companies sponsor?<span className={s.plus}>+</span></summary>
-              <div className={s.ans}>We pull from public USCIS H-1B disclosure data, DOL Labor Condition Application (LCA) filings, and verify against company-confirmed sponsorship policies. If a company isn&rsquo;t in the data, we don&rsquo;t put them on the board.</div>
+              <div className={s.ans}>In order to be confident about which companies sponsor, we don&rsquo;t guess or collect user data. Instead, we pull data directly from the US government (<a href="https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub" target="_blank" rel="noopener noreferrer">USCIS</a>) including Department of Labor (DOL) and Labor Condition Application (LCA) filings to see companies&rsquo; history of H-1B approvals, which indicates a willingness to sponsor visas. If a company isn&rsquo;t in the database, we don&rsquo;t put them and their jobs on the board. You can manually do that too for every single company but it takes time that would otherwise be spent on interviewing.</div>
             </details>
 
             <details>
               <summary>Which visa types do you cover?<span className={s.plus}>+</span></summary>
-              <div className={s.ans}>H-1B, E-3 (Australia), TN (Canada/Mexico), O-1, L-1, OPT/STEM-OPT, J-1, and EB-2/EB-3 Green Card sponsorship. We also tag remote-friendly roles for visa holders abroad.</div>
+              <div className={s.ans}>Currently, we&rsquo;re covering H-1B, E-3 (Australia), TN (Canada/Mexico), and OPT. But we will be expanding to cover others. Just <a href="mailto:support@getdatjob.app">reach out to us</a> if you have any recommendations.</div>
             </details>
 
             <details>
               <summary>How often are listings updated?<span className={s.plus}>+</span></summary>
-              <div className={s.ans}>Daily. Jobs older than 30 days without re-verification are automatically archived. You&rsquo;ll never apply to a posting that&rsquo;s already closed.</div>
+              <div className={s.ans}>Job market is moving super fast and we&rsquo;re committed to get you ahead of the line so our jobs are updating every hour. Jobs posted more than 14 days ago are automatically skipped. And we re-verify all job listings every day so you&rsquo;ll never waste time reading a job listing that&rsquo;s already closed.</div>
             </details>
 
             <details>
               <summary>Can I switch visa categories through getdatjob?<span className={s.plus}>+</span></summary>
-              <div className={s.ans}>getdatjob is a job board, not a law firm — we can&rsquo;t give legal advice. Our Visa Guide outlines common paths (TN→H-1B, OPT→H-1B, H-1B→Green Card) for context only, but every visa situation is different. Please consult a licensed immigration attorney before making any decisions about your status.</div>
+              <div className={s.ans}>getdatjob is a curated job board, not a law firm. We can&rsquo;t give legal advice. Please consult a licensed immigration attorney before making any decisions about your status. My advice: always double check with your attorney.</div>
             </details>
 
             <details>

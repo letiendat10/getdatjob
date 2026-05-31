@@ -12,6 +12,9 @@
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   min-height: 100vh;
+  /* Strip height: 0px when announcement strip is absent.
+     Set to 40px (desktop) / 36px (mobile) on .page when strip is rendered. */
+  --strip-h: 0px;
 }
 
 /* ── Announcement strip ──────────────────────────────────────────────────── */
@@ -27,6 +30,7 @@
   background: rgba(244,240,232,.85);
   backdrop-filter: saturate(140%) blur(10px);
   border-bottom: 1px solid rgba(0,0,0,.04);
+  padding-top: env(safe-area-inset-top, 0px);
 }
 .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 62px; }
 .brand { font-family: var(--font-geist-sans), sans-serif; font-weight: 600; letter-spacing: -.015em; font-size: 17px; color: var(--ink); }
@@ -46,13 +50,12 @@
   padding: 8vh 0 20px;
   text-align: center;
   position: relative;
-  min-height: calc(100svh - 40px - 62px);
+  min-height: calc(100svh - var(--strip-h) - 62px);
   display: flex;
   flex-direction: column;
 }
 
 .hero-wrap { flex: 1; display: flex; flex-direction: column; }
-.hero-spacer { flex: 1; min-height: 0; }
 
 .hero-laurel {
   display: flex; justify-content: center; align-items: center;
@@ -89,11 +92,11 @@
 .arr { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; }
 
 .hero-media {
-  margin: 24px auto;
+  margin: 24px auto 12px;
   max-width: 1040px;
   width: 100%;
   flex: 1;
-  min-height: 220px;
+  min-height: 200px;
   overflow: hidden;
   background: transparent;
   position: relative;
@@ -303,6 +306,7 @@
   padding: 0 22px 20px; color: var(--ink-3);
   font-size: 14.5px; line-height: 1.6; max-width: 680px;
 }
+.faq-list details .ans a { color: inherit; text-decoration: underline; }
 
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 .footer { background: var(--ink); color: #A6A39A; margin-top: 0; }
@@ -385,12 +389,13 @@
 
 @media (max-width: 640px) {
   .wrap { padding: 0 20px; }
-  .hero { padding: 8vh 0 20px; min-height: calc(100svh - 36px - 56px); display: flex; flex-direction: column; }
+  .page { --strip-h: 0px; /* update to 36px here when strip is restored on mobile */ }
+  .hero { padding: 8vh 0 20px; min-height: calc(100svh - var(--strip-h) - 56px); display: flex; flex-direction: column; }
   .hero-wrap { flex: 1; display: flex; flex-direction: column; }
   .hero-title { font-size: clamp(36px, 8vw, 42px); }
   .hero-sub { font-size: 14px; margin: 14px auto 22px; padding: 0 4px; max-width: 440px; }
   .btn-primary { padding: 15px 28px; font-size: 16px; }
-  .hero-media { margin: 20px auto; }
+  .hero-media { margin: 20px auto 10px; }
   /* Laurel moves below media on mobile via order */
   .hero-laurel { order: 5; gap: 10px 20px; padding: 0; margin: 0; }
   .laurel-svg { width: 13px; height: 26px; }

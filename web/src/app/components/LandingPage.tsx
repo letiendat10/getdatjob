@@ -3,7 +3,7 @@ import Link from "next/link";
 import TestimonialsCarousel from "./TestimonialsCarousel";
 import HeroCardStack from "./HeroCardStack";
 import s from "../landing.module.css";
-import { getStats, formatStat } from "@/lib/stats";
+import { getStats, formatStat, type VisaStat } from "@/lib/stats";
 
 // ── Laurel leaf SVG ──────────────────────────────────────────────────────────
 
@@ -83,23 +83,24 @@ interface LandingPageProps {
   primaryCtaHref?: string;
 }
 
+const FALLBACK_VISA: Record<string, VisaStat> = {
+  h1b: { jobs: 121000, employers: 287 },
+  e3:  { jobs: 30500,  employers: 56  },
+  tn:  { jobs: 25200,  employers: 267 },
+  opt: { jobs: 121000, employers: 290 },
+};
+
 export default async function LandingPage({ headline, body, ctaHref = "/jobs", primaryCtaHref = "/auth/signin" }: LandingPageProps) {
-  let totalJobs = 93000;
-  let employerCount = 149;
+  let totalJobs = 121000;
+  let employerCount = 290;
+  let byVisa: Record<string, VisaStat> = FALLBACK_VISA;
   try {
-    ({ totalJobs, employerCount } = await getStats());
+    ({ totalJobs, employerCount, byVisa } = await getStats());
   } catch {
     // Supabase unavailable or returned bad data — use safe fallback so page renders
   }
   return (
     <div className={s.page}>
-
-      {/* ANNOUNCEMENT STRIP */}
-      <div className={s.strip}>
-        <div className={`${s.wrap} ${s["strip-inner"]}`}>
-          <span>$120K pre-seed round closed to fuel working visa holders&rsquo; dreams</span>
-        </div>
-      </div>
 
       {/* NAV */}
       <header className={s.nav}>
@@ -284,8 +285,8 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
               <h3>H-1B</h3>
               <p>Specialty occupation visa. Annual lottery in March with ~25% selection odds. Easy to transfer between employers once you've got it.</p>
               <div className={s["visa-stats"]}>
-                <div className={s.vs}><b>4,820</b><span className={s.vl}>Open jobs</span></div>
-                <div className={s.vs}><b>1,240</b><span className={s.vl}>Employers</span></div>
+                <div className={s.vs}><b>{formatStat(byVisa.h1b.jobs)}</b><span className={s.vl}>Open jobs</span></div>
+                <div className={s.vs}><b>{byVisa.h1b.employers.toLocaleString("en-US")}+</b><span className={s.vl}>Employers</span></div>
               </div>
               <Link href="/jobs?visa=h1b" className={s["visa-cta"]}>
                 Browse H-1B jobs
@@ -304,8 +305,8 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
               <h3>TN</h3>
               <p>Canada and Mexico under USMCA. Apply at the border, start in days.</p>
               <div className={s["visa-stats"]}>
-                <div className={s.vs}><b>2,640</b><span className={s.vl}>Open jobs</span></div>
-                <div className={s.vs}><b>820</b><span className={s.vl}>Employers</span></div>
+                <div className={s.vs}><b>{formatStat(byVisa.tn.jobs)}</b><span className={s.vl}>Open jobs</span></div>
+                <div className={s.vs}><b>{byVisa.tn.employers.toLocaleString("en-US")}+</b><span className={s.vl}>Employers</span></div>
               </div>
               <Link href="/jobs?visa=tn" className={s["visa-cta"]}>
                 Browse TN jobs
@@ -324,8 +325,8 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
               <h3>E-3</h3>
               <p>Australia-only. Easier than H-1B with 10,500 slots reserved each year.</p>
               <div className={s["visa-stats"]}>
-                <div className={s.vs}><b>1,180</b><span className={s.vl}>Open jobs</span></div>
-                <div className={s.vs}><b>380</b><span className={s.vl}>Employers</span></div>
+                <div className={s.vs}><b>{formatStat(byVisa.e3.jobs)}</b><span className={s.vl}>Open jobs</span></div>
+                <div className={s.vs}><b>{byVisa.e3.employers.toLocaleString("en-US")}+</b><span className={s.vl}>Employers</span></div>
               </div>
               <Link href="/jobs?visa=e3" className={s["visa-cta"]}>
                 Browse E-3 jobs
@@ -344,8 +345,8 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
               <h3>OPT</h3>
               <p>For recent grads. Find E-Verified employers who can extend you up to 3 years.</p>
               <div className={s["visa-stats"]}>
-                <div className={s.vs}><b>5,920</b><span className={s.vl}>Open jobs</span></div>
-                <div className={s.vs}><b>1,540</b><span className={s.vl}>Employers</span></div>
+                <div className={s.vs}><b>{formatStat(byVisa.opt.jobs)}</b><span className={s.vl}>Open jobs</span></div>
+                <div className={s.vs}><b>{byVisa.opt.employers.toLocaleString("en-US")}+</b><span className={s.vl}>Employers</span></div>
               </div>
               <Link href="/jobs?visa=opt" className={s["visa-cta"]}>
                 Browse OPT jobs

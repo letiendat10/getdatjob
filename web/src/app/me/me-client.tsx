@@ -306,7 +306,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load chat history from Supabase on mount
+  // Load chat history from Supabase on mount; fall back to /kai localStorage history
   useEffect(() => {
     const supabase = createSupabaseBrowser();
     supabase
@@ -324,7 +324,33 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
             }))
           );
         } else {
-          setMessages([buildReturnGreeting(name)]);
+          // No Supabase history — check if user completed onboarding on /kai
+          let restoredFromLocal = false;
+          try {
+            const raw = localStorage.getItem("kai_chat_history");
+            if (raw) {
+              const saved = JSON.parse(raw) as { step: string; messages: ChatMessage[] };
+              if (saved.step === "done" && saved.messages?.length > 0) {
+                const clean = saved.messages.filter((m) => !m.isThinking && !m.isStreaming);
+                if (clean.length > 0) {
+                  setMessages(clean);
+                  restoredFromLocal = true;
+                  // Sync to Supabase so future loads (incl. cross-device) work
+                  (async () => {
+                    for (const m of clean) {
+                      await supabase.from("kai_messages").insert({
+                        user_id: profile.id,
+                        role: m.role,
+                        content: m.content,
+                        jobs: (m.jobs as Job[] | null) ?? null,
+                      });
+                    }
+                  })();
+                }
+              }
+            }
+          } catch { /* ignore */ }
+          if (!restoredFromLocal) setMessages([buildReturnGreeting(name)]);
         }
         setHistoryLoaded(true);
       });

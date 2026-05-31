@@ -1450,6 +1450,14 @@ export default function KaiPage() {
 
       const history = [...messages, { role: "user" as const, content: trimmed }].map((m) => ({ role: m.role, content: m.content }));
 
+      // Persist user message (fire-and-forget)
+      if (user?.id) {
+        createSupabaseBrowser().from("kai_messages").insert({ user_id: user.id, role: "user", content: trimmed });
+      }
+
+      let accContent = "";
+      let accJobs: Job[] | undefined;
+
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -1476,15 +1484,26 @@ export default function KaiPage() {
             try {
               const event = JSON.parse(line.slice(6));
               if (event.type === "text") {
+                accContent += event.text;
                 setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, content: m.content + event.text } : m));
                 scrollToBottom();
               } else if (event.type === "tool_start") {
+                accContent = accContent ? accContent.trimEnd() + "\n\n" : "";
                 setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, content: m.content ? m.content.trimEnd() + "\n\n" : "", isThinking: true, isStreaming: false } : m));
               } else if (event.type === "jobs") {
                 receivedJobs = true;
+                accJobs = event.jobs;
                 setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, jobs: event.jobs } : m));
               } else if (event.type === "done") {
                 setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, isThinking: false, isStreaming: false } : m));
+                if (user?.id) {
+                  createSupabaseBrowser().from("kai_messages").insert({
+                    user_id: user.id,
+                    role: "assistant",
+                    content: accContent,
+                    jobs: accJobs ?? null,
+                  });
+                }
                 if (receivedJobs) setShowPostChips(true);
               }
             } catch { /* skip malformed SSE */ }

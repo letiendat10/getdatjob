@@ -822,6 +822,9 @@ export default function KaiPage() {
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const historyLoadedRef = useRef(false);
+  const restoredFromLocalRef = useRef(false);
+  const onboardingSyncedRef = useRef(false);
+  const messagesRef = useRef<ChatMessage[]>([]);
   // Paywall mode: jobs fetch starts during Q6 so it runs while user answers alert_optin
   const pendingScanRef = useRef<{
     jobsPromise: Promise<{ jobs: Job[]; total_3d_count: number }>;
@@ -834,6 +837,9 @@ export default function KaiPage() {
 
   useEffect(() => { scrollToBottom(); }, [messages, scanPhase, step, scrollToBottom]);
 
+  // Keep messagesRef current so the sync effect can read latest without re-running on every update
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
   // Restore chat if user already completed onboarding
   useEffect(() => {
     try {
@@ -842,12 +848,37 @@ export default function KaiPage() {
         const saved = JSON.parse(raw) as { step: OnboardingStep; messages: ChatMessage[] };
         if (saved.step === "done" && saved.messages?.length > 0) {
           const clean = saved.messages.filter((m) => !m.isThinking && !m.isStreaming);
-          if (clean.length > 0) { setMessages(clean); setStep("done"); }
+          if (clean.length > 0) {
+            setMessages(clean);
+            setStep("done");
+            restoredFromLocalRef.current = true; // Don't re-sync a restored session
+          }
         }
       }
     } catch { /* ignore */ }
     historyLoadedRef.current = true;
   }, []);
+
+  // One-time sync of onboarding messages to Supabase when fresh onboarding completes
+  useEffect(() => {
+    if (!historyLoadedRef.current) return;
+    if (step !== "done") return;
+    if (restoredFromLocalRef.current) return;
+    if (onboardingSyncedRef.current) return;
+    if (!user?.id) return;
+    onboardingSyncedRef.current = true;
+    const stable = messagesRef.current.filter((m) => !m.isThinking && !m.isStreaming);
+    if (stable.length === 0) return;
+    const uid = user.id;
+    (async () => {
+      for (const m of stable) {
+        await createSupabaseBrowser().from("kai_messages").insert({
+          user_id: uid, role: m.role, content: m.content, jobs: m.jobs ?? null,
+        });
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, user]);
 
   // Persist chat history after onboarding completes
   useEffect(() => {

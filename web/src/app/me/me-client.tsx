@@ -306,62 +306,26 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load chat history: merge /kai onboarding (localStorage) + free-chat (Supabase)
+  // Load chat history from Supabase on mount
   useEffect(() => {
     const supabase = createSupabaseBrowser();
-
-    // Read onboarding history from localStorage (unless already synced to Supabase)
-    let localMessages: ChatMessage[] = [];
-    try {
-      const alreadySynced = localStorage.getItem("kai_chat_synced") === "true";
-      if (!alreadySynced) {
-        const raw = localStorage.getItem("kai_chat_history");
-        if (raw) {
-          const saved = JSON.parse(raw) as { step: string; messages: ChatMessage[] };
-          if (saved.step === "done" && saved.messages?.length > 0) {
-            localMessages = saved.messages.filter((m) => !m.isThinking && !m.isStreaming);
-          }
-        }
-      }
-    } catch { /* ignore */ }
-
     supabase
       .from("kai_messages")
       .select("id, role, content, jobs, created_at")
       .order("created_at", { ascending: true })
       .then(({ data, error }) => {
-        const supabaseMessages = (!error && data && data.length > 0)
-          ? data.map((row) => ({
+        if (!error && data && data.length > 0) {
+          setMessages(
+            data.map((row) => ({
               id: row.id as string,
               role: row.role as "user" | "assistant",
               content: row.content as string,
               jobs: (row.jobs as Job[] | null) ?? undefined,
             }))
-          : [];
-
-        if (localMessages.length > 0 && supabaseMessages.length === 0) {
-          // Only local: show it and sync to Supabase for cross-device
-          setMessages(localMessages);
-          (async () => {
-            for (const m of localMessages) {
-              await supabase.from("kai_messages").insert({
-                user_id: profile.id,
-                role: m.role,
-                content: m.content,
-                jobs: (m.jobs as Job[] | null) ?? null,
-              });
-            }
-            localStorage.setItem("kai_chat_synced", "true");
-          })();
-        } else if (localMessages.length > 0 && supabaseMessages.length > 0) {
-          // Both: onboarding (localStorage) comes first, free-chat (Supabase) after
-          setMessages([...localMessages, ...supabaseMessages]);
-        } else if (supabaseMessages.length > 0) {
-          setMessages(supabaseMessages);
+          );
         } else {
           setMessages([buildReturnGreeting(name)]);
         }
-
         setHistoryLoaded(true);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps

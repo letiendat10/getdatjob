@@ -40,7 +40,9 @@ export async function POST(request: NextRequest) {
   }
 
   const email = user.email!;
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  // Use request origin so Stripe redirects back to whichever domain initiated the checkout
+  const origin = request.headers.get("origin");
+  const siteUrl = origin ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
   // Look up or create Stripe customer
   const supabaseAdmin = createServerClient(

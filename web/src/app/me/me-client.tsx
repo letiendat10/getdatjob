@@ -49,7 +49,7 @@ type ChatMessage = {
   isThinking?: boolean;
 };
 
-type Tab = "chat" | "matches" | "profile" | "settings";
+type Tab = "chat" | "matches" | "profile";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -198,15 +198,6 @@ function PersonIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
-
-function GearIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }
@@ -685,83 +676,6 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
 
 // ── Profile Tab ───────────────────────────────────────────────────────────────
 
-function MembershipSection({ profile }: { profile: Profile }) {
-  const [portalLoading, setPortalLoading] = useState(false);
-  const tier = profile.subscription_tier ?? "free";
-  const isPaid = tier !== "free" || profile.is_supporter;
-  const isTrialing = profile.subscription_status === "trialing";
-  const trialEnd = profile.current_tier_expires_at
-    ? new Date(profile.current_tier_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : null;
-
-  const RAINBOW = "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)";
-
-  const TIER_LABELS: Record<string, string> = { free: "Free", passed: "Passed", preferred: "Preferred" };
-  const TIER_FEATURES: Record<string, string[]> = {
-    free: ["6 job matches/day", "USCIS-verified sponsorship data", "All visa types"],
-    passed: ["Unlimited job matches", "USCIS-verified sponsorship data", "All visa types"],
-    preferred: ["Unlimited job matches", "Daily job alerts", "Salary benchmarking"],
-  };
-
-  const handleManage = async () => {
-    setPortalLoading(true);
-    try {
-      const res = await fetch("/api/stripe/portal", { method: "POST" });
-      const { url } = await res.json() as { url?: string };
-      if (url) window.location.href = url;
-    } catch { /* graceful */ } finally { setPortalLoading(false); }
-  };
-
-  return (
-    <div className={s["profile-card"]}>
-      <div className={s["profile-card-head"]}>
-        <h3 className={s["profile-card-title"]}>Membership</h3>
-      </div>
-      <div className={s["profile-card-body"]}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          {isPaid ? (
-            <span style={{ display: "inline-flex", borderRadius: 100, padding: "1px", background: RAINBOW }}>
-              <span style={{ background: "var(--card)", borderRadius: 100, padding: "3px 12px", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>
-                {TIER_LABELS[tier] ?? "Supporter"} plan
-              </span>
-            </span>
-          ) : (
-            <span style={{ fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-3)", border: "1px solid var(--line)" }}>
-              Free plan
-            </span>
-          )}
-          {isTrialing && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Trial ends {trialEnd}</span>}
-        </div>
-
-        <ul style={{ listStyle: "none", padding: 0, margin: "0 0 14px", display: "flex", flexDirection: "column", gap: 4 }}>
-          {(TIER_FEATURES[tier] ?? TIER_FEATURES.free).map((f) => (
-            <li key={f} style={{ fontSize: 12, color: "var(--ink-3)", display: "flex", gap: 5 }}>
-              <span style={{ color: "#6bcb77", fontWeight: 700 }}>✓</span> {f}
-            </li>
-          ))}
-        </ul>
-
-        {!isPaid ? (
-          <Link
-            href="/kai"
-            style={{ display: "inline-block", background: "var(--accent)", color: "#F4F0E8", padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, textDecoration: "none" }}
-          >
-            Upgrade →
-          </Link>
-        ) : (
-          <button
-            onClick={handleManage}
-            disabled={portalLoading}
-            style={{ background: "none", border: "1px solid var(--line)", color: "var(--ink-3)", padding: "8px 16px", borderRadius: 10, fontSize: 12, cursor: "pointer" }}
-          >
-            {portalLoading ? "Loading…" : "Manage subscription"}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () => void }) {
   const name = firstName(profile.full_name);
   return (
@@ -849,89 +763,125 @@ function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () 
             <p className={s["profile-empty"]}>
               Kai can read your LinkedIn experience and tailor results to your background.
             </p>
-            <button className={s["profile-kai-cta"]} onClick={onGoToChat}>
-              Update via Kai →
-            </button>
           </div>
         </div>
-
-        <MembershipSection profile={profile} />
       </div>
     </div>
   );
 }
 
-// ── Settings Tab ──────────────────────────────────────────────────────────────
+// ── Account Drawer ────────────────────────────────────────────────────────────
 
-const PAYWALL_MODE = process.env.NEXT_PUBLIC_PAYWALL_PAGE === "paywall";
+function AccountDrawer({ profile, onSignOut, onClose }: { profile: Profile; onSignOut: () => void; onClose: () => void }) {
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const [portalLoading, setPortalLoading] = useState(false);
 
-function SettingsTab({ profile, onSignOut }: { profile: Profile; onSignOut: () => void }) {
+  const tier = profile.subscription_tier ?? "free";
+  const isPaid = tier !== "free" || profile.is_supporter;
+  const isTrialing = profile.subscription_status === "trialing";
+  const trialEnd = profile.current_tier_expires_at
+    ? new Date(profile.current_tier_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : null;
+
+  const RAINBOW = "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)";
+  const TIER_LABELS: Record<string, string> = { free: "Free", passed: "Passed", preferred: "Preferred" };
+  const TIER_FEATURES: Record<string, string[]> = {
+    free: ["6 job matches/day", "USCIS-verified sponsorship data", "All visa types"],
+    passed: ["Unlimited job matches", "USCIS-verified sponsorship data", "All visa types"],
+    preferred: ["Unlimited job matches", "Daily job alerts", "Salary benchmarking"],
+  };
+
+  const handleManage = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const { url } = await res.json() as { url?: string };
+      if (url) window.location.href = url;
+    } catch { /* graceful */ } finally { setPortalLoading(false); }
+  };
+
+  useEffect(() => {
+    const mouseHandler = (e: MouseEvent) => {
+      if (
+        drawerRef.current &&
+        !drawerRef.current.contains(e.target as Node) &&
+        !(e.target as Element).closest?.("[data-account-trigger]")
+      ) {
+        onClose();
+      }
+    };
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", mouseHandler);
+    document.addEventListener("keydown", keyHandler);
+    return () => {
+      document.removeEventListener("mousedown", mouseHandler);
+      document.removeEventListener("keydown", keyHandler);
+    };
+  }, [onClose]);
+
   return (
-    <div className={s["settings-scroll"]}>
-      <div className={s["settings-inner"]}>
-        <div className={s["settings-card"]}>
-          <div className={s["settings-card-head"]}>
-            <h3 className={s["settings-card-title"]}>Connected Accounts</h3>
+    <div ref={drawerRef} className={s["account-drawer"]}>
+      {/* Membership */}
+      <div className={s["drawer-section"]}>
+        <div className={s["drawer-section-head"]}>Membership</div>
+        <div className={s["drawer-section-body"]}>
+          <div className={s["drawer-membership-row"]}>
+            {isPaid ? (
+              <span style={{ display: "inline-flex", borderRadius: 100, padding: "1px", background: RAINBOW }}>
+                <span style={{ background: "var(--card)", borderRadius: 100, padding: "3px 12px", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>
+                  {TIER_LABELS[tier] ?? "Supporter"} plan
+                </span>
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-3)", border: "1px solid var(--line)" }}>
+                Free plan
+              </span>
+            )}
+            {isTrialing && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Trial ends {trialEnd}</span>}
           </div>
-          <div className={s["settings-row"]}>
-            <div className={`${s["settings-row-icon"]} ${s["settings-row-icon-linkedin"]}`}>
-              <LinkedInIcon />
-            </div>
-            <div className={s["settings-row-label"]}>
-              <div className={s["settings-row-name"]}>LinkedIn</div>
-              <div className={s["settings-row-desc"]}>{profile.email ?? "Signed in"}</div>
-            </div>
-            <span className={s["connected-badge"]}>Connected</span>
-          </div>
-        </div>
-
-        {!PAYWALL_MODE && (
-          <div className={s["settings-card"]}>
-            <div className={s["settings-card-head"]}>
-              <h3 className={s["settings-card-title"]}>Account</h3>
-            </div>
-            <div className={s["settings-row"]}>
-              <div className={s["settings-row-label"]}>
-                <div className={s["settings-row-name"]}>Supporter status</div>
-                <div className={s["settings-row-desc"]}>
-                  {profile.is_supporter
-                    ? "Thanks for supporting getdatjob!"
-                    : "Tip $10 to unlock Job Matches and unlimited Kai"}
-                </div>
-              </div>
-              {profile.is_supporter ? (
-                <span className={s["supporter-badge"]}>Supporter 🙌</span>
-              ) : (
-                <a
-                  href="venmo://paycharge?txn=pay&recipients=letiendat&amount=10&note=getdatjob"
-                  className={s["venmo-btn"]}
-                  style={{ fontSize: 12, padding: "6px 12px", margin: 0 }}
-                >
-                  $10 on Venmo
-                </a>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className={s["settings-card"]}>
-          <div className={s["settings-card-head"]}>
-            <h3 className={s["settings-card-title"]}>Notifications</h3>
-          </div>
-          <p className={s["notifications-placeholder"]}>
-            Daily email alerts are coming soon. Kai will ping you when new matches drop.
-          </p>
-        </div>
-
-        <div className={s["settings-card"]}>
-          <div className={s["settings-footer"]}>
-            <button className={s["sign-out-btn"]} onClick={onSignOut}>
-              <SignOutIcon />
-              Sign out
+          <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+            {(TIER_FEATURES[tier] ?? TIER_FEATURES.free).map((f) => (
+              <li key={f} style={{ fontSize: 12, color: "var(--ink-3)", display: "flex", gap: 5 }}>
+                <span style={{ color: "#6bcb77", fontWeight: 700 }}>✓</span> {f}
+              </li>
+            ))}
+          </ul>
+          {!isPaid ? (
+            <Link href="/kai" className={s["drawer-upgrade-btn"]}>Upgrade →</Link>
+          ) : (
+            <button onClick={handleManage} disabled={portalLoading} className={s["drawer-manage-btn"]}>
+              {portalLoading ? "Loading…" : "Manage subscription"}
             </button>
-          </div>
+          )}
         </div>
       </div>
+
+      {/* Connected Accounts */}
+      <div className={s["drawer-section"]}>
+        <div className={s["drawer-section-head"]}>Connected Accounts</div>
+        <div className={s["drawer-linked-row"]}>
+          <div className={s["drawer-linked-icon"]}><LinkedInIcon /></div>
+          <div className={s["drawer-linked-info"]}>
+            <span className={s["drawer-linked-name"]}>LinkedIn</span>
+            <span className={s["drawer-linked-desc"]}>{profile.email ?? "Signed in"}</span>
+          </div>
+          <span className={s["connected-badge"]}>Connected</span>
+        </div>
+      </div>
+
+      {/* Notifications */}
+      <div className={s["drawer-section"]}>
+        <div className={s["drawer-section-head"]}>Notifications</div>
+        <p className={s["drawer-note"]}>Daily email alerts are coming soon. Kai will ping you when new matches drop.</p>
+      </div>
+
+      {/* Sign out */}
+      <button className={s["drawer-signout"]} onClick={() => { onSignOut(); onClose(); }}>
+        <SignOutIcon />
+        Sign out
+      </button>
     </div>
   );
 }
@@ -942,13 +892,13 @@ const TABS: { id: Tab; label: string; mobileLabel: string; icon: React.ReactNode
   { id: "chat", label: "Chat with Kai", mobileLabel: "Kai", icon: <MessageIcon /> },
   { id: "matches", label: "Job Matches", mobileLabel: "Matches", icon: <BriefcaseIcon /> },
   { id: "profile", label: "Profile", mobileLabel: "Profile", icon: <PersonIcon /> },
-  { id: "settings", label: "Settings", mobileLabel: "Settings", icon: <GearIcon /> },
 ];
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function MeClient({ profile }: { profile: Profile }) {
   const [activeTab, setActiveTab] = useState<Tab>("chat");
+  const [showAccountDrawer, setShowAccountDrawer] = useState(false);
   const router = useRouter();
 
   const handleSignOut = async () => {
@@ -969,15 +919,29 @@ export default function MeClient({ profile }: { profile: Profile }) {
       {/* Mobile top header */}
       <header className={s["mobile-header"]}>
         <Link href="/" className={s["mobile-brand"]}>getdatjob</Link>
-        <div className={s["mobile-avatar"]}>
+        <button
+          data-account-trigger="true"
+          className={s["mobile-avatar"]}
+          onClick={() => setShowAccountDrawer((prev) => !prev)}
+          aria-label="Account"
+        >
           {profile.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={profile.avatar_url} alt={profile.full_name ?? ""} />
           ) : (
             (name ?? "?")[0].toUpperCase()
           )}
-        </div>
+        </button>
       </header>
+
+      {/* Account drawer (portal-style, fixed) */}
+      {showAccountDrawer && (
+        <AccountDrawer
+          profile={profile}
+          onSignOut={handleSignOut}
+          onClose={() => setShowAccountDrawer(false)}
+        />
+      )}
 
       {/* Left sidebar */}
       <aside className={s.sidebar}>
@@ -999,7 +963,12 @@ export default function MeClient({ profile }: { profile: Profile }) {
           ))}
         </nav>
 
-        <div className={s["sidebar-user"]}>
+        <button
+          data-account-trigger="true"
+          className={s["sidebar-user"]}
+          onClick={() => setShowAccountDrawer((prev) => !prev)}
+          aria-label="Account"
+        >
           <div className={s["sidebar-avatar"]}>
             {profile.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -1012,7 +981,7 @@ export default function MeClient({ profile }: { profile: Profile }) {
             <span className={s["sidebar-user-name"]}>{profile.full_name ?? name ?? "Account"}</span>
             <span className={s["sidebar-user-tier"]}>{tierLabel} plan</span>
           </div>
-        </div>
+        </button>
       </aside>
 
       {/* Main content — all panels always mounted for state persistence */}
@@ -1034,9 +1003,6 @@ export default function MeClient({ profile }: { profile: Profile }) {
             profile={profile}
             onGoToChat={() => setActiveTab("chat")}
           />
-        </div>
-        <div className={`${s["tab-panel"]} ${activeTab !== "settings" ? s["tab-panel-hidden"] : ""}`}>
-          <SettingsTab profile={profile} onSignOut={handleSignOut} />
         </div>
       </main>
     </div>

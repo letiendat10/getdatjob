@@ -31,7 +31,7 @@ const BASE =
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
-      : "https://getdatjob.vercel.app";
+      : "https://getdatjob.app";
 
 const COMMON = "posted=7d&sort=recent&page=0&signal=all&visa=H1B";
 

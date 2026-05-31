@@ -169,7 +169,9 @@ def strip_html(html: str) -> str:
 
 _SAL_DASH = re.compile(r'\$[\d,]+(?:\.\d+)?K?\s*[–—\-]+\s*\$[\d,]+(?:\.\d+)?K?')
 _SAL_TO   = re.compile(r'(\$[\d,]+(?:\.\d+)?K?)\s+to\s+(\$[\d,]+(?:\.\d+)?K?)', re.I)
-_SAL_USD  = re.compile(r'([\d,]{6,}(?:\.\d+)?)\s*USD\s*[–—\-]+\s*([\d,]{6,}(?:\.\d+)?)\s*USD', re.I)
+# Amazon-style "142,800.00 – 193,200.00 USD" (no $ prefix, USD trails the range).
+# Mirrors the old DB extract_salary_from_desc() pattern so coverage doesn't regress.
+_SAL_USD  = re.compile(r'([\d,]+(?:\.\d+)?)\s*[–—\-]+\s*([\d,]+(?:\.\d+)?)\s*USD', re.I)
 
 def extract_salary(html: str) -> str | None:
     """Extract salary range from a job description (HTML or plain text).
@@ -199,7 +201,14 @@ def extract_salary(html: str) -> str | None:
         return f"{m.group(1)} – {m.group(2)}"
     m = _SAL_USD.search(text)
     if m:
-        return f"${m.group(1)} – ${m.group(2)}"
+        try:
+            lo = round(float(m.group(1).replace(",", "")))
+            hi = round(float(m.group(2).replace(",", "")))
+            # Guard against matching non-salary numeric ranges (e.g. "1 – 2 USD").
+            if lo > 10000:
+                return f"${lo:,} – ${hi:,}"
+        except ValueError:
+            pass
     return None
 
 
@@ -696,8 +705,18 @@ if __name__ == "__main__":
         # statement timeout — 500-row batches of Amazon rows (large description_text +
         # on-conflict index maintenance) were timing out.
         for i in range(0, len(job_rows), 100):
+            # Drop empty description_text / null salary_range from the payload so the
+            # enrichment pass (04_enrich_descriptions.py) — which backfills these for
+            # list-only ATSes like Workday — isn't clobbered on every daily run.
+            # Rows in a chunk are homogeneous (one ATS), so PostgREST's column set
+            # stays consistent across the batch.
+            chunk = [
+                {k: v for k, v in r.items()
+                 if v or k not in ("description_text", "salary_range")}
+                for r in job_rows[i:i+100]
+            ]
             try:
-                sb.table("jobs").upsert(job_rows[i:i+100], on_conflict="ats_source,ats_job_id").execute()
+                sb.table("jobs").upsert(chunk, on_conflict="ats_source,ats_job_id").execute()
             except Exception as e:
                 print(f"  ERROR upsert {ats}:{slug} chunk {i//100 + 1} — {e}", flush=True)
 

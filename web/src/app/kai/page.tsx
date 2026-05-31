@@ -5,6 +5,7 @@ import Link from "next/link";
 import s from "./kai.module.css";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { Bookmark, MapPin, ExternalLink, X, Share2 } from "lucide-react";
+import { getTnCategory } from "@/lib/tn-eligible";
 import PaywallScreen from "@/app/components/PaywallScreen";
 
 // Feature flag: "paywall" → Stripe gate after batch1 (5 jobs shown)
@@ -27,6 +28,7 @@ type Job = {
   lca_count: number | null;
   lca_count_2025: number | null;
   lca_last_filed: string | null;
+  e3_lca_count: number | null;
   ats_source: string | null;
   ats_job_id: string | null;
   poc_first_name: string | null;
@@ -373,9 +375,12 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
 
   const isVerified = job.visa_tier === "verified";
   const isFriendly = job.visa_tier === "friendly";
+  const isE3 = !!(job.e3_lca_count && job.e3_lca_count > 0);
+  const tnCategory = getTnCategory(job.title);
   const posted = timeAgo(job.posted_at);
   const displayCompany = normalizeCompanyName(job.company);
   const lcaLastFiled = formatLcaDate(job.lca_last_filed);
+  const poc = formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email);
 
   return (
     <div
@@ -419,7 +424,8 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
         </div>
       )}
 
-      {(job.salary_range || isVerified || isFriendly) && (
+      {/* Row 1: salary + sponsorship badges */}
+      {(job.salary_range || isVerified || isFriendly || isE3 || tnCategory) && (
         <div className="flex flex-wrap gap-1.5 mb-1.5">
           {job.salary_range && (
             <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
@@ -438,10 +444,21 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
               H-1B Friendly Employer
             </span>
           )}
+          {isE3 && (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+              E-3 Friendly
+            </span>
+          )}
+          {tnCategory && (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium border border-blue-200">
+              TN Friendly
+            </span>
+          )}
         </div>
       )}
 
-      {(lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0) || formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)) && (
+      {/* Row 2: LCA date + count */}
+      {(lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0)) && (
         <div className="flex flex-wrap gap-1.5 mb-1.5">
           {lcaLastFiled && (
             <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
@@ -453,11 +470,15 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
               {job.lca_count_2025} LCA filings in 2025
             </span>
           )}
-          {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
-            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-              PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}
-            </span>
-          )}
+        </div>
+      )}
+
+      {/* Row 3: PoC */}
+      {poc && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
+          <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+            PoC: {poc}
+          </span>
         </div>
       )}
     </div>
@@ -472,6 +493,8 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const posted = timeAgo(job.posted_at);
   const isVerified = job.visa_tier === "verified";
   const isFriendly = job.visa_tier === "friendly";
+  const isE3 = !!(job.e3_lca_count && job.e3_lca_count > 0);
+  const tnCategory = getTnCategory(job.title);
   const lcaLastFiled = formatLcaDate(job.lca_last_filed);
   const [apiSalary, setApiSalary] = useState<string | null>(null);
   const extractedSalary = useMemo(() => extractPostedSalary(descHtml || descText), [descHtml, descText]);
@@ -613,31 +636,40 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
             </div>
           )}
 
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {isVerified && (
-              <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
-                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
-                  Verified LCA Filings With Similar Job Title
+          {/* Row 1: sponsorship badges */}
+          {(isVerified || isFriendly || isE3 || tnCategory) && (
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {isVerified && (
+                <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
+                  <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
+                    Verified LCA Filings With Similar Job Title
+                  </span>
                 </span>
-              </span>
-            )}
-            {isFriendly && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
-                H-1B Friendly Employer
-              </span>
-            )}
-          </div>
+              )}
+              {isFriendly && (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
+                  H-1B Friendly Employer
+                </span>
+              )}
+              {isE3 && (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                  E-3 Friendly
+                </span>
+              )}
+              {tnCategory && (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium border border-blue-200">
+                  TN Friendly
+                </span>
+              )}
+            </div>
+          )}
 
-          {(postedSalary || job.lca_count_2025 || lcaLastFiled || formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)) && (
-            <div className="flex flex-wrap gap-1.5">
+          {/* Row 2: salary + LCA stats */}
+          {(postedSalary || lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0)) && (
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
               {postedSalary && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
                   Salary: {postedSalary}
-                </span>
-              )}
-              {job.lca_count_2025 && job.lca_count_2025 > 0 && (
-                <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                  {job.lca_count_2025} LCA filings in 2025
                 </span>
               )}
               {lcaLastFiled && (
@@ -645,11 +677,20 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
                   Last LCA filed in {lcaLastFiled}
                 </span>
               )}
-              {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
+              {job.lca_count_2025 && job.lca_count_2025 > 0 && (
                 <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                  PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}
+                  {job.lca_count_2025} LCA filings in 2025
                 </span>
               )}
+            </div>
+          )}
+
+          {/* Row 3: PoC */}
+          {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}
+              </span>
             </div>
           )}
         </div>

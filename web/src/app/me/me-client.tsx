@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { MatchesPanel } from "./matches-panel";
+import { getTnCategory } from "@/lib/tn-eligible";
 import s from "./me.module.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -36,8 +37,14 @@ type Job = {
   url: string | null;
   posted_at: string | null;
   visa_tier: string | null;
-  salary_estimate: number | null;
+  salary_range: string | null;
   lca_count: number | null;
+  lca_count_2025: number | null;
+  lca_last_filed: string | null;
+  e3_lca_count: number | null;
+  poc_first_name: string | null;
+  poc_last_name: string | null;
+  poc_email: string | null;
 };
 
 type ChatMessage = {
@@ -75,8 +82,23 @@ function companyDomain(name: string): string {
   return DOMAIN_OVERRIDES[stem] ?? stem + ".com";
 }
 
-function formatSalary(n: number): string {
-  return "~$" + Math.round(n / 1000) + "K";
+function formatLcaDate(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+  const parts = dateStr.split("-");
+  if (parts.length < 2) return null;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${months[month]} ${year}`;
+}
+
+function formatPoc(firstName: string | null, lastName: string | null, email: string | null): string | null {
+  if (!email) return null;
+  const first = firstName ? firstName.split(/[\s/,]+/)[0].trim() : null;
+  const lastInitial = lastName ? lastName.trim()[0].toUpperCase() : null;
+  if (first && lastInitial) return `${first} ${lastInitial} (${email})`;
+  if (first) return `${first} (${email})`;
+  return email;
 }
 
 function timeAgo(dateStr: string | null): string | null {
@@ -279,48 +301,85 @@ function CompanyAvatar({ name, domain }: { name: string; domain: string | null }
 function JobCard({ job }: { job: Job }) {
   const isVerified = job.visa_tier === "verified";
   const isFriendly = job.visa_tier === "friendly";
+  const isE3 = !!(job.e3_lca_count && job.e3_lca_count > 0);
+  const tnCategory = getTnCategory(job.title);
   const posted = timeAgo(job.posted_at);
   const displayCompany = normalizeCompanyName(job.company);
+  const lcaLastFiled = formatLcaDate(job.lca_last_filed);
+  const poc = formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email);
   return (
     <a
       href={job.url ?? "#"}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex gap-3 px-4 py-4 border border-zinc-200 rounded-xl bg-white hover:bg-zinc-50 transition-colors no-underline"
+      className="group flex gap-3 px-3.5 pt-3 pb-2.5 border border-zinc-200 rounded-xl bg-white hover:bg-zinc-50 transition-colors no-underline"
     >
       <CompanyAvatar name={job.company} domain={job.company_domain} />
       <div className="flex-1 min-w-0">
-        <h3 className="text-sm font-semibold leading-snug text-zinc-900 group-hover:text-blue-600 transition-colors line-clamp-2">
-          {job.title}
-        </h3>
-        <p className="text-xs text-zinc-500 mt-0.5 truncate">
+        <div className="flex items-center justify-between mb-0.5">
+          <h3 className="text-sm font-semibold leading-snug text-zinc-900 group-hover:text-blue-600 transition-colors line-clamp-2">
+            {job.title}
+          </h3>
+          {posted && <span className="text-xs text-zinc-400 ml-2 flex-shrink-0">{posted}</span>}
+        </div>
+        <p className="text-xs text-zinc-500 mb-1.5 truncate">
           {displayCompany}{job.location ? ` · ${job.location}` : ""}
         </p>
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-          {job.salary_estimate && job.salary_estimate > 50000 && (
-            <span className="text-xs text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded">
-              {formatSalary(job.salary_estimate)}
-            </span>
-          )}
-          {isVerified && (
-            <span
-              className="inline-flex rounded-full p-[2px]"
-              style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}
-            >
-              <span className="inline-flex items-center rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-zinc-900">
-                Verified LCA Filings With Similar Job Title
+        {/* Row 1: salary + sponsorship badges */}
+        {(job.salary_range || isVerified || isFriendly || isE3 || tnCategory) && (
+          <div className="flex flex-wrap gap-1.5 mb-1.5">
+            {job.salary_range && (
+              <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                Salary: {job.salary_range}
               </span>
+            )}
+            {isVerified && (
+              <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
+                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
+                  Verified LCA Filings With Similar Job Title
+                </span>
+              </span>
+            )}
+            {isFriendly && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
+                H-1B Friendly Employer
+              </span>
+            )}
+            {isE3 && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                E-3 Friendly
+              </span>
+            )}
+            {tnCategory && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium border border-blue-200">
+                TN Friendly
+              </span>
+            )}
+          </div>
+        )}
+        {/* Row 2: LCA date + count */}
+        {(lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0)) && (
+          <div className="flex flex-wrap gap-1.5 mb-1.5">
+            {lcaLastFiled && (
+              <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                Last LCA filed in {lcaLastFiled}
+              </span>
+            )}
+            {job.lca_count_2025 && job.lca_count_2025 > 0 && (
+              <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                {job.lca_count_2025} LCA filings in 2025
+              </span>
+            )}
+          </div>
+        )}
+        {/* Row 3: PoC */}
+        {poc && (
+          <div className="flex flex-wrap gap-1.5 mb-1">
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+              PoC: {poc}
             </span>
-          )}
-          {isFriendly && (
-            <span className="text-xs font-medium text-[var(--ink-2)]">
-              H-1B Friendly Employer
-            </span>
-          )}
-          {posted && (
-            <span className="text-xs text-zinc-400 ml-auto">{posted}</span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </a>
   );

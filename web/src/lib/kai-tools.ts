@@ -178,6 +178,7 @@ export async function handleSearchJobs(input: SearchJobsInput) {
     lca_count:      j.lca_count,
     lca_count_2025: j.lca_count_2025 ? Number(j.lca_count_2025) : null,
     lca_last_filed: j.lca_last_filed ?? null,
+    e3_lca_count:   j.e3_lca_count ? Number(j.e3_lca_count) : null,
     ats_source:     j.ats_source ?? null,
     ats_job_id:     j.ats_job_id ?? null,
     poc_first_name: j.poc_first_name ?? null,

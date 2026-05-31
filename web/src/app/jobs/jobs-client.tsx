@@ -577,34 +577,62 @@ function JobCard({ job, isSelected, isViewed, isFilled, onClick }: {
         <p className="text-xs text-zinc-500 mt-0.5 truncate">
           {job._normCompany} · {job._normLoc}
         </p>
-        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-          {job.salary_range && (
-            <span className="text-xs text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded">
-              {job.salary_range}
-            </span>
-          )}
-          {isVerified && (
-            <span
-              className="inline-flex rounded-full p-[2px]"
-              style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}
-            >
-              <span className="inline-flex items-center rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-zinc-900">
-                Verified LCA Filings With Same Job Title
+        {/* Row 1: salary + sponsorship badges */}
+        {(job.salary_range || isVerified || isFriendly || (job.e3_lca_count && job.e3_lca_count > 0) || tnCategory) && (
+          <div className="flex flex-wrap gap-1.5 mt-1.5 mb-1.5">
+            {job.salary_range && (
+              <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                Salary: {job.salary_range}
               </span>
+            )}
+            {isVerified && (
+              <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
+                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
+                  Verified LCA Filings With Similar Job Title
+                </span>
+              </span>
+            )}
+            {isFriendly && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
+                H-1B Friendly Employer
+              </span>
+            )}
+            {job.e3_lca_count && job.e3_lca_count > 0 ? (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                E-3 Friendly
+              </span>
+            ) : null}
+            {tnCategory && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium border border-blue-200">
+                TN Friendly
+              </span>
+            )}
+          </div>
+        )}
+        {/* Row 2: LCA date + count */}
+        {(job.last_filing_date || (job.lca_count_2025 > 0)) && (
+          <div className="flex flex-wrap gap-1.5 mb-1.5">
+            {job.last_filing_date && (
+              <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                Last LCA filed in {formatLastFiling(job.last_filing_date)}
+              </span>
+            )}
+            {job.lca_count_2025 > 0 && (
+              <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+                {job.lca_count_2025} LCA filings in 2025
+              </span>
+            )}
+          </div>
+        )}
+        {/* Row 3: PoC */}
+        {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
+          <div className="flex flex-wrap gap-1.5 mb-1">
+            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
+              PoC: {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email)}
             </span>
-          )}
-          {isFriendly && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
-              H-1B Friendly Employer
-            </span>
-          )}
-          {tnCategory && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-xs font-medium border border-blue-200">
-              TN Friendly
-            </span>
-          )}
-          {isViewed && <span className="text-xs text-zinc-400">Viewed</span>}
-        </div>
+          </div>
+        )}
+        {isViewed && <span className="text-xs text-zinc-400 mt-0.5 block">Viewed</span>}
       </div>
     </div>
   );

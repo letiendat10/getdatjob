@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { MatchesPanel } from "./matches-panel";
-import { getTnCategory } from "@/lib/tn-eligible";
+import { JobChips } from "@/app/components/JobChips";
 import s from "./me.module.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -299,14 +299,8 @@ function CompanyAvatar({ name, domain }: { name: string; domain: string | null }
 }
 
 function JobCard({ job }: { job: Job }) {
-  const isVerified = job.visa_tier === "verified";
-  const isFriendly = job.visa_tier === "friendly";
-  const isE3 = !!(job.e3_lca_count && job.e3_lca_count > 0);
-  const tnCategory = getTnCategory(job.title);
   const posted = timeAgo(job.posted_at);
   const displayCompany = normalizeCompanyName(job.company);
-  const lcaLastFiled = formatLcaDate(job.lca_last_filed);
-  const poc = formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email);
   return (
     <a
       href={job.url ?? "#"}
@@ -325,61 +319,17 @@ function JobCard({ job }: { job: Job }) {
         <p className="text-xs text-zinc-500 mb-1.5 truncate">
           {displayCompany}{job.location ? ` · ${job.location}` : ""}
         </p>
-        {/* Row 1: salary + sponsorship badges */}
-        {(job.salary_range || isVerified || isFriendly || isE3 || tnCategory) && (
-          <div className="flex flex-wrap gap-1.5 mb-1.5">
-            {job.salary_range && (
-              <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                Salary: {job.salary_range}
-              </span>
-            )}
-            {isVerified && (
-              <span className="inline-flex rounded-full p-[2px]" style={{ background: "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)" }}>
-                <span className="inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900">
-                  Verified LCA Filings With Similar Job Title
-                </span>
-              </span>
-            )}
-            {isFriendly && (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-green-50 text-[var(--ink-2)] text-xs font-medium border border-green-200">
-                H-1B Friendly Employer
-              </span>
-            )}
-            {isE3 && (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
-                E-3 Friendly
-              </span>
-            )}
-            {tnCategory && (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium border border-blue-200">
-                TN Friendly
-              </span>
-            )}
-          </div>
-        )}
-        {/* Row 2: LCA date + count */}
-        {(lcaLastFiled || (job.lca_count_2025 && job.lca_count_2025 > 0)) && (
-          <div className="flex flex-wrap gap-1.5 mb-1.5">
-            {lcaLastFiled && (
-              <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                Last LCA filed in {lcaLastFiled}
-              </span>
-            )}
-            {job.lca_count_2025 && job.lca_count_2025 > 0 && (
-              <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-                {job.lca_count_2025} LCA filings in 2025
-              </span>
-            )}
-          </div>
-        )}
-        {/* Row 3: PoC */}
-        {poc && (
-          <div className="flex flex-wrap gap-1.5 mb-1">
-            <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">
-              PoC: {poc}
-            </span>
-          </div>
-        )}
+        <JobChips
+          salary_range={job.salary_range}
+          visa_tier={job.visa_tier}
+          e3_lca_count={job.e3_lca_count}
+          title={job.title}
+          lca_last_filed={job.lca_last_filed}
+          lca_count_2025={job.lca_count_2025}
+          poc_first_name={job.poc_first_name}
+          poc_last_name={job.poc_last_name}
+          poc_email={job.poc_email}
+        />
       </div>
     </a>
   );

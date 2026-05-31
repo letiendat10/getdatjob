@@ -324,7 +324,31 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
             }))
           );
         } else {
-          setMessages([buildReturnGreeting(name)]);
+          // Fall back to /kai localStorage history if Supabase is empty
+          let restoredFromLocal = false;
+          try {
+            const raw = localStorage.getItem("kai_chat_history");
+            if (raw) {
+              const saved = JSON.parse(raw) as { step: string; messages: ChatMessage[] };
+              if (saved.step === "done" && saved.messages?.length > 0) {
+                const clean = saved.messages.filter((m) => !m.isThinking && !m.isStreaming);
+                if (clean.length > 0) {
+                  setMessages(clean);
+                  restoredFromLocal = true;
+                  // Sync to Supabase so future cross-domain loads work
+                  (async () => {
+                    for (const m of clean) {
+                      await supabase.from("kai_messages").insert({
+                        user_id: profile.id, role: m.role,
+                        content: m.content, jobs: (m.jobs as Job[] | null) ?? null,
+                      });
+                    }
+                  })();
+                }
+              }
+            }
+          } catch { /* ignore */ }
+          if (!restoredFromLocal) setMessages([buildReturnGreeting(name)]);
         }
         setHistoryLoaded(true);
       });

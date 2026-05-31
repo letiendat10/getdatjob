@@ -40,9 +40,10 @@ export async function POST(request: NextRequest) {
   }
 
   const email = user.email!;
-  // Use request origin so Stripe redirects back to whichever domain initiated the checkout
-  const origin = request.headers.get("origin");
-  const siteUrl = origin ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  // Always redirect to canonical domain so localStorage onboarding data is accessible
+  const siteUrl = process.env.NODE_ENV === "production"
+    ? "https://getdatjob.app"
+    : "http://localhost:3000";
 
   // Look up or create Stripe customer
   const supabaseAdmin = createServerClient(

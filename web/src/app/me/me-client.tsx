@@ -11,6 +11,8 @@ import s from "./me.module.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type AlertPrefs = { email_alerts: boolean; frequency: "daily" | "weekly" };
+
 type Profile = {
   id: string;
   full_name: string | null;
@@ -25,7 +27,9 @@ type Profile = {
     visa_type: string | null;
     salary_floor: number | null;
     job_level: string | null;
+    job_function: string | null;
     location: string | null;
+    posted_within_days: number | null;
   } | null;
 };
 
@@ -57,7 +61,7 @@ type ChatMessage = {
   isThinking?: boolean;
 };
 
-type Tab = "chat" | "matches" | "profile";
+type Tab = "chat" | "matches" | "account";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -661,13 +665,138 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
 
 // MatchesTab is replaced by MatchesPanel (imported from ./matches-panel)
 
-// ── Profile Tab ───────────────────────────────────────────────────────────────
+// ── Account Tab constants ─────────────────────────────────────────────────────
 
-function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () => void }) {
+const VISA_OPTIONS = [
+  { label: "H-1B", value: "H-1B" },
+  { label: "E-3 / TN", value: "E-3/TN" },
+  { label: "OPT", value: "OPT" },
+  { label: "O-1 / Other", value: "Other" },
+];
+const DEPT_OPTIONS = [
+  "Engineering", "Product", "Data / AI", "Marketing / Growth",
+  "Design", "Sales", "Finance", "Operations",
+];
+const LEVEL_OPTIONS = ["Junior", "Lead", "Senior", "Principal/Staff", "People Manager"];
+const SALARY_OPTIONS = [
+  { label: "Any", value: "" },
+  { label: "$100K+", value: "100000" },
+  { label: "$150K+", value: "150000" },
+  { label: "$200K+", value: "200000" },
+];
+const POSTED_OPTIONS = [
+  { label: "Any time", value: "" },
+  { label: "Last 24h", value: "1" },
+  { label: "Last 3 days", value: "3" },
+  { label: "Last week", value: "7" },
+  { label: "Last month", value: "30" },
+];
+const RAINBOW = "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)";
+const TIER_LABELS: Record<string, string> = { free: "Free", passed: "Passed", preferred: "Preferred" };
+const TIER_FEATURES: Record<string, string[]> = {
+  free: ["6 job matches/day", "USCIS-verified sponsorship data", "All visa types"],
+  passed: ["Unlimited job matches", "USCIS-verified sponsorship data", "All visa types"],
+  preferred: ["Unlimited job matches", "Daily job alerts", "Salary benchmarking"],
+};
+
+// ── Account Tab ───────────────────────────────────────────────────────────────
+
+function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut }: {
+  profile: Profile;
+  alertPrefs: AlertPrefs | null;
+  onSignOut: () => void;
+}) {
   const name = firstName(profile.full_name);
+  const tier = profile.subscription_tier ?? "free";
+  const isPaid = tier !== "free" || profile.is_supporter;
+  const isTrialing = profile.subscription_status === "trialing";
+  const trialEnd = profile.current_tier_expires_at
+    ? new Date(profile.current_tier_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : null;
+
+  // Job preferences state — debounced autosave
+  const [prefs, setPrefs] = useState({
+    visa_type: profile.preferences?.visa_type ?? "",
+    job_function: profile.preferences?.job_function ?? "",
+    job_level: profile.preferences?.job_level ?? "",
+    salary_floor: profile.preferences?.salary_floor != null ? String(profile.preferences.salary_floor) : "",
+    location: profile.preferences?.location ?? "",
+    posted_within_days: profile.preferences?.posted_within_days != null ? String(profile.preferences.posted_within_days) : "",
+  });
+  const [prefsSaved, setPrefsSaved] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Alert prefs state — immediate autosave
+  const [alerts, setAlerts] = useState<AlertPrefs>({
+    email_alerts: initialAlertPrefs?.email_alerts ?? false,
+    frequency: initialAlertPrefs?.frequency ?? "daily",
+  });
+
+  // Delete account UI state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Stripe portal loading
+  const [portalLoading, setPortalLoading] = useState(false);
+
+  const savePrefDebounced = (newPrefs: typeof prefs) => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setPrefsSaved(false);
+    saveTimerRef.current = setTimeout(async () => {
+      const supabase = createSupabaseBrowser();
+      await supabase.schema("enriched").from("profiles").upsert({
+        user_id: profile.id,
+        visa_type: newPrefs.visa_type || null,
+        job_function: newPrefs.job_function || null,
+        job_level: newPrefs.job_level || null,
+        salary_floor: newPrefs.salary_floor ? parseInt(newPrefs.salary_floor) : null,
+        location: newPrefs.location || null,
+        posted_within_days: newPrefs.posted_within_days ? parseInt(newPrefs.posted_within_days) : null,
+      }, { onConflict: "user_id" });
+      setPrefsSaved(true);
+      setTimeout(() => setPrefsSaved(false), 2500);
+    }, 600);
+  };
+
+  const updatePref = (key: keyof typeof prefs, value: string) => {
+    const newPrefs = { ...prefs, [key]: value };
+    setPrefs(newPrefs);
+    savePrefDebounced(newPrefs);
+  };
+
+  const saveAlerts = async (newAlerts: AlertPrefs) => {
+    const supabase = createSupabaseBrowser();
+    await supabase.from("user_job_alert_prefs").upsert({
+      user_id: profile.id,
+      email_alerts: newAlerts.email_alerts,
+      frequency: newAlerts.frequency,
+    }, { onConflict: "user_id" });
+  };
+
+  const handleManage = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await fetch("/api/stripe/portal", { method: "POST" });
+      const { url } = await res.json() as { url?: string };
+      if (url) window.location.href = url;
+    } catch { /* graceful */ } finally { setPortalLoading(false); }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await fetch("/api/account", { method: "DELETE" });
+      const supabase = createSupabaseBrowser();
+      await supabase.auth.signOut();
+      window.location.href = "/";
+    } catch { setDeleting(false); }
+  };
+
   return (
     <div className={s["profile-scroll"]}>
       <div className={s["profile-inner"]}>
+
+        {/* 1. Personal Info */}
         <div className={s["profile-card"]}>
           <div className={s["profile-card-head"]}>
             <h3 className={s["profile-card-title"]}>Personal Info</h3>
@@ -687,188 +816,201 @@ function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () 
                 <p className={s["profile-email"]}>{profile.email ?? "—"}</p>
               </div>
             </div>
-            <div className={s["profile-row"]}>
-              <span className={s["profile-label"]}>Source</span>
-              <span className={s["profile-value"]}>LinkedIn</span>
+          </div>
+        </div>
+
+        {/* 2. Job Preferences */}
+        <div className={s["profile-card"]}>
+          <div className={s["profile-card-head"]}>
+            <h3 className={s["profile-card-title"]}>
+              Job Preferences
+              {prefsSaved && <span className={s["pref-saved"]}>Saved ✓</span>}
+            </h3>
+          </div>
+          <div className={s["profile-card-body"]}>
+            <div className={s["pref-grid"]}>
+              <div className={s["pref-field"]}>
+                <label className={s["pref-label"]}>Visa type</label>
+                <select className={s["pref-select"]} value={prefs.visa_type} onChange={e => updatePref("visa_type", e.target.value)}>
+                  <option value="">Select</option>
+                  {VISA_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div className={s["pref-field"]}>
+                <label className={s["pref-label"]}>Job department</label>
+                <select className={s["pref-select"]} value={prefs.job_function} onChange={e => updatePref("job_function", e.target.value)}>
+                  <option value="">Select</option>
+                  {DEPT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div className={s["pref-field"]}>
+                <label className={s["pref-label"]}>Level</label>
+                <select className={s["pref-select"]} value={prefs.job_level} onChange={e => updatePref("job_level", e.target.value)}>
+                  <option value="">Select</option>
+                  {LEVEL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div className={s["pref-field"]}>
+                <label className={s["pref-label"]}>Salary</label>
+                <select className={s["pref-select"]} value={prefs.salary_floor} onChange={e => updatePref("salary_floor", e.target.value)}>
+                  {SALARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div className={s["pref-field"]}>
+                <label className={s["pref-label"]}>Location</label>
+                <input
+                  type="text"
+                  className={s["pref-input"]}
+                  placeholder="e.g. San Francisco, Remote"
+                  value={prefs.location}
+                  onChange={e => updatePref("location", e.target.value)}
+                />
+              </div>
+              <div className={s["pref-field"]}>
+                <label className={s["pref-label"]}>Posted within</label>
+                <select className={s["pref-select"]} value={prefs.posted_within_days} onChange={e => updatePref("posted_within_days", e.target.value)}>
+                  {POSTED_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className={s["profile-card"]}>
-          <div className={s["profile-card-head"]}>
-            <h3 className={s["profile-card-title"]}>Job Preferences</h3>
-          </div>
-          <div className={s["profile-card-body"]}>
-            {profile.preferences && (profile.preferences.visa_type || profile.preferences.location || profile.preferences.salary_floor || profile.preferences.job_level) ? (
-              <>
-                {profile.preferences.visa_type && (
-                  <div className={s["profile-row"]}>
-                    <span className={s["profile-label"]}>Visa</span>
-                    <span className={s["profile-value"]}>{profile.preferences.visa_type}</span>
-                  </div>
-                )}
-                {profile.preferences.location && (
-                  <div className={s["profile-row"]}>
-                    <span className={s["profile-label"]}>Location</span>
-                    <span className={s["profile-value"]}>{profile.preferences.location}</span>
-                  </div>
-                )}
-                {profile.preferences.salary_floor && (
-                  <div className={s["profile-row"]}>
-                    <span className={s["profile-label"]}>Salary floor</span>
-                    <span className={s["profile-value"]}>${Math.round(profile.preferences.salary_floor / 1000)}K+</span>
-                  </div>
-                )}
-                {profile.preferences.job_level && (
-                  <div className={s["profile-row"]}>
-                    <span className={s["profile-label"]}>Level</span>
-                    <span className={s["profile-value"]}>{profile.preferences.job_level}</span>
-                  </div>
-                )}
-                <button className={s["profile-kai-cta"]} onClick={onGoToChat}>
-                  Update via Kai →
-                </button>
-              </>
-            ) : (
-              <>
-                <p className={s["profile-empty"]}>
-                  Tell Kai your visa status, target roles, salary floor, and location to personalize your matches.
-                </p>
-                <button className={s["profile-kai-cta"]} onClick={onGoToChat}>
-                  Update via Kai →
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
+        {/* 3. Work Experience */}
         <div className={s["profile-card"]}>
           <div className={s["profile-card-head"]}>
             <h3 className={s["profile-card-title"]}>Work Experience</h3>
           </div>
+          <div className={s["profile-card-body"]} style={{ minHeight: 48 }} />
+        </div>
+
+        {/* 4. Subscription */}
+        <div className={s["profile-card"]}>
+          <div className={s["profile-card-head"]}>
+            <h3 className={s["profile-card-title"]}>Subscription</h3>
+          </div>
           <div className={s["profile-card-body"]}>
-            <p className={s["profile-empty"]}>
-              Kai can read your LinkedIn experience and tailor results to your background.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Account Drawer ────────────────────────────────────────────────────────────
-
-function AccountDrawer({ profile, onSignOut, onClose }: { profile: Profile; onSignOut: () => void; onClose: () => void }) {
-  const drawerRef = useRef<HTMLDivElement>(null);
-  const [portalLoading, setPortalLoading] = useState(false);
-
-  const tier = profile.subscription_tier ?? "free";
-  const isPaid = tier !== "free" || profile.is_supporter;
-  const isTrialing = profile.subscription_status === "trialing";
-  const trialEnd = profile.current_tier_expires_at
-    ? new Date(profile.current_tier_expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : null;
-
-  const RAINBOW = "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)";
-  const TIER_LABELS: Record<string, string> = { free: "Free", passed: "Passed", preferred: "Preferred" };
-  const TIER_FEATURES: Record<string, string[]> = {
-    free: ["6 job matches/day", "USCIS-verified sponsorship data", "All visa types"],
-    passed: ["Unlimited job matches", "USCIS-verified sponsorship data", "All visa types"],
-    preferred: ["Unlimited job matches", "Daily job alerts", "Salary benchmarking"],
-  };
-
-  const handleManage = async () => {
-    setPortalLoading(true);
-    try {
-      const res = await fetch("/api/stripe/portal", { method: "POST" });
-      const { url } = await res.json() as { url?: string };
-      if (url) window.location.href = url;
-    } catch { /* graceful */ } finally { setPortalLoading(false); }
-  };
-
-  useEffect(() => {
-    const mouseHandler = (e: MouseEvent) => {
-      if (
-        drawerRef.current &&
-        !drawerRef.current.contains(e.target as Node) &&
-        !(e.target as Element).closest?.("[data-account-trigger]")
-      ) {
-        onClose();
-      }
-    };
-    const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", mouseHandler);
-    document.addEventListener("keydown", keyHandler);
-    return () => {
-      document.removeEventListener("mousedown", mouseHandler);
-      document.removeEventListener("keydown", keyHandler);
-    };
-  }, [onClose]);
-
-  return (
-    <div ref={drawerRef} className={s["account-drawer"]}>
-      {/* Membership */}
-      <div className={s["drawer-section"]}>
-        <div className={s["drawer-section-head"]}>Membership</div>
-        <div className={s["drawer-section-body"]}>
-          <div className={s["drawer-membership-row"]}>
-            {isPaid ? (
-              <span style={{ display: "inline-flex", borderRadius: 100, padding: "1px", background: RAINBOW }}>
-                <span style={{ background: "var(--card)", borderRadius: 100, padding: "3px 12px", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>
-                  {TIER_LABELS[tier] ?? "Supporter"} plan
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              {isPaid ? (
+                <span style={{ display: "inline-flex", borderRadius: 100, padding: "1px", background: RAINBOW }}>
+                  <span style={{ background: "var(--card)", borderRadius: 100, padding: "3px 12px", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>
+                    {TIER_LABELS[tier] ?? "Supporter"} plan
+                  </span>
                 </span>
-              </span>
+              ) : (
+                <span style={{ fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-3)", border: "1px solid var(--line)" }}>
+                  Free plan
+                </span>
+              )}
+              {isTrialing && trialEnd && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Trial ends {trialEnd}</span>}
+              {!isTrialing && isPaid && trialEnd && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Expires {trialEnd}</span>}
+            </div>
+            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+              {(TIER_FEATURES[tier] ?? TIER_FEATURES.free).map((f) => (
+                <li key={f} style={{ fontSize: 12, color: "var(--ink-3)", display: "flex", gap: 5 }}>
+                  <span style={{ color: "#6bcb77", fontWeight: 700 }}>✓</span> {f}
+                </li>
+              ))}
+            </ul>
+            {!isPaid ? (
+              <Link href="/kai" style={{ display: "inline-block", background: "var(--accent)", color: "#F4F0E8", padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+                Upgrade now →
+              </Link>
             ) : (
-              <span style={{ fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-3)", border: "1px solid var(--line)" }}>
-                Free plan
-              </span>
+              <button onClick={handleManage} disabled={portalLoading} style={{ background: "none", border: "1px solid var(--line)", color: "var(--ink-3)", padding: "8px 16px", borderRadius: 10, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                {portalLoading ? "Loading…" : "Manage subscription"}
+              </button>
             )}
-            {isTrialing && <span style={{ fontSize: 11, color: "var(--ink-3)" }}>Trial ends {trialEnd}</span>}
           </div>
-          <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px", display: "flex", flexDirection: "column", gap: 3 }}>
-            {(TIER_FEATURES[tier] ?? TIER_FEATURES.free).map((f) => (
-              <li key={f} style={{ fontSize: 12, color: "var(--ink-3)", display: "flex", gap: 5 }}>
-                <span style={{ color: "#6bcb77", fontWeight: 700 }}>✓</span> {f}
-              </li>
-            ))}
-          </ul>
-          {!isPaid ? (
-            <Link href="/kai" className={s["drawer-upgrade-btn"]}>Upgrade →</Link>
-          ) : (
-            <button onClick={handleManage} disabled={portalLoading} className={s["drawer-manage-btn"]}>
-              {portalLoading ? "Loading…" : "Manage subscription"}
+        </div>
+
+        {/* 5. Job Alert Preferences */}
+        <div className={s["profile-card"]}>
+          <div className={s["profile-card-head"]}>
+            <h3 className={s["profile-card-title"]}>Job Alert Preferences</h3>
+          </div>
+          <div className={s["profile-card-body"]}>
+            <div className={s["alert-row"]}>
+              <div>
+                <div className={s["alert-row-name"]}>Email alerts</div>
+                <div className={s["alert-row-desc"]}>Get notified when new matching jobs drop</div>
+              </div>
+              <label className={s["toggle"]}>
+                <input
+                  type="checkbox"
+                  checked={alerts.email_alerts}
+                  onChange={e => {
+                    const next = { ...alerts, email_alerts: e.target.checked };
+                    setAlerts(next);
+                    saveAlerts(next);
+                  }}
+                />
+                <span className={s["toggle-track"]} />
+              </label>
+            </div>
+            {alerts.email_alerts && (
+              <div className={s["pref-field"]} style={{ marginTop: 14 }}>
+                <label className={s["pref-label"]}>Frequency</label>
+                <select
+                  className={s["pref-select"]}
+                  value={alerts.frequency}
+                  onChange={e => {
+                    const next = { ...alerts, frequency: e.target.value as "daily" | "weekly" };
+                    setAlerts(next);
+                    saveAlerts(next);
+                  }}
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 6. Sign Out */}
+        <div className={s["profile-card"]}>
+          <div className={s["profile-card-body"]}>
+            <button className={s["sign-out-btn"]} onClick={onSignOut}>
+              <SignOutIcon />
+              Sign out
             </button>
-          )}
-        </div>
-      </div>
-
-      {/* Connected Accounts */}
-      <div className={s["drawer-section"]}>
-        <div className={s["drawer-section-head"]}>Connected Accounts</div>
-        <div className={s["drawer-linked-row"]}>
-          <div className={s["drawer-linked-icon"]}><LinkedInIcon /></div>
-          <div className={s["drawer-linked-info"]}>
-            <span className={s["drawer-linked-name"]}>LinkedIn</span>
-            <span className={s["drawer-linked-desc"]}>{profile.email ?? "Signed in"}</span>
           </div>
-          <span className={s["connected-badge"]}>Connected</span>
         </div>
-      </div>
 
-      {/* Notifications */}
-      <div className={s["drawer-section"]}>
-        <div className={s["drawer-section-head"]}>Notifications</div>
-        <p className={s["drawer-note"]}>Daily email alerts are coming soon. Kai will ping you when new matches drop.</p>
-      </div>
+        {/* 7. Login & Security */}
+        <div className={s["profile-card"]}>
+          <div className={s["profile-card-head"]}>
+            <h3 className={s["profile-card-title"]}>Login & Security</h3>
+          </div>
+          <div className={s["profile-card-body"]}>
+            <div className={s["security-row"]}>
+              <div className={s["drawer-linked-icon"]}><LinkedInIcon /></div>
+              <div className={s["drawer-linked-info"]}>
+                <span className={s["drawer-linked-name"]}>LinkedIn</span>
+                <span className={s["drawer-linked-desc"]}>{profile.email ?? "Signed in"}</span>
+              </div>
+              <span className={s["connected-badge"]}>Connected</span>
+            </div>
+            {!showDeleteConfirm ? (
+              <button className={s["delete-btn"]} onClick={() => setShowDeleteConfirm(true)}>
+                Delete my account
+              </button>
+            ) : (
+              <div className={s["delete-confirm"]}>
+                <p className={s["delete-confirm-text"]}>This will permanently delete your account and all data. This cannot be undone.</p>
+                <div className={s["delete-confirm-actions"]}>
+                  <button className={s["delete-confirm-cancel"]} onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
+                  <button className={s["delete-confirm-ok"]} onClick={handleDelete} disabled={deleting}>
+                    {deleting ? "Deleting…" : "Yes, delete my account"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
-      {/* Sign out */}
-      <button className={s["drawer-signout"]} onClick={() => { onSignOut(); onClose(); }}>
-        <SignOutIcon />
-        Sign out
-      </button>
+      </div>
     </div>
   );
 }
@@ -878,14 +1020,12 @@ function AccountDrawer({ profile, onSignOut, onClose }: { profile: Profile; onSi
 const TABS: { id: Tab; label: string; mobileLabel: string; icon: React.ReactNode }[] = [
   { id: "chat", label: "Chat with Kai", mobileLabel: "Kai", icon: <MessageIcon /> },
   { id: "matches", label: "Job Matches", mobileLabel: "Matches", icon: <BriefcaseIcon /> },
-  { id: "profile", label: "Profile", mobileLabel: "Profile", icon: <PersonIcon /> },
 ];
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function MeClient({ profile }: { profile: Profile }) {
+export default function MeClient({ profile, alertPrefs }: { profile: Profile; alertPrefs: AlertPrefs | null }) {
   const [activeTab, setActiveTab] = useState<Tab>("chat");
-  const [showAccountDrawer, setShowAccountDrawer] = useState(false);
   const router = useRouter();
 
   const handleSignOut = async () => {
@@ -907,9 +1047,8 @@ export default function MeClient({ profile }: { profile: Profile }) {
       <header className={s["mobile-header"]}>
         <Link href="/" className={s["mobile-brand"]}>getdatjob</Link>
         <button
-          data-account-trigger="true"
           className={s["mobile-avatar"]}
-          onClick={() => setShowAccountDrawer((prev) => !prev)}
+          onClick={() => setActiveTab("account")}
           aria-label="Account"
         >
           {profile.avatar_url ? (
@@ -920,15 +1059,6 @@ export default function MeClient({ profile }: { profile: Profile }) {
           )}
         </button>
       </header>
-
-      {/* Account drawer (portal-style, fixed) */}
-      {showAccountDrawer && (
-        <AccountDrawer
-          profile={profile}
-          onSignOut={handleSignOut}
-          onClose={() => setShowAccountDrawer(false)}
-        />
-      )}
 
       {/* Left sidebar */}
       <aside className={s.sidebar}>
@@ -951,9 +1081,8 @@ export default function MeClient({ profile }: { profile: Profile }) {
         </nav>
 
         <button
-          data-account-trigger="true"
-          className={s["sidebar-user"]}
-          onClick={() => setShowAccountDrawer((prev) => !prev)}
+          className={`${s["sidebar-user"]} ${activeTab === "account" ? s["sidebar-user-active"] : ""}`}
+          onClick={() => setActiveTab("account")}
           aria-label="Account"
         >
           <div className={s["sidebar-avatar"]}>
@@ -985,10 +1114,11 @@ export default function MeClient({ profile }: { profile: Profile }) {
             preferences={profile.preferences}
           />
         </div>
-        <div className={`${s["tab-panel"]} ${activeTab !== "profile" ? s["tab-panel-hidden"] : ""}`}>
-          <ProfileTab
+        <div className={`${s["tab-panel"]} ${activeTab !== "account" ? s["tab-panel-hidden"] : ""}`}>
+          <AccountTab
             profile={profile}
-            onGoToChat={() => setActiveTab("chat")}
+            alertPrefs={alertPrefs}
+            onSignOut={handleSignOut}
           />
         </div>
       </main>

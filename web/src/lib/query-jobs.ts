@@ -53,13 +53,13 @@ const DEPT_PATTERNS: Record<string, string[]> = {
   "Engineering":       ["engineer", "developer", "software", "backend", "frontend", "fullstack", "full-stack"],
 };
 
-// P3: Level keywords. "Mid-level" omitted — it's a catch-all and stays client-side.
+// P3: Level keywords matched against job title.
 const LEVEL_PATTERNS: Record<string, string[]> = {
-  "Intern":            ["intern", "internship"],
-  "Junior":            ["junior", "jr.", "entry-level", "entry level", "associate"],
-  "Senior":            ["senior", "sr."],
-  "Principal / Staff": ["principal", "staff engineer", "distinguished", "fellow"],
-  "Lead / Manager":    ["lead", "manager", "director", "head of", " vp ", "vice president"],
+  "Junior":           ["junior", "jr.", "entry-level", "entry level", "associate"],
+  "Lead":             ["lead"],
+  "Senior":           ["senior", "sr."],
+  "Principal/Staff":  ["principal", "staff engineer", "distinguished", "fellow"],
+  "People Manager":   ["manager", "director", "head of", " vp ", "vice president"],
 };
 
 // P1: Lean type — only fields actually rendered in the UI.

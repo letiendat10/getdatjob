@@ -18,13 +18,13 @@ export default async function MePage() {
     redirect("/auth/signin");
   }
 
-  const [{ data: profile }, { data: enrichedPrefs }, { data: liProfile }, { data: subData }] =
+  const [{ data: profile }, { data: enrichedPrefs }, { data: liProfile }, { data: subData }, { data: alertPrefsData }] =
     await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase
         .schema("enriched")
         .from("profiles")
-        .select("visa_type, salary_floor, job_level, location, is_supporter")
+        .select("visa_type, salary_floor, job_level, job_function, location, posted_within_days, is_supporter")
         .eq("user_id", user.id)
         .maybeSingle(),
       supabase
@@ -37,6 +37,11 @@ export default async function MePage() {
         .schema("subs")
         .from("subscriptions")
         .select("subscription_tier, subscription_status, stripe_customer_id, current_tier_expires_at")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("user_job_alert_prefs")
+        .select("email_alerts, frequency")
         .eq("user_id", user.id)
         .maybeSingle(),
     ]);
@@ -68,10 +73,19 @@ export default async function MePage() {
           visa_type: (enrichedPrefs as { visa_type?: string | null }).visa_type ?? null,
           salary_floor: (enrichedPrefs as { salary_floor?: number | null }).salary_floor ?? null,
           job_level: (enrichedPrefs as { job_level?: string | null }).job_level ?? null,
+          job_function: (enrichedPrefs as { job_function?: string | null }).job_function ?? null,
           location: (enrichedPrefs as { location?: string | null }).location ?? null,
+          posted_within_days: (enrichedPrefs as { posted_within_days?: number | null }).posted_within_days ?? null,
         }
       : null,
   };
 
-  return <MeClient profile={profileData} />;
+  const alertPrefs = alertPrefsData
+    ? {
+        email_alerts: (alertPrefsData as { email_alerts?: boolean }).email_alerts ?? false,
+        frequency: ((alertPrefsData as { frequency?: string }).frequency ?? "daily") as "daily" | "weekly",
+      }
+    : null;
+
+  return <MeClient profile={profileData} alertPrefs={alertPrefs} />;
 }

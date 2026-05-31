@@ -175,6 +175,25 @@
 }
 
 /* ── CHAT TAB ────────────────────────────────────────────────────────────── */
+/* ── Chat headline ───────────────────────────────────────────────────────────── */
+.page-greeting {
+  padding: 16px 0 8px;
+  text-align: center;
+}
+.page-headline {
+  font-family: var(--font-instrument-serif), Georgia, serif;
+  font-size: clamp(28px, 3.6vw, 46px);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--ink);
+  margin: 0;
+}
+.page-headline em {
+  font-style: italic;
+  color: var(--ink);
+}
+
 .chat-wrap {
   display: flex;
   flex-direction: column;

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
+import { MatchesPanel } from "./matches-panel";
 import s from "./me.module.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -95,6 +96,67 @@ function timeAgo(dateStr: string | null): string | null {
 function firstName(fullName: string | null): string | null {
   if (!fullName) return null;
   return fullName.split(" ")[0] ?? null;
+}
+
+// ── Headline rotation ─────────────────────────────────────────────────────────
+
+type Greeting = {
+  headline: string;
+  line2: { pre?: string; em: string; post?: string };
+};
+
+const UNIVERSAL_GREETINGS: Greeting[] = [
+  { headline: "It's a numbers game.", line2: { pre: "Let's ", em: "keep going." } },
+  { headline: "Sponsored roles get filled every day.", line2: { pre: "Let's get you ", em: "in front." } },
+];
+
+const DOW_GREETINGS: Partial<Record<number, Greeting[]>> = {
+  1: [{ headline: "New week, new visa-sponsored opportunities.", line2: { pre: "Let's find ", em: "yours." } }],
+  5: [{ headline: "Let's end the week strong.", line2: { em: "A few more", post: " to apply." } }],
+};
+
+const TIME_POOLS: Record<string, Greeting[]> = {
+  late: [
+    { headline: "Working late{name}?", line2: { pre: "We love ", em: "the hustle." } },
+    { headline: "Late nights build futures.", line2: { pre: "Let's find ", em: "your next role." } },
+  ],
+  earlyMorning: [
+    { headline: "Early bird gets the job", line2: { pre: "Let's find ", em: "yours." } },
+    { headline: "Up before everyone.", line2: { pre: "Let's ", em: "stay ahead." } },
+  ],
+  morning: [
+    { headline: "Good morning{name}.", line2: { pre: "Let's ", em: "get to work." } },
+    { headline: "Fresh start today.", line2: { pre: "Your next visa-sponsored opportunity is ", em: "waiting." } },
+  ],
+  afternoon: [
+    { headline: "You got this{name}.", line2: { pre: "Let's find ", em: "your next role." } },
+  ],
+  evening: [
+    { headline: "Ready to apply tonight{name}?", line2: { pre: "Let's ", em: "make it count." } },
+  ],
+};
+
+function getTimeGreeting(name: string | null): { headline: string; line2: Greeting["line2"] } {
+  const now = new Date();
+  const hour = now.getHours();
+  const dow = now.getDay();
+
+  let slotKey: string;
+  if (hour >= 22 || hour < 6) slotKey = "late";
+  else if (hour < 9) slotKey = "earlyMorning";
+  else if (hour < 12) slotKey = "morning";
+  else if (hour < 17) slotKey = "afternoon";
+  else slotKey = "evening";
+
+  const dowExtras = DOW_GREETINGS[dow] ?? [];
+  const pool = [...TIME_POOLS[slotKey], ...dowExtras, ...UNIVERSAL_GREETINGS];
+
+  const dateSeed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+  const slotOffset = slotKey.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  const picked = pool[(dateSeed + slotOffset) % pool.length];
+
+  const nameInsert = name ? `, ${name}` : "";
+  return { headline: picked.headline.replace("{name}", nameInsert), line2: picked.line2 };
 }
 
 function buildReturnGreeting(name: string | null): ChatMessage {
@@ -302,9 +364,12 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [showPostChips, setShowPostChips] = useState(false);
+  const [timeGreeting, setTimeGreeting] = useState<{ headline: string; line2: Greeting["line2"] } | null>(null);
 
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => { setTimeGreeting(getTimeGreeting(name)); }, [name]);
 
   // Load chat history from Supabase on mount
   useEffect(() => {
@@ -510,6 +575,14 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
     <div className={s["chat-wrap"]}>
       <div className={s.thread} ref={threadRef}>
         <div className={s["thread-inner"]}>
+          {timeGreeting && (
+            <div className={s["page-greeting"]}>
+              <h1 className={s["page-headline"]}>
+                {timeGreeting.headline}<br />
+                {timeGreeting.line2.pre}<em>{timeGreeting.line2.em}</em>{timeGreeting.line2.post}
+              </h1>
+            </div>
+          )}
           {!historyLoaded ? (
             <ThinkingBubble />
           ) : (
@@ -608,130 +681,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
   );
 }
 
-// ── Matches Tab ───────────────────────────────────────────────────────────────
-
-const VISIBLE_FREE = 5;
-
-function MatchesTab({ isUnlocked, preferences }: {
-  isUnlocked: boolean;
-  preferences: Profile["preferences"];
-}) {
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const params: Record<string, string | number> = {};
-    if (preferences?.visa_type) params.visa = preferences.visa_type;
-    if (preferences?.location) params.location = preferences.location;
-    if (preferences?.salary_floor) params.salary_min = preferences.salary_floor;
-
-    fetch("/api/onboarding/jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...params, locationMode: preferences?.location ? "local" : "anywhere" }),
-    })
-      .then((r) => r.json())
-      .then((d) => { setJobs((d as { jobs?: Job[] }).jobs ?? []); setLoading(false); })
-      .catch(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const visibleJobs = isUnlocked ? jobs : jobs.slice(0, VISIBLE_FREE);
-  const hiddenCount = isUnlocked ? 0 : Math.max(0, jobs.length - VISIBLE_FREE);
-
-  return (
-    <div className={s["matches-scroll"]}>
-      <div style={{ padding: "24px 20px 40px", maxWidth: 640, margin: "0 auto" }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--ink)", margin: "0 0 4px", letterSpacing: "-0.02em" }}>
-          Your matches
-        </h2>
-        <p style={{ fontSize: 13, color: "var(--ink-3)", margin: "0 0 16px" }}>
-          Roles verified against USCIS sponsorship data, updated daily.
-        </p>
-
-        {preferences && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 20 }}>
-            {preferences.visa_type && (
-              <span style={{ fontSize: 12, fontWeight: 500, padding: "4px 10px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}>
-                {preferences.visa_type}
-              </span>
-            )}
-            {preferences.location && (
-              <span style={{ fontSize: 12, fontWeight: 500, padding: "4px 10px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}>
-                {preferences.location}
-              </span>
-            )}
-            {preferences.salary_floor && preferences.salary_floor > 0 && (
-              <span style={{ fontSize: 12, fontWeight: 500, padding: "4px 10px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}>
-                ${Math.round(preferences.salary_floor / 1000)}K+
-              </span>
-            )}
-            {preferences.job_level && (
-              <span style={{ fontSize: 12, fontWeight: 500, padding: "4px 10px", borderRadius: 100, background: "var(--bg-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}>
-                {preferences.job_level}
-              </span>
-            )}
-          </div>
-        )}
-
-        {loading ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[1, 2, 3].map((i) => (
-              <div key={i} style={{ height: 80, borderRadius: 12, background: "var(--bg-2)", animation: "pulse 1.5s ease-in-out infinite" }} />
-            ))}
-          </div>
-        ) : (
-          <>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {visibleJobs.map((job) => (
-                <JobCard key={job.id} job={job} />
-              ))}
-            </div>
-
-            {!isUnlocked && hiddenCount > 0 && (
-              <>
-                <div style={{ position: "relative", marginTop: 10 }}>
-                  <div style={{ filter: "blur(5px)", pointerEvents: "none", userSelect: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-                    {jobs.slice(VISIBLE_FREE, VISIBLE_FREE + 3).map((job) => (
-                      <JobCard key={job.id} job={job} />
-                    ))}
-                  </div>
-                  <div style={{
-                    position: "absolute", inset: 0,
-                    background: "linear-gradient(to bottom, transparent 0%, var(--bg) 80%)",
-                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end",
-                    paddingBottom: 12,
-                  }}>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", margin: "0 0 10px", textAlign: "center" }}>
-                      {hiddenCount} more match{hiddenCount !== 1 ? "es" : ""} — upgrade to apply for more jobs
-                    </p>
-                    <Link
-                      href="/kai"
-                      style={{
-                        display: "inline-block", background: "var(--accent)", color: "#F4F0E8",
-                        padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-                        textDecoration: "none",
-                      }}
-                    >
-                      Upgrade →
-                    </Link>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {jobs.length === 0 && (
-              <p style={{ fontSize: 13, color: "var(--ink-3)", textAlign: "center", marginTop: 32 }}>
-                No matches yet — complete the onboarding to personalize your results.{" "}
-                <Link href="/kai" style={{ color: "var(--accent)", textDecoration: "underline" }}>Get started →</Link>
-              </p>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
+// MatchesTab is replaced by MatchesPanel (imported from ./matches-panel)
 
 // ── Profile Tab ───────────────────────────────────────────────────────────────
 
@@ -1074,7 +1024,7 @@ export default function MeClient({ profile }: { profile: Profile }) {
           />
         </div>
         <div className={`${s["tab-panel"]} ${activeTab !== "matches" ? s["tab-panel-hidden"] : ""}`}>
-          <MatchesTab
+          <MatchesPanel
             isUnlocked={profile.is_supporter || (profile.subscription_tier ?? "free") !== "free"}
             preferences={profile.preferences}
           />

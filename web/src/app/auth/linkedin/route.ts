@@ -10,8 +10,7 @@ import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const defaultDest = process.env.NEXT_PUBLIC_PAYWALL_PAGE === "paywall" ? "/kai-pay" : "/kai-first";
-  const next = searchParams.get("next") ?? defaultDest;
+  const next = searchParams.get("next") ?? "/kai";
 
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;

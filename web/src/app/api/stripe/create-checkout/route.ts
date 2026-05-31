@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     line_items: [{ price: priceId, quantity: 1 }],
     subscription_data: { trial_period_days: 7 },
     success_url: `${siteUrl}/me?tab=matches&checkout=success`,
-    cancel_url: `${siteUrl}/kai-pay`,
+    cancel_url: `${siteUrl}/kai`,
     customer_update: { address: "auto" },
   };
 

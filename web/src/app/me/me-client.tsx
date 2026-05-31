@@ -574,7 +574,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
             disabled={!input.trim() || isStreaming}
             aria-label="Send"
           >
-            <svg viewBox="0 0 16 16""ill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 8H2M8 2l6 6-6 6" />
             </svg>
           </button>
@@ -682,7 +682,7 @@ function MatchesTab({ isUnlocked, preferences }: {
                       {hiddenCount} more match{hiddenCount !== 1 ? "es" : ""} — upgrade to apply for more jobs
                     </p>
                     <Link
-                      href="/kai-pay"
+                      href="/kai"
                       style={{
                         display: "inline-block", background: "var(--accent)", color: "#F4F0E8",
                         padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600,
@@ -699,7 +699,7 @@ function MatchesTab({ isUnlocked, preferences }: {
             {jobs.length === 0 && (
               <p style={{ fontSize: 13, color: "var(--ink-3)", textAlign: "center", marginTop: 32 }}>
                 No matches yet — complete the onboarding to personalize your results.{" "}
-                <Link href="/kai-pay" style={{ color: "var(--accent)", textDecoration: "underline" }}>Get started →</Link>
+                <Link href="/kai" style={{ color: "var(--accent)", textDecoration: "underline" }}>Get started →</Link>
               </p>
             )}
           </>
@@ -769,7 +769,7 @@ function MembershipSection({ profile }: { profile: Profile }) {
 
         {!isPaid ? (
           <Link
-            href="/kai-pay"
+            href="/kai"
             style={{ display: "inline-block", background: "var(--accent)", color: "#F4F0E8", padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, textDecoration: "none" }}
           >
             Upgrade →
@@ -889,6 +889,8 @@ function ProfileTab({ profile, onGoToChat }: { profile: Profile; onGoToChat: () 
 
 // ── Settings Tab ──────────────────────────────────────────────────────────────
 
+const PAYWALL_MODE = process.env.NEXT_PUBLIC_PAYWALL_PAGE === "paywall";
+
 function SettingsTab({ profile, onSignOut }: { profile: Profile; onSignOut: () => void }) {
   return (
     <div className={s["settings-scroll"]}>
@@ -909,32 +911,34 @@ function SettingsTab({ profile, onSignOut }: { profile: Profile; onSignOut: () =
           </div>
         </div>
 
-        <div className={s["settings-card"]}>
-          <div className={s["settings-card-head"]}>
-            <h3 className={s["settings-card-title"]}>Account</h3>
-          </div>
-          <div className={s["settings-row"]}>
-            <div className={s["settings-row-label"]}>
-              <div className={s["settings-row-name"]}>Supporter status</div>
-              <div className={s["settings-row-desc"]}>
-                {profile.is_supporter
-                  ? "Thanks for supporting getdatjob!"
-                  : "Tip $10 to unlock Job Matches and unlimited Kai"}
-              </div>
+        {!PAYWALL_MODE && (
+          <div className={s["settings-card"]}>
+            <div className={s["settings-card-head"]}>
+              <h3 className={s["settings-card-title"]}>Account</h3>
             </div>
-            {profile.is_supporter ? (
-              <span className={s["supporter-badge"]}>Supporter 🙌</span>
-            ) : (
-              <a
-                href="venmo://paycharge?txn=pay&recipients=letiendat&amount=10&note=getdatjob"
-                className={s["venmo-btn"]}
-                style={{ fontSize: 12, padding: "6px 12px", margin: 0 }}
-              >
-                $10 on Venmo
-              </a>
-            )}
+            <div className={s["settings-row"]}>
+              <div className={s["settings-row-label"]}>
+                <div className={s["settings-row-name"]}>Supporter status</div>
+                <div className={s["settings-row-desc"]}>
+                  {profile.is_supporter
+                    ? "Thanks for supporting getdatjob!"
+                    : "Tip $10 to unlock Job Matches and unlimited Kai"}
+                </div>
+              </div>
+              {profile.is_supporter ? (
+                <span className={s["supporter-badge"]}>Supporter 🙌</span>
+              ) : (
+                <a
+                  href="venmo://paycharge?txn=pay&recipients=letiendat&amount=10&note=getdatjob"
+                  className={s["venmo-btn"]}
+                  style={{ fontSize: 12, padding: "6px 12px", margin: 0 }}
+                >
+                  $10 on Venmo
+                </a>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className={s["settings-card"]}>
           <div className={s["settings-card-head"]}>

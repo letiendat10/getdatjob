@@ -760,17 +760,25 @@ export default function KaiPage() {
   // Keep messagesRef current so the sync effect can read latest without re-running on every update
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
-  // Restore chat if user already completed onboarding
+  // Restore chat if user already completed onboarding OR bailed at the paywall
   useEffect(() => {
     try {
       const raw = localStorage.getItem(KAI_HISTORY_KEY);
       if (raw) {
-        const saved = JSON.parse(raw) as { step: OnboardingStep; messages: ChatMessage[] };
-        if (saved.step === "done" && saved.messages?.length > 0) {
+        const saved = JSON.parse(raw) as {
+          step: OnboardingStep;
+          messages: ChatMessage[];
+          total3dCount?: number;
+        };
+        const resumableSteps: OnboardingStep[] = ["done", "paywall"];
+        if (resumableSteps.includes(saved.step) && saved.messages?.length > 0) {
           const clean = saved.messages.filter((m) => !m.isThinking && !m.isStreaming);
           if (clean.length > 0) {
             setMessages(clean);
-            setStep("done");
+            setStep(saved.step);
+            if (typeof saved.total3dCount === "number") {
+              setTotal3dCount(saved.total3dCount);
+            }
             restoredFromLocalRef.current = true; // Don't re-sync a restored session
           }
         }
@@ -800,15 +808,20 @@ export default function KaiPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, user]);
 
-  // Persist chat history after onboarding completes
+  // Persist chat history once user reaches the paywall (so a cancel returns them
+  // mid-flow) or completes onboarding.
   useEffect(() => {
-    if (!historyLoadedRef.current || step !== "done") return;
+    if (!historyLoadedRef.current) return;
+    if (step !== "done" && step !== "paywall") return;
     const stable = messages.filter((m) => !m.isThinking && !m.isStreaming);
     try {
       if (stable.length === 0) localStorage.removeItem(KAI_HISTORY_KEY);
-      else localStorage.setItem(KAI_HISTORY_KEY, JSON.stringify({ step, messages: stable }));
+      else localStorage.setItem(
+        KAI_HISTORY_KEY,
+        JSON.stringify({ step, messages: stable, total3dCount }),
+      );
     } catch { /* storage full */ }
-  }, [messages, step]);
+  }, [messages, step, total3dCount]);
 
   // Load auth user + enriched profile
   useEffect(() => {
@@ -1670,7 +1683,7 @@ export default function KaiPage() {
           {PAYWALL_MODE && step === "paywall" && (
             <div style={{ paddingLeft: 50, paddingBottom: 24 }}>
               <PaywallScreen
-                jobCount={remaining}
+                jobCount={total3dCount}
                 email={user?.email ?? undefined}
                 onContinueFree={() => {
                   setStep("done");

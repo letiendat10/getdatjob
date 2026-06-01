@@ -36,8 +36,8 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
   const router = useRouter();
 
   const headerText = jobCount && jobCount > 0
-    ? `Unlock ${jobCount} more jobs matching your search in the last 3 days.`
-    : "Unlock more jobs matching your search in the last 3 days.";
+    ? `Unlock ${jobCount} job${jobCount === 1 ? "" : "s"} matching your search in the last 3 days.`
+    : "Unlock jobs matching your search in the last 3 days.";
 
   const passedPrice = interval === "monthly" ? "$14.99/mo" : "$149.99/yr";
   const preferredPrice = interval === "monthly" ? "$19.99/mo" : "$199.99/yr";

@@ -88,11 +88,12 @@ export async function POST(request: NextRequest) {
     success_url: `${siteUrl}/me/chat?checkout=success`,
     cancel_url: `${siteUrl}/kai`,
     customer_update: { address: "auto" },
-    allow_promotion_codes: false,
   };
 
   // Auto-apply WORKINGVISA promo only on monthly plans — "100% off first month"
   // is sensible for monthly subs; on annual it'd give a whole free year.
+  // (Stripe rejects discounts + allow_promotion_codes together, so we omit
+  // allow_promotion_codes entirely — it defaults to false.)
   if (process.env.STRIPE_PROMO_CODE_ID && interval === "monthly") {
     sessionParams.discounts = [{ promotion_code: process.env.STRIPE_PROMO_CODE_ID }];
   }

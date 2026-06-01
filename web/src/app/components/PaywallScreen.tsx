@@ -40,7 +40,7 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
     : "Unlock more jobs matching your search in the last 3 days.";
 
   const passedPrice = interval === "monthly" ? "$14.99/mo" : "$149.99/yr";
-  const preferredPrice = interval === "monthly" ? "$29.99/mo" : "$299.99/yr";
+  const preferredPrice = interval === "monthly" ? "$19.99/mo" : "$199.99/yr";
 
   const handleCheckout = async (tier: "passed" | "preferred") => {
     if (loadingTier) return;
@@ -65,7 +65,7 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
   return (
     <div className={s.wrap}>
       <h2 className={s.header}>{headerText}</h2>
-      <p className={s.trust}>✨ 7-day free trial. No contract. Cancel anytime.</p>
+      <p className={s.trust}>✨ Exclusive offer: first month free with WORKINGVISA. Cancel anytime.</p>
 
       {/* Billing toggle */}
       <div className={s.toggle}>
@@ -105,8 +105,7 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
         <div className={`${s.card} ${s["card-passed"]}`}>
           <div className={s["card-name"]}>Passed</div>
           <div className={s["price-area"]}>
-            <span className={s["price-strike"]}>{passedPrice}</span>
-            <span className={s["price-launch"]}>Free at launch</span>
+            <span className={s["price-zero"]}>{passedPrice}</span>
           </div>
           <ul className={s.features}>
             {PASSED_FEATURES.map((f) => (
@@ -118,7 +117,7 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
             onClick={() => handleCheckout("passed")}
             disabled={!!loadingTier}
           >
-            {loadingTier === "passed" ? "Loading…" : "Start 7-day free trial →"}
+            {loadingTier === "passed" ? "Loading…" : "Get first month free →"}
           </button>
         </div>
 
@@ -128,8 +127,7 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
             <div className={s["recommended-badge"]}>⭐ Recommended</div>
             <div className={s["card-name"]}>Preferred</div>
             <div className={s["price-area"]}>
-              <span className={s["price-strike"]}>{preferredPrice}</span>
-              <span className={s["price-launch"]}>Free at launch</span>
+              <span className={s["price-zero"]}>{preferredPrice}</span>
             </div>
             <ul className={s.features}>
               {PREFERRED_FEATURES.map((f) => (
@@ -141,7 +139,7 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
               onClick={() => handleCheckout("preferred")}
               disabled={!!loadingTier}
             >
-              {loadingTier === "preferred" ? "Loading…" : "Start 7-day free trial →"}
+              {loadingTier === "preferred" ? "Loading…" : "Get first month free →"}
             </button>
           </div>
         </div>
@@ -151,9 +149,9 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
       <div className={s.footer}>
         <p className={s["footer-trust"]}>Trusted by 1,120 working visa holders.</p>
         <p className={s["footer-promo"]}>
-          Exclusive offer: use promo code{" "}
+          Promo code{" "}
           <span className={s["promo-code"]}>WORKINGVISA</span>{" "}
-          at checkout for 3 months free.
+          auto-applied — first month free. One redemption per user.
         </p>
       </div>
     </div>

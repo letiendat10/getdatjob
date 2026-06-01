@@ -52,11 +52,18 @@ type Job = {
   poc_email: string | null;
 };
 
+type ChatCta = {
+  label: string;
+  href: string;
+  checkout_session_id?: string;
+};
+
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
   jobs?: Job[];
+  cta?: ChatCta | null;
   isStreaming?: boolean;
   isThinking?: boolean;
 };
@@ -358,7 +365,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
     const supabase = createSupabaseBrowser();
     supabase
       .from("kai_messages")
-      .select("id, role, content, jobs, created_at")
+      .select("id, role, content, jobs, cta, created_at")
       .order("created_at", { ascending: true })
       .then(({ data, error }) => {
         if (!error && data && data.length > 0) {
@@ -368,6 +375,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
               role: row.role as "user" | "assistant",
               content: row.content as string,
               jobs: (row.jobs as Job[] | null) ?? undefined,
+              cta: (row.cta as ChatCta | null) ?? undefined,
             }))
           );
         } else {
@@ -601,6 +609,22 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
                         )}
                       </div>
                     </div>
+                    {msg.role === "assistant" && msg.cta && (
+                      <div className={s["msg-row"]} style={{ paddingLeft: 38, marginTop: 8 }}>
+                        <button
+                          className={s["cta-chip"]}
+                          onClick={() => {
+                            if (msg.cta?.href === "/me/job-matches") {
+                              onGoToMatches();
+                            } else if (msg.cta?.href) {
+                              window.location.href = msg.cta.href;
+                            }
+                          }}
+                        >
+                          {msg.cta.label}
+                        </button>
+                      </div>
+                    )}
                     {msg.role === "assistant" && msg.jobs && msg.jobs.length > 0 && (
                       <div className={s["msg-row"]} style={{ paddingLeft: 38 }}>
                         <div className={s["jobs-wrap"]}>

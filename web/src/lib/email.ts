@@ -26,19 +26,20 @@ const TIER_FEATURES: Record<string, string[]> = {
 export async function sendSubscriptionConfirmation({
   email,
   tier,
-  trialEndDate,
+  nextBillingDate,
 }: {
   email: string;
   tier: "passed" | "preferred";
-  trialEndDate: Date;
+  nextBillingDate: Date;
 }) {
   const tierName = TIER_NAMES[tier] ?? tier;
   const features = TIER_FEATURES[tier] ?? [];
-  const trialEndStr = trialEndDate.toLocaleDateString("en-US", {
+  const nextBillingStr = nextBillingDate.toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
   });
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://getdatjob.app";
 
   const featureList = features.map((f) => `<li style="margin-bottom:4px">${f}</li>`).join("");
 
@@ -50,17 +51,16 @@ export async function sendSubscriptionConfirmation({
   <div style="max-width:480px;margin:0 auto;background:#FAF7F0;border-radius:16px;padding:32px;border:1px solid #D9D2C2">
     <p style="font-size:13px;color:#6F6A60;margin:0 0 24px">getdatjob</p>
     <h1 style="font-size:22px;font-weight:700;margin:0 0 8px;color:#171614">You're in — ${tierName} access confirmed.</h1>
-    <p style="font-size:14px;color:#3A3833;margin:0 0 24px">Your 7-day free trial started. Here's what's unlocked:</p>
+    <p style="font-size:14px;color:#3A3833;margin:0 0 24px">Your first month is on us with <strong>WORKINGVISA</strong>. Here's what's unlocked:</p>
     <ul style="font-size:14px;color:#3A3833;padding-left:20px;margin:0 0 24px">
       ${featureList}
     </ul>
     <p style="font-size:13px;color:#6F6A60;margin:0 0 24px">
-      Trial ends: <strong>${trialEndStr}</strong>.<br>
-      You applied promo code <strong>WORKINGVISA</strong> — your first 3 months are free.
+      Your first paid month begins <strong>${nextBillingStr}</strong>. Cancel anytime in your account.
     </p>
-    <a href="${process.env.NEXT_PUBLIC_SITE_URL ?? "https://getdatjob.com"}/me?tab=matches" style="display:inline-block;background:#1F3A2E;color:#F4F0E8;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none">View my matches →</a>
+    <a href="${siteUrl}/me/job-matches" style="display:inline-block;background:#171614;color:#F4F0E8;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none">Go get them →</a>
     <p style="font-size:12px;color:#6F6A60;margin:24px 0 0">
-      Manage your subscription at any time at <a href="${process.env.NEXT_PUBLIC_SITE_URL ?? "https://getdatjob.com"}/me" style="color:#1F3A2E">getdatjob.com/me</a>.
+      Manage your subscription at any time at <a href="${siteUrl}/me" style="color:#1F3A2E">${siteUrl.replace(/^https?:\/\//, "")}/me</a>.
     </p>
   </div>
 </body>

@@ -85,14 +85,15 @@ export async function POST(request: NextRequest) {
     mode: "subscription",
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
-    subscription_data: { trial_period_days: 7 },
-    success_url: `${siteUrl}/me?tab=matches&checkout=success`,
+    success_url: `${siteUrl}/me/chat?checkout=success`,
     cancel_url: `${siteUrl}/kai`,
     customer_update: { address: "auto" },
+    allow_promotion_codes: false,
   };
 
-  // Auto-apply promo code if configured
-  if (process.env.STRIPE_PROMO_CODE_ID) {
+  // Auto-apply WORKINGVISA promo only on monthly plans — "100% off first month"
+  // is sensible for monthly subs; on annual it'd give a whole free year.
+  if (process.env.STRIPE_PROMO_CODE_ID && interval === "monthly") {
     sessionParams.discounts = [{ promotion_code: process.env.STRIPE_PROMO_CODE_ID }];
   }
 

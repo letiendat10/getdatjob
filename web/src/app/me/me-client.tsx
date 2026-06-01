@@ -1024,9 +1024,20 @@ const TABS: { id: Tab; label: string; mobileLabel: string; icon: React.ReactNode
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function MeClient({ profile, alertPrefs }: { profile: Profile; alertPrefs: AlertPrefs | null }) {
-  const [activeTab, setActiveTab] = useState<Tab>("chat");
+const TAB_TO_SLUG: Record<Tab, string> = {
+  chat: "/me/chat",
+  matches: "/me/job-matches",
+  account: "/me/profile",
+};
+
+export default function MeClient({ profile, alertPrefs, initialTab }: { profile: Profile; alertPrefs: AlertPrefs | null; initialTab: Tab }) {
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const router = useRouter();
+
+  function switchTab(tab: Tab) {
+    setActiveTab(tab);
+    window.history.pushState(null, "", TAB_TO_SLUG[tab]);
+  }
 
   const handleSignOut = async () => {
     const supabase = createSupabaseBrowser();
@@ -1048,7 +1059,7 @@ export default function MeClient({ profile, alertPrefs }: { profile: Profile; al
         <Link href="/" className={s["mobile-brand"]}>getdatjob</Link>
         <button
           className={s["mobile-avatar"]}
-          onClick={() => setActiveTab("account")}
+          onClick={() => switchTab("account")}
           aria-label="Account"
         >
           {profile.avatar_url ? (
@@ -1071,7 +1082,7 @@ export default function MeClient({ profile, alertPrefs }: { profile: Profile; al
             <button
               key={id}
               className={`${s["sidebar-tab"]} ${activeTab === id ? s["sidebar-tab-active"] : ""}`}
-              onClick={() => setActiveTab(id)}
+              onClick={() => switchTab(id)}
             >
               <span className={s["sidebar-tab-icon"]}>{icon}</span>
               <span className={s["sidebar-tab-label"]}>{label}</span>
@@ -1082,7 +1093,7 @@ export default function MeClient({ profile, alertPrefs }: { profile: Profile; al
 
         <button
           className={`${s["sidebar-user"]} ${activeTab === "account" ? s["sidebar-user-active"] : ""}`}
-          onClick={() => setActiveTab("account")}
+          onClick={() => switchTab("account")}
           aria-label="Account"
         >
           <div className={s["sidebar-avatar"]}>
@@ -1105,7 +1116,7 @@ export default function MeClient({ profile, alertPrefs }: { profile: Profile; al
         <div className={`${s["tab-panel"]} ${activeTab !== "chat" ? s["tab-panel-hidden"] : ""}`}>
           <ChatTab
             profile={profile}
-            onGoToMatches={() => setActiveTab("matches")}
+            onGoToMatches={() => switchTab("matches")}
           />
         </div>
         <div className={`${s["tab-panel"]} ${activeTab !== "matches" ? s["tab-panel-hidden"] : ""}`}>

@@ -11,6 +11,7 @@ import type { JobRow } from "@/lib/query-jobs";
 import { getTnCategory } from "@/lib/tn-eligible";
 import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
+import s from "./me.module.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -20,7 +21,9 @@ export type MatchesPanelPrefs = {
   visa_type: string | null;
   salary_floor: number | null;
   job_level: string | null;
+  job_function: string | null;
   location: string | null;
+  posted_within_days: number | null;
 } | null;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -245,9 +248,49 @@ function prefToLevel(l: string | null): string {
   if (p.includes("junior") || p.includes("jr") || p.includes("entry")) return "Junior";
   if (p.includes("principal") || p.includes("staff")) return "Principal / Staff";
   if (p.includes("senior") || p.includes("sr ") || p.includes(" sr")) return "Senior";
-  if (p.includes("lead") || p.includes("manager") || p.includes("director")) return "Lead / Manager";
+  if (p.includes("lead") || p.includes("manager") || p.includes("director") || p.includes("people manager")) return "Lead / Manager";
   if (p.includes("mid")) return "Mid-level";
   return "all";
+}
+
+function prefToSalary(f: number | null): string {
+  if (!f || f < 100000) return "all";
+  if (f >= 200000) return "200000";
+  if (f >= 150000) return "150000";
+  return "100000";
+}
+
+function prefToDepartment(d: string | null): string {
+  if (!d) return "all";
+  const p = d.toLowerCase();
+  if (p.includes("data") || p.includes("ai") || p.includes("ml")) return "AI / ML";
+  if (p.includes("engineering")) return "Engineering";
+  if (p.includes("product")) return "Product";
+  if (p.includes("design")) return "Design";
+  if (p.includes("marketing") || p.includes("growth")) return "Marketing";
+  if (p.includes("sales")) return "Sales";
+  if (p.includes("finance")) return "Finance";
+  if (p.includes("operations")) return "Operations";
+  return "all";
+}
+
+function prefToPosted(d: number | null): string {
+  if (!d || d === 0) return "7d";
+  if (d <= 1) return "1d";
+  if (d <= 3) return "3d";
+  if (d <= 7) return "7d";
+  if (d <= 30) return "30d";
+  return "90d";
+}
+
+function parseMinSalary(salary_range: string | null): number | null {
+  if (!salary_range) return null;
+  const m = salary_range.match(/\$\s*([\d,]+(?:\.\d+)?)(K?)/i);
+  if (!m) return null;
+  let n = parseFloat(m[1].replace(/,/g, ""));
+  if (isNaN(n)) return null;
+  if (m[2].toUpperCase() === "K") n *= 1000;
+  return n;
 }
 
 // ── Filter config ─────────────────────────────────────────────────────────────
@@ -304,6 +347,12 @@ const VISA_OPTIONS = [
   { label: "All visas", value: "all" }, { label: "H-1B", value: "H1B" },
   { label: "E-3", value: "E3" }, { label: "TN", value: "TN" },
 ];
+const SALARY_OPTIONS = [
+  { label: "Any compensation", value: "all" },
+  { label: "$100K+", value: "100000" },
+  { label: "$150K+", value: "150000" },
+  { label: "$200K+", value: "200000" },
+];
 
 const LOGO_DEV_TOKEN = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN ?? "";
 
@@ -318,6 +367,7 @@ function FilterIconVisa() { return <g fill="none" stroke="currentColor" strokeWi
 function FilterIconDepartment() { return <g fill="none" stroke="currentColor" strokeWidth={S} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5.2" r="1.9" /><circle cx="5" cy="18.5" r="1.9" /><circle cx="12" cy="18.5" r="1.9" /><circle cx="19" cy="18.5" r="1.9" /><path d="M12 7.1v3.4M5 16.6v-3.1h14v3.1" /></g>; }
 function FilterIconExperience() { return <g fill="none" stroke="currentColor" strokeWidth={S} strokeLinecap="round" strokeLinejoin="round"><path d="M8 20.5V12M12 20.5V8.5M16 20.5V5" /><circle cx="8" cy="12" r="1.1" fill="currentColor" stroke="none" /><circle cx="12" cy="8.5" r="1.1" fill="currentColor" stroke="none" /><circle cx="16" cy="5" r="1.1" fill="currentColor" stroke="none" /><path d="M3.5 20.5h17" /></g>; }
 function FilterIconAll() { return <g fill="none" stroke="currentColor" strokeWidth={S} strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="8" width="17" height="12.5" rx="2" /><path d="M8.5 8V6.2A2 2 0 0 1 10.5 4.2h3a2 2 0 0 1 2 2V8" /><circle cx="12" cy="14.2" r="1.1" fill="currentColor" stroke="none" /><path d="M3.5 13h7M13.5 13h7" opacity=".4" /></g>; }
+function FilterIconCompensation() { return <g fill="none" stroke="currentColor" strokeWidth={S} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8" /><path d="M14.5 9.3c-.6-.8-1.6-1.3-2.7-1.3-1.5 0-2.8.9-2.8 2.1 0 1.2 1.3 1.7 2.8 2.1 1.5.4 2.8.9 2.8 2.1 0 1.2-1.3 2.1-2.8 2.1-1.1 0-2.1-.5-2.7-1.3" /><path d="M12 6.5v1M12 16.5v1" /></g>; }
 
 function FilterIcon({ icon: IconInner }: { icon: () => React.ReactElement }) {
   return <svg width={17} height={17} viewBox="0 0 24 24" style={{ display: "block", flexShrink: 0 }}><IconInner /></svg>;
@@ -325,15 +375,17 @@ function FilterIcon({ icon: IconInner }: { icon: () => React.ReactElement }) {
 
 // ── FilterChip ────────────────────────────────────────────────────────────────
 
-function FilterChip({ label, value, defaultValue, options, onChange, isOpen, onToggle, icon }: {
-  label: string; value: string; defaultValue: string;
+function FilterChip({ label, value, allValue = "all", options, onChange, isOpen, onToggle, icon }: {
+  label: string; value: string; allValue?: string;
   options: { label: string; value: string }[];
   onChange: (v: string) => void; isOpen: boolean; onToggle: () => void;
   icon?: () => React.ReactElement;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [dropPos, setDropPos] = useState<{ top: number; left: number } | null>(null);
-  const isActive = value !== defaultValue;
+  // Show the selected option label whenever a real value is picked; generic chip label
+  // only when sitting at the "all" sentinel. Active visual = a value is applied.
+  const isActive = value !== allValue;
   const currentLabel = isActive ? (options.find((o) => o.value === value)?.label ?? label) : label;
 
   const handleToggle = () => {
@@ -345,28 +397,23 @@ function FilterChip({ label, value, defaultValue, options, onChange, isOpen, onT
   };
 
   return (
-    <div className="flex-shrink-0">
+    <div style={{ flexShrink: 0 }}>
       <button
         ref={buttonRef}
         onClick={handleToggle}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
-          isActive ? "bg-zinc-900 text-white border-zinc-900 shadow-sm" : "bg-white text-zinc-700 border-zinc-300 hover:border-zinc-500 hover:bg-zinc-50"
-        }`}
+        className={`${s["matches-chip"]} ${isActive ? s["matches-chip-active"] : ""}`}
       >
         {icon && <FilterIcon icon={icon} />}
         {currentLabel}
-        <ChevronDown size={13} className={`transition-transform ${isOpen ? "rotate-180" : ""}`} />
+        <ChevronDown size={12} style={{ transition: "transform .15s", transform: isOpen ? "rotate(180deg)" : "none" }} />
       </button>
       {isOpen && dropPos && (
-        <div style={{ position: "fixed", top: dropPos.top, left: dropPos.left, zIndex: 9999 }}
-          className="w-56 bg-white border border-zinc-200 rounded-xl shadow-xl py-1 max-h-72 overflow-y-auto">
+        <div style={{ top: dropPos.top, left: dropPos.left }} className={s["matches-chip-menu"]}>
           {options.map((opt) => (
             <button key={opt.value} onClick={() => { onChange(opt.value); onToggle(); }}
-              className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center justify-between ${
-                opt.value === value ? "bg-zinc-50 text-zinc-900 font-medium" : "text-zinc-600 hover:bg-zinc-50"
-              }`}>
+              className={`${s["matches-chip-option"]} ${opt.value === value ? s["matches-chip-option-active"] : ""}`}>
               {opt.label}
-              {opt.value === value && <CheckCircle size={13} className="text-zinc-900" />}
+              {opt.value === value && <CheckCircle size={13} />}
             </button>
           ))}
         </div>
@@ -395,21 +442,16 @@ function JobCard({ job, isSelected, isViewed, isFilled, onClick }: {
   const posted = timeAgo(job.posted_at);
   return (
     <div onClick={onClick}
-      className={`group relative flex gap-3 px-4 py-4 cursor-pointer transition-colors select-none border-b border-zinc-100 ${
-        isFilled ? "opacity-45" : ""
-      } ${isSelected ? "bg-blue-50" : "hover:bg-zinc-50"}`}
+      className={`${s["matches-card"]} ${isSelected ? s["matches-card-selected"] : ""} ${isFilled ? s["matches-card-filled"] : ""}`}
     >
-      {isSelected && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-600 rounded-r-sm" />}
       <CompanyAvatar name={job._normCompany} domain={job.company_domain_url} size="md" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start gap-2">
-          <h3 className={`flex-1 min-w-0 text-sm font-semibold leading-snug transition-colors ${
-            isSelected ? "text-blue-700" : isFilled ? "text-zinc-500" : "text-zinc-900 group-hover:text-blue-600"
-          }`}>{job.title}</h3>
-          {posted && <span className="flex-shrink-0 text-xs text-zinc-400 mt-px">{posted}</span>}
+      <div className={s["matches-card-body"]}>
+        <div className={s["matches-card-row"]}>
+          <h3 className={s["matches-card-title"]}>{job.title}</h3>
+          {posted && <span className={s["matches-card-time"]}>{posted}</span>}
         </div>
-        <p className="text-xs text-zinc-500 mt-0.5 truncate">{job._normCompany} · {job._normLoc}</p>
-        <div className="mt-1.5">
+        <p className={s["matches-card-sub"]}>{job._normCompany} · {job._normLoc}</p>
+        <div className={s["matches-card-chips"]}>
           <JobChips
             salary_range={job.salary_range}
             confidence_tier={job.confidence_tier}
@@ -422,7 +464,7 @@ function JobCard({ job, isSelected, isViewed, isFilled, onClick }: {
             poc_email={job.poc_email}
           />
         </div>
-        {isViewed && <span className="text-xs text-zinc-400 mt-0.5 block">Viewed</span>}
+        {isViewed && <span className={s["matches-card-viewed"]}>Viewed</span>}
       </div>
     </div>
   );
@@ -445,31 +487,36 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
   const tnCategory = getTnCategory(job.title);
 
   return (
-    <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden flex flex-col h-full">
-      <div className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-zinc-100">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <CompanyAvatar name={job._normCompany} domain={job.company_domain_url} size="md" />
-            <span className="text-sm font-semibold text-zinc-600 truncate">{job._normCompany}</span>
+    <div style={{ background: "#ffffff", display: "flex", flexDirection: "column", width: "100%" }}>
+      {/* Sticky compact bar — logo + company + title + Apply only (condensed) */}
+      <div className="px-4 pt-3 pb-2.5" style={{ borderBottom: "1px solid #f4f4f5", position: "sticky", top: 0, background: "#ffffff", zIndex: 2 }}>
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <CompanyAvatar name={job._normCompany} domain={job.company_domain_url} size="sm" />
+            <span className="text-xs font-semibold text-zinc-600 truncate">{job._normCompany}</span>
           </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+          <div className="flex items-center gap-1 flex-shrink-0 ml-3">
             <button onClick={onSave} aria-label={isSaved ? "Unsave" : "Save"}
-              className={`p-2 rounded-full border transition-all ${isSaved ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`}>
-              <Bookmark size={14} className={isSaved ? "fill-current" : ""} />
+              className={`p-1.5 rounded-full border transition-all ${isSaved ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`}>
+              <Bookmark size={12} className={isSaved ? "fill-current" : ""} />
             </button>
             <button onClick={onShare} aria-label="Share"
-              className={`p-2 rounded-full border transition-all ${copied ? "border-zinc-400 text-zinc-700 bg-zinc-100" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`}>
-              <Share2 size={14} />
+              className={`p-1.5 rounded-full border transition-all ${copied ? "border-zinc-400 text-zinc-700 bg-zinc-100" : "border-zinc-200 text-zinc-400 hover:border-zinc-400 hover:text-zinc-700"}`}>
+              <Share2 size={12} />
             </button>
           </div>
         </div>
-        <div className="flex items-start gap-4 mb-3">
-          <h2 className="flex-1 text-xl font-bold text-zinc-900 leading-snug">{job.title}</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="flex-1 text-base font-bold text-zinc-900 leading-snug">{job.title}</h2>
           <a href={job.url} target="_blank" rel="noopener noreferrer"
-            className="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 !text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
-            Apply <ExternalLink size={12} />
+            className="flex-shrink-0 inline-flex items-center gap-1 px-3.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 !text-white text-xs font-semibold rounded-md transition-colors shadow-sm">
+            Apply <ExternalLink size={11} />
           </a>
         </div>
+      </div>
+
+      {/* Non-sticky metadata — scrolls away to give the description more room */}
+      <div className="px-5 pt-3 pb-3" style={{ borderBottom: "1px solid #f4f4f5" }}>
         <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-3">
           <MapPin size={11} className="flex-shrink-0 text-zinc-400" />
           <span>{job._normLoc}</span>
@@ -496,7 +543,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
             {experience && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{experience} exp</span>}
           </div>
         )}
-        <div className="flex flex-wrap gap-1.5 mb-3">
+        <div className="flex flex-wrap gap-1.5">
           {lastFiling && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">Last LCA filed in {lastFiling}</span>}
           {job.lca_count_2025 > 0 && <span className="px-2.5 py-1 rounded-full bg-zinc-100 text-zinc-600 text-xs font-medium">{job.lca_count_2025} LCA filings in 2025</span>}
           {formatPoc(job.poc_first_name, job.poc_last_name, job.poc_email) && (
@@ -506,7 +553,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
           )}
         </div>
       </div>
-      <div className="overflow-y-auto flex-1 px-5 py-4">
+      <div className="px-5 py-4">
         <div className="text-xs font-semibold text-zinc-400 uppercase tracking-widest mb-3">Job Description</div>
         {descLoading ? (
           <DescriptionSkeleton />
@@ -537,10 +584,11 @@ export function MatchesPanel({ preferences, isUnlocked }: {
   const [location, setLocation] = useState(() => prefToLocation(preferences?.location ?? null));
   const [company, setCompany] = useState("");
   const [signal, setSignal] = useState("all");
-  const [postedDate, setPostedDate] = useState("7d");
+  const [postedDate, setPostedDate] = useState(() => prefToPosted(preferences?.posted_within_days ?? null));
   const [visa, setVisa] = useState(() => prefToVisa(preferences?.visa_type ?? null));
-  const [department, setDepartment] = useState("all");
+  const [department, setDepartment] = useState(() => prefToDepartment(preferences?.job_function ?? null));
   const [level, setLevel] = useState(() => prefToLevel(preferences?.job_level ?? null));
+  const [salary, setSalary] = useState(() => prefToSalary(preferences?.salary_floor ?? null));
   const [viewFilter, setViewFilter] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
   const [openChip, setOpenChip] = useState<string | null>(null);
@@ -553,9 +601,11 @@ export function MatchesPanel({ preferences, isUnlocked }: {
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Meta (companies)
+  // Meta (companies + headline stats)
   const [allCompanies, setAllCompanies] = useState<string[]>([]);
   const [metaLoaded, setMetaLoaded] = useState(false);
+  const [threeDayCount, setThreeDayCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const metaInflightRef = useRef(false);
 
   // Detail panel
@@ -569,7 +619,6 @@ export function MatchesPanel({ preferences, isUnlocked }: {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const filterBarRef = useRef<HTMLDivElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
-  const autoSelectedRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchAbortRef = useRef<AbortController | null>(null);
   const fetchIdRef = useRef(0);
@@ -580,9 +629,34 @@ export function MatchesPanel({ preferences, isUnlocked }: {
     metaInflightRef.current = true;
     fetch("/api/jobs/meta")
       .then((r) => r.json())
-      .then((data) => { setAllCompanies(data.companies ?? []); setMetaLoaded(true); })
+      .then((data) => {
+        setAllCompanies(data.companies ?? []);
+        setThreeDayCount(data.threeDayCount ?? 0);
+        setTotalCount(data.totalCount ?? 0);
+        setMetaLoaded(true);
+      })
       .catch(() => { metaInflightRef.current = false; });
   }, []);
+
+  // Kick off meta load on mount — headline stats render with the page.
+  useEffect(() => { loadMetaOnce(); }, [loadMetaOnce]);
+
+  // Cascade Account-tab preference edits into the filter chips (one-way).
+  // The state initializers run once on mount; this effect re-syncs whenever the
+  // preferences prop changes (e.g. user edited Job Preferences on the Account tab).
+  const isInitialPrefSyncRef = useRef(true);
+  useEffect(() => {
+    if (isInitialPrefSyncRef.current) { isInitialPrefSyncRef.current = false; return; }
+    setVisa(prefToVisa(preferences?.visa_type ?? null));
+    setLevel(prefToLevel(preferences?.job_level ?? null));
+    setLocation(prefToLocation(preferences?.location ?? null));
+    setDepartment(prefToDepartment(preferences?.job_function ?? null));
+    setSalary(prefToSalary(preferences?.salary_floor ?? null));
+    setPostedDate(prefToPosted(preferences?.posted_within_days ?? null));
+  }, [
+    preferences?.visa_type, preferences?.job_level, preferences?.location,
+    preferences?.job_function, preferences?.salary_floor, preferences?.posted_within_days,
+  ]);
 
   const doFetch = useCallback(
     async (params: { q: string; location: string; company: string; posted: string; sort: string; signal: string; visa: string; department: string; level: string }, append = false, pageNum = 0) => {
@@ -628,7 +702,6 @@ export function MatchesPanel({ preferences, isUnlocked }: {
     const params = { q: query, location, company, posted: postedDate, sort: sortBy, signal, visa, department, level };
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      autoSelectedRef.current = false;
       doFetch(params, false, 0);
     }, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
@@ -672,12 +745,14 @@ export function MatchesPanel({ preferences, isUnlocked }: {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Auto-select first job on desktop
+  // Auto-select first job on desktop. Re-selects whenever the current pick is missing
+  // from the new result set (filter change), so the right pane always shows a job.
   useEffect(() => {
-    if (loading || autoSelectedRef.current || selectedJobId !== null) return;
+    if (loading) return;
     if (typeof window === "undefined" || window.innerWidth < 1024) return;
-    const first = jobs[0];
-    if (first) { setSelectedJobId(first.id); autoSelectedRef.current = true; }
+    if (jobs.length === 0) return;
+    const stillPresent = selectedJobId !== null && jobs.some((j) => j.id === selectedJobId);
+    if (!stillPresent) setSelectedJobId(jobs[0].id);
   }, [loading, jobs, selectedJobId]);
 
   // Lazy-load meta after first paint
@@ -824,13 +899,29 @@ export function MatchesPanel({ preferences, isUnlocked }: {
     [selectedJobId, jobs]
   );
 
-  const hasActiveFilters = company !== "" || location !== "all" || signal !== "all" || postedDate !== "7d" || visa !== prefToVisa(preferences?.visa_type ?? null) || department !== "all" || level !== prefToLevel(preferences?.job_level ?? null) || viewFilter !== "all";
+  const prefVisa = prefToVisa(preferences?.visa_type ?? null);
+  const prefLevel = prefToLevel(preferences?.job_level ?? null);
+  const prefLoc = prefToLocation(preferences?.location ?? null);
+  const prefDept = prefToDepartment(preferences?.job_function ?? null);
+  const prefSalary = prefToSalary(preferences?.salary_floor ?? null);
+  const prefPosted = prefToPosted(preferences?.posted_within_days ?? null);
+
+  const hasActiveFilters =
+    location !== prefLoc || signal !== "all" || postedDate !== prefPosted ||
+    visa !== prefVisa || department !== prefDept || level !== prefLevel ||
+    salary !== prefSalary || viewFilter !== "all" || query !== "";
+
+  const salaryFloorNum = salary === "all" ? 0 : parseInt(salary, 10);
 
   const clientFiltered = jobs.filter((j) => {
     if (level === "Mid-level" && inferLevel(j.title) !== "Mid-level") return false;
     if (viewFilter === "viewed" && !viewedJobs.has(j.id)) return false;
     if (viewFilter === "favorite" && !savedJobs.has(j.id)) return false;
     if (viewFilter === "new" && viewedJobs.has(j.id)) return false;
+    if (salaryFloorNum > 0) {
+      const min = parseMinSalary(j.salary_range);
+      if (min == null || min < salaryFloorNum) return false;
+    }
     return true;
   });
 
@@ -843,70 +934,57 @@ export function MatchesPanel({ preferences, isUnlocked }: {
   const blurredPreview = gatedCount > 0 ? activeJobs.slice(VISIBLE_FREE, VISIBLE_FREE + 3) : [];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#fff", fontFamily: "var(--font-geist-sans), 'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
-      {/* Progress bar on filter re-fetch */}
+    <div className={s["matches-shell"]}>
       {refreshing && (
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 100, height: 2, background: "#f4f4f5", overflow: "hidden" }}>
-          <div style={{ height: "100%", width: "40%", background: "#18181b", animation: "progress-bar 1.2s linear infinite" }} />
-        </div>
+        <div className={s["matches-progress"]}><div className={s["matches-progress-bar"]} /></div>
       )}
 
-      {/* Search + filter bar */}
-      <div
-        ref={filterBarRef}
-        onPointerEnter={loadMetaOnce}
-        onFocusCapture={loadMetaOnce}
-        style={{ flexShrink: 0, borderBottom: "1px solid #e4e4e7", background: "#fff" }}
-      >
-        {/* Search row */}
-        <div style={{ padding: "10px 16px 0", display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ flex: 1, position: "relative" }}>
-            <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#a1a1aa", pointerEvents: "none" }} />
-            <input
-              type="text"
-              placeholder="Search job title or company..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              style={{
-                width: "100%", paddingLeft: 32, paddingRight: 12, paddingTop: 7, paddingBottom: 7,
-                fontSize: 13, background: "#f4f4f5", border: "1px solid #e4e4e7", borderRadius: 8,
-                outline: "none", color: "#18181b", fontFamily: "inherit",
-              }}
-            />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-            <span style={{ fontSize: 12, color: "#a1a1aa" }}>Sort:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              style={{ fontSize: 12, color: "#3f3f46", fontWeight: 500, background: "transparent", border: "none", outline: "none", cursor: "pointer", paddingRight: 14, appearance: "none" }}
-            >
-              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <ChevronDown size={11} style={{ color: "#a1a1aa", marginLeft: -14, pointerEvents: "none" }} />
-          </div>
-        </div>
+      {/* Headline + stats */}
+      <div className={s["matches-header"]}>
+        <h1 className={s["matches-headline"]}>
+          Updated job listings from <em>USCIS-verified</em> visa-sponsoring companies
+        </h1>
+        <p className={s["matches-stats"]}>
+          {metaLoaded ? (
+            <>
+              <strong>{threeDayCount.toLocaleString()}</strong> new jobs last 3 days
+              {" · "}
+              <strong>{totalCount.toLocaleString()}</strong> total jobs
+              {" · "}
+              <strong>{allCompanies.length.toLocaleString()}</strong> sponsoring companies
+            </>
+          ) : (
+            <span className={s["matches-stats-loading"]}>Loading stats…</span>
+          )}
+        </p>
+      </div>
 
-        {/* Filter chips */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", overflowX: "auto", scrollbarWidth: "none" }}>
-          <FilterChip label="Company" value={company} defaultValue="" options={companyOptions} onChange={setCompany} isOpen={openChip === "company"} onToggle={() => setOpenChip(openChip === "company" ? null : "company")} icon={FilterIconCompany} />
-          <FilterChip label="Sponsorship signal" value={signal} defaultValue="all" options={SIGNAL_OPTIONS} onChange={setSignal} isOpen={openChip === "signal"} onToggle={() => setOpenChip(openChip === "signal" ? null : "signal")} icon={FilterIconSponsorship} />
-          <FilterChip label="Location" value={location} defaultValue="all" options={LOCATION_OPTIONS} onChange={setLocation} isOpen={openChip === "location"} onToggle={() => setOpenChip(openChip === "location" ? null : "location")} icon={FilterIconLocation} />
-          <FilterChip label="Posted past week" value={postedDate} defaultValue="7d" options={POSTED_DATE_OPTIONS} onChange={setPostedDate} isOpen={openChip === "postedDate"} onToggle={() => setOpenChip(openChip === "postedDate" ? null : "postedDate")} icon={FilterIconPosted} />
-          <FilterChip label="Visa category" value={visa} defaultValue="all" options={VISA_OPTIONS} onChange={setVisa} isOpen={openChip === "visa"} onToggle={() => setOpenChip(openChip === "visa" ? null : "visa")} icon={FilterIconVisa} />
-          <FilterChip label="Department" value={department} defaultValue="all" options={DEPARTMENT_OPTIONS} onChange={setDepartment} isOpen={openChip === "department"} onToggle={() => setOpenChip(openChip === "department" ? null : "department")} icon={FilterIconDepartment} />
-          <FilterChip label="Experience" value={level} defaultValue="all" options={LEVEL_OPTIONS} onChange={setLevel} isOpen={openChip === "level"} onToggle={() => setOpenChip(openChip === "level" ? null : "level")} icon={FilterIconExperience} />
-          <FilterChip label="All jobs" value={viewFilter} defaultValue="all" options={VIEW_OPTIONS} onChange={setViewFilter} isOpen={openChip === "viewFilter"} onToggle={() => setOpenChip(openChip === "viewFilter" ? null : "viewFilter")} icon={FilterIconAll} />
+      {/* Sticky filter chip row — the ONLY thing that pins on scroll */}
+      <div ref={filterBarRef} className={s["matches-controls"]}>
+        <div className={s["matches-filter-row"]}>
+          <FilterChip label="Visa category" value={visa} options={VISA_OPTIONS} onChange={setVisa} isOpen={openChip === "visa"} onToggle={() => setOpenChip(openChip === "visa" ? null : "visa")} icon={FilterIconVisa} />
+          <FilterChip label="Sponsorship signal" value={signal} options={SIGNAL_OPTIONS} onChange={setSignal} isOpen={openChip === "signal"} onToggle={() => setOpenChip(openChip === "signal" ? null : "signal")} icon={FilterIconSponsorship} />
+          <FilterChip label="Company" value={company} allValue="" options={companyOptions} onChange={setCompany} isOpen={openChip === "company"} onToggle={() => setOpenChip(openChip === "company" ? null : "company")} icon={FilterIconCompany} />
+          <FilterChip label="Department" value={department} options={DEPARTMENT_OPTIONS} onChange={setDepartment} isOpen={openChip === "department"} onToggle={() => setOpenChip(openChip === "department" ? null : "department")} icon={FilterIconDepartment} />
+          <FilterChip label="Experience" value={level} options={LEVEL_OPTIONS} onChange={setLevel} isOpen={openChip === "level"} onToggle={() => setOpenChip(openChip === "level" ? null : "level")} icon={FilterIconExperience} />
+          <FilterChip label="Compensation" value={salary} options={SALARY_OPTIONS} onChange={setSalary} isOpen={openChip === "salary"} onToggle={() => setOpenChip(openChip === "salary" ? null : "salary")} icon={FilterIconCompensation} />
+          <FilterChip label="Location" value={location} options={LOCATION_OPTIONS} onChange={setLocation} isOpen={openChip === "location"} onToggle={() => setOpenChip(openChip === "location" ? null : "location")} icon={FilterIconLocation} />
+          <FilterChip label="Posted past week" value={postedDate} options={POSTED_DATE_OPTIONS} onChange={setPostedDate} isOpen={openChip === "postedDate"} onToggle={() => setOpenChip(openChip === "postedDate" ? null : "postedDate")} icon={FilterIconPosted} />
+          <FilterChip label="All jobs" value={viewFilter} options={VIEW_OPTIONS} onChange={setViewFilter} isOpen={openChip === "viewFilter"} onToggle={() => setOpenChip(openChip === "viewFilter" ? null : "viewFilter")} icon={FilterIconAll} />
           {hasActiveFilters && (
             <button
               onClick={() => {
-                setCompany(""); setLocation("all"); setSignal("all"); setPostedDate("7d");
-                setVisa(prefToVisa(preferences?.visa_type ?? null));
-                setDepartment("all");
-                setLevel(prefToLevel(preferences?.job_level ?? null));
+                setQuery(""); setCompany("");
+                setLocation(prefLoc);
+                setSignal("all");
+                setPostedDate(prefPosted);
+                setVisa(prefVisa);
+                setDepartment(prefDept);
+                setLevel(prefLevel);
+                setSalary(prefSalary);
                 setViewFilter("all");
               }}
-              style={{ flexShrink: 0, fontSize: 12, color: "#71717a", background: "none", border: "none", cursor: "pointer", padding: "4px 6px", whiteSpace: "nowrap" }}
+              className={s["matches-reset"]}
             >
               Reset to preferences
             </button>
@@ -914,29 +992,43 @@ export function MatchesPanel({ preferences, isUnlocked }: {
         </div>
       </div>
 
-      {/* Content: split pane */}
-      {loading ? (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ fontSize: 13, color: "#a1a1aa" }}>Loading jobs…</span>
-        </div>
-      ) : (
-        <div style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
-          {/* Left: job list */}
+      {/* Two-pane content — always rendered so the filter chips stay accessible during load */}
+      {(
+        <div className={s["matches-content"]}>
+          {/* Left: job list with embedded search + sort */}
           <div
             ref={listScrollRef}
-            style={{
-              width: selectedJob ? "380px" : "100%",
-              flexShrink: 0,
-              overflowY: "auto",
-              borderRight: "1px solid #f4f4f5",
-              display: selectedJob ? undefined : undefined,
-            }}
-            className={`${selectedJob ? "hidden lg:block" : "block"}`}
+            className={`${s["matches-list"]} ${selectedJob ? "hidden lg:block" : "block"}`}
           >
-            {jobs.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "64px 16px", color: "#71717a" }}>
-                <p style={{ fontSize: 15, fontWeight: 600, color: "#3f3f46", margin: "0 0 4px" }}>No jobs match your filters</p>
-                <p style={{ fontSize: 13, margin: 0 }}>Try removing some filters</p>
+            {/* Search + sort row INSIDE the list panel, small */}
+            <div className={s["matches-list-controls"]}>
+              <div className={s["matches-search"]}>
+                <Search size={12} className={s["matches-search-icon"]} />
+                <input
+                  type="text"
+                  placeholder="Search job title or company..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className={s["matches-search-input"]}
+                />
+              </div>
+              <div className={s["matches-sort"]}>
+                <span className={s["matches-sort-label"]}>Sort:</span>
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className={s["matches-sort-select"]}>
+                  {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <ChevronDown size={10} style={{ color: "#a1a1aa", marginLeft: -12, pointerEvents: "none" }} />
+              </div>
+            </div>
+
+            {loading ? (
+              <div style={{ padding: "48px 24px", textAlign: "center" }}>
+                <span style={{ fontSize: 13, color: "#71717a" }}>Loading jobs…</span>
+              </div>
+            ) : clientFiltered.length === 0 ? (
+              <div className={s["matches-empty"]}>
+                <p className={s["matches-empty-title"]}>No jobs match your filters</p>
+                <p className={s["matches-empty-sub"]}>Try removing or extending some filters</p>
               </div>
             ) : (
               <>
@@ -944,46 +1036,34 @@ export function MatchesPanel({ preferences, isUnlocked }: {
                   <JobCard key={job.id} job={job} isSelected={job.id === selectedJobId} isViewed={viewedJobs.has(job.id)} onClick={() => handleJobClick(job)} />
                 ))}
 
-                {/* Free-tier blur gate */}
-                {gatedCount > 0 && (
-                  <div style={{ position: "relative" }}>
-                    <div style={{ filter: "blur(4px)", pointerEvents: "none", userSelect: "none" }}>
+                {/* Free-tier gate: blurred preview + centered modal */}
+                {!isUnlocked && gatedCount > 0 && (
+                  <div className={s["matches-gate"]}>
+                    <div className={s["matches-gate-blur"]}>
                       {blurredPreview.map((job) => (
                         <JobCard key={job.id} job={job} isSelected={false} isViewed={false} onClick={() => {}} />
                       ))}
                     </div>
-                    <div style={{
-                      position: "absolute", inset: 0,
-                      background: "linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.97) 60%)",
-                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end",
-                      paddingBottom: 24, gap: 10,
-                    }}>
-                      <p style={{ fontSize: 14, fontWeight: 600, color: "#18181b", margin: 0, textAlign: "center", padding: "0 20px" }}>
-                        {gatedCount} more match{gatedCount !== 1 ? "es" : ""} — upgrade to unlock all
-                      </p>
-                      <Link
-                        href="/kai"
-                        style={{
-                          display: "inline-block", background: "#18181b", color: "#fff",
-                          padding: "10px 22px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-                          textDecoration: "none",
-                        }}
-                      >
-                        Upgrade →
-                      </Link>
+                    <div className={s["matches-gate-fade"]}>
+                      <div className={s["matches-gate-modal"]}>
+                        <h3 className={s["matches-gate-headline"]}>
+                          Upgrade to see all matches to your preferences.
+                        </h3>
+                        <Link href="/kai" className={s["matches-gate-cta"]}>
+                          Upgrade →
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {/* Active section done — filled jobs (only for unlocked) */}
+                {/* Filled jobs (unlocked only) */}
                 {isUnlocked && filledJobs.length > 0 && (
                   <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", background: "#fff" }}>
-                      <div style={{ flex: 1, height: 1, background: "#e4e4e7" }} />
-                      <span style={{ fontSize: 12, color: "#a1a1aa", fontWeight: 500, whiteSpace: "nowrap" }}>
-                        No longer active · {filledJobs.length}
-                      </span>
-                      <div style={{ flex: 1, height: 1, background: "#e4e4e7" }} />
+                    <div className={s["matches-divider"]}>
+                      <div className={s["matches-divider-line"]} />
+                      <span className={s["matches-divider-label"]}>No longer active · {filledJobs.length}</span>
+                      <div className={s["matches-divider-line"]} />
                     </div>
                     {filledJobs.map((job) => (
                       <JobCard key={job.id} job={job} isSelected={job.id === selectedJobId} isViewed={viewedJobs.has(job.id)} isFilled onClick={() => handleJobClick(job)} />
@@ -991,12 +1071,12 @@ export function MatchesPanel({ preferences, isUnlocked }: {
                   </>
                 )}
 
-                {/* Infinite scroll sentinel (only for unlocked) */}
+                {/* Infinite scroll sentinel (unlocked only) */}
                 {isUnlocked && (
-                  <div ref={sentinelRef} style={{ height: 40, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {loadingMore && <span style={{ fontSize: 12, color: "#a1a1aa" }}>Loading more…</span>}
+                  <div ref={sentinelRef} className={s["matches-sentinel"]}>
+                    {loadingMore && <span>Loading more…</span>}
                     {!loadingMore && jobs.length < total && (
-                      <span style={{ fontSize: 12, color: "#a1a1aa" }}>{jobs.length.toLocaleString()} of {total.toLocaleString()}</span>
+                      <span>{jobs.length.toLocaleString()} of {total.toLocaleString()}</span>
                     )}
                   </div>
                 )}
@@ -1005,10 +1085,7 @@ export function MatchesPanel({ preferences, isUnlocked }: {
           </div>
 
           {/* Right: detail panel (desktop) */}
-          <div
-            className="hidden lg:flex"
-            style={{ flex: 1, minWidth: 0, padding: 16, flexDirection: "column", overflow: "hidden" }}
-          >
+          <div className={`hidden lg:flex ${s["matches-detail"]}`}>
             {selectedJob ? (
               <JobDetailPanel
                 job={selectedJob}
@@ -1022,20 +1099,21 @@ export function MatchesPanel({ preferences, isUnlocked }: {
                 salaryOverride={descCache[selectedJob.id]?.salary}
               />
             ) : (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", borderRadius: 12, border: "1px dashed #e4e4e7", minHeight: 300 }}>
-                <p style={{ fontSize: 14, fontWeight: 500, color: "#71717a", margin: "0 0 4px" }}>Select a job to view details</p>
-                <p style={{ fontSize: 12, color: "#a1a1aa", margin: 0 }}>Click any listing on the left</p>
+              <div className={s["matches-detail-empty"]}>
+                <p style={{ fontSize: 14, fontWeight: 500, margin: "0 0 4px", color: "#3f3f46" }}>Select a job to view details</p>
+                <p style={{ fontSize: 12, margin: 0, color: "#a1a1aa" }}>Click any listing on the left</p>
               </div>
             )}
           </div>
 
-          {/* Mobile: full-screen detail */}
+          {/* Mobile: full-screen detail (no internal scroll — the page scrolls,
+              so the sticky bar inside JobDetailPanel sticks to the page top). */}
           {selectedJob && (
-            <div className="flex lg:hidden" style={{ flex: 1, minWidth: 0, flexDirection: "column", overflowY: "auto", padding: 16 }}>
-              <button onClick={handleClose} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#71717a", marginBottom: 12, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+            <div className="flex lg:hidden" style={{ minWidth: 0, flexDirection: "column" }}>
+              <button onClick={handleClose} className={s["matches-mobile-back"]}>
                 <ArrowLeft size={13} /> All jobs
               </button>
-              <div style={{ flex: 1, minHeight: 0 }}>
+              <div>
                 <JobDetailPanel
                   job={selectedJob}
                   descHtml={descCache[selectedJob.id]?.html ?? ""}

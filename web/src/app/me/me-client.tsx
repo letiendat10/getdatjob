@@ -725,10 +725,11 @@ const TIER_FEATURES: Record<string, string[]> = {
 
 // ── Account Tab ───────────────────────────────────────────────────────────────
 
-function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut }: {
+function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut, onPrefsChange }: {
   profile: Profile;
   alertPrefs: AlertPrefs | null;
   onSignOut: () => void;
+  onPrefsChange: (p: Profile["preferences"]) => void;
 }) {
   const name = firstName(profile.full_name);
   const tier = profile.subscription_tier ?? "free";
@@ -785,6 +786,15 @@ function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut }: {
   const updatePref = (key: keyof typeof prefs, value: string) => {
     const newPrefs = { ...prefs, [key]: value };
     setPrefs(newPrefs);
+    // Cascade to MatchesPanel IMMEDIATELY — no need to wait for the 600ms debounced DB write.
+    onPrefsChange({
+      visa_type: newPrefs.visa_type || null,
+      job_function: newPrefs.job_function || null,
+      job_level: newPrefs.job_level || null,
+      salary_floor: newPrefs.salary_floor ? parseInt(newPrefs.salary_floor) : null,
+      location: newPrefs.location || null,
+      posted_within_days: newPrefs.posted_within_days ? parseInt(newPrefs.posted_within_days) : null,
+    });
     savePrefDebounced(newPrefs);
   };
 
@@ -1056,6 +1066,8 @@ const TAB_TO_SLUG: Record<Tab, string> = {
 
 export default function MeClient({ profile, alertPrefs, initialTab }: { profile: Profile; alertPrefs: AlertPrefs | null; initialTab: Tab }) {
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  // Lifted preferences state — AccountTab edits cascade into MatchesPanel filters
+  const [preferences, setPreferences] = useState<Profile["preferences"]>(profile.preferences);
   const router = useRouter();
 
   function switchTab(tab: Tab) {
@@ -1146,7 +1158,7 @@ export default function MeClient({ profile, alertPrefs, initialTab }: { profile:
         <div className={`${s["tab-panel"]} ${activeTab !== "matches" ? s["tab-panel-hidden"] : ""}`}>
           <MatchesPanel
             isUnlocked={profile.is_supporter || (profile.subscription_tier ?? "free") !== "free"}
-            preferences={profile.preferences}
+            preferences={preferences}
           />
         </div>
         <div className={`${s["tab-panel"]} ${activeTab !== "account" ? s["tab-panel-hidden"] : ""}`}>
@@ -1154,6 +1166,7 @@ export default function MeClient({ profile, alertPrefs, initialTab }: { profile:
             profile={profile}
             alertPrefs={alertPrefs}
             onSignOut={handleSignOut}
+            onPrefsChange={setPreferences}
           />
         </div>
       </main>

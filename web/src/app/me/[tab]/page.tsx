@@ -46,7 +46,6 @@ export default async function MeTabPage({ params }: { params: Promise<{ tab: str
         .eq("id", user.id)
         .maybeSingle(),
       supabase
-        .schema("subs")
         .from("subscriptions")
         .select("subscription_tier, subscription_status, stripe_customer_id, current_tier_expires_at")
         .eq("user_id", user.id)

@@ -31,7 +31,6 @@ export async function POST() {
   );
 
   const { data: sub } = await supabaseAdmin
-    .schema("subs")
     .from("subscriptions")
     .select("stripe_customer_id")
     .eq("user_id", user.id)

@@ -57,7 +57,6 @@ export async function POST(request: NextRequest) {
     const customerId = session.customer as string;
 
     const { data: sub } = await supabase
-      .schema("subs")
       .from("subscriptions")
       .select("user_id, email, first_subscribed_at")
       .eq("stripe_customer_id", customerId)
@@ -83,7 +82,6 @@ export async function POST(request: NextRequest) {
     const promoCodeUsed = await resolvePromoCode(stripeSubscription);
 
     await supabase
-      .schema("subs")
       .from("subscriptions")
       .update({
         subscription_tier: tier ?? "passed",
@@ -143,7 +141,6 @@ export async function POST(request: NextRequest) {
     const currentPeriodEnd: number = (subscription as any).current_period_end ?? 0;
 
     await supabase
-      .schema("subs")
       .from("subscriptions")
       .update({
         subscription_status: subscription.status,
@@ -159,7 +156,6 @@ export async function POST(request: NextRequest) {
     const customerId = subscription.customer as string;
 
     await supabase
-      .schema("subs")
       .from("subscriptions")
       .update({
         subscription_tier: "free",

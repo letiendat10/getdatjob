@@ -55,7 +55,6 @@ async function main() {
 
   // 2. Find subscription row → stripe_customer_id
   const { data: subRow } = await supabase
-    .schema("subs")
     .from("subscriptions")
     .select("user_id, stripe_customer_id, stripe_subscription_id")
     .eq("email", email)
@@ -100,8 +99,8 @@ async function main() {
     const kai = await supabase.from("kai_messages").delete().eq("user_id", userId);
     console.log(`  ✓ kai_messages: ${kai.error ? "ERR " + kai.error.message : "deleted"}`);
 
-    const subs = await supabase.schema("subs").from("subscriptions").delete().eq("user_id", userId);
-    console.log(`  ✓ subs.subscriptions: ${subs.error ? "ERR " + subs.error.message : "deleted"}`);
+    const subs = await supabase.from("subscriptions").delete().eq("user_id", userId);
+    console.log(`  ✓ subscriptions: ${subs.error ? "ERR " + subs.error.message : "deleted"}`);
 
     try {
       const alerts = await supabase.from("user_job_alert_prefs").delete().eq("user_id", userId);

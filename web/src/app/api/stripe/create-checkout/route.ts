@@ -58,7 +58,6 @@ export async function POST(request: NextRequest) {
   );
 
   const { data: existing, error: lookupErr } = await supabaseAdmin
-    .schema("subs")
     .from("subscriptions")
     .select("stripe_customer_id")
     .eq("user_id", user.id)
@@ -75,7 +74,6 @@ export async function POST(request: NextRequest) {
     const customer = await stripe.customers.create({ email, metadata: { user_id: user.id } });
     customerId = customer.id;
     const { error: upsertErr } = await supabaseAdmin
-      .schema("subs")
       .from("subscriptions")
       .upsert(
         {

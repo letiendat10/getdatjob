@@ -740,7 +740,6 @@ export default function KaiPage() {
   const dateInputRef = useRef<HTMLInputElement>(null);
   const historyLoadedRef = useRef(false);
   const restoredFromLocalRef = useRef(false);
-  const onboardingSyncedRef = useRef(false);
   const messagesRef = useRef<ChatMessage[]>([]);
   // Prevents the onboarding useEffect from double-firing when linkedIn/enriched
   // state resolves during the ~1.6s delay before setStep("q1") runs.
@@ -787,26 +786,49 @@ export default function KaiPage() {
     historyLoadedRef.current = true;
   }, []);
 
-  // One-time sync of onboarding messages to Supabase when fresh onboarding completes
+  // Real-time sync of every Kai message to Supabase as it lands.
+  // Rule: persist any stable message (not thinking, not streaming) we haven't
+  // persisted yet. Tracking by message id keeps it idempotent across re-renders
+  // and across the restored-from-localStorage path (those messages already exist
+  // in Supabase from a prior session, so we mark them persisted on restore).
+  const persistedIdsRef = useRef<Set<string>>(new Set());
+
+  // Mark restored-from-local messages as already persisted so we don't double-write
   useEffect(() => {
     if (!historyLoadedRef.current) return;
-    if (step !== "done") return;
-    if (restoredFromLocalRef.current) return;
-    if (onboardingSyncedRef.current) return;
+    if (!restoredFromLocalRef.current) return;
+    if (persistedIdsRef.current.size > 0) return;
+    messages.forEach((m) => persistedIdsRef.current.add(m.id));
+  }, [messages]);
+
+  useEffect(() => {
+    if (!historyLoadedRef.current) return;
     if (!user?.id) return;
-    onboardingSyncedRef.current = true;
-    const stable = messagesRef.current.filter((m) => !m.isThinking && !m.isStreaming);
-    if (stable.length === 0) return;
     const uid = user.id;
+    const toPersist = messages.filter(
+      (m) => !m.isThinking && !m.isStreaming && !persistedIdsRef.current.has(m.id),
+    );
+    if (toPersist.length === 0) return;
+    // Optimistically mark, then write. Failures are logged but don't retry —
+    // the next /me/chat load falls back to localStorage if Supabase is short.
+    toPersist.forEach((m) => persistedIdsRef.current.add(m.id));
+    const supabase = createSupabaseBrowser();
     (async () => {
-      for (const m of stable) {
-        await createSupabaseBrowser().from("kai_messages").insert({
-          user_id: uid, role: m.role, content: m.content, jobs: m.jobs ?? null,
+      for (const m of toPersist) {
+        const { error } = await supabase.from("kai_messages").insert({
+          user_id: uid,
+          role: m.role,
+          content: m.content,
+          jobs: m.jobs ?? null,
         });
+        if (error) {
+          console.error("[kai] persist failed", m.id, error);
+          persistedIdsRef.current.delete(m.id); // allow retry on next change
+        }
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, user]);
+  }, [messages, user]);
 
   // Persist chat history once user reaches the paywall (so a cancel returns them
   // mid-flow) or completes onboarding.

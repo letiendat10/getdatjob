@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { stripe, getPriceId } from "@/lib/stripe";
 
 export async function POST(request: NextRequest) {
@@ -45,28 +46,35 @@ export async function POST(request: NextRequest) {
     ? "https://getdatjob.app"
     : "http://localhost:3000";
 
-  // Look up or create Stripe customer
-  const supabaseAdmin = createServerClient(
+  // Look up or create Stripe customer.
+  // IMPORTANT: use createClient (not @supabase/ssr createServerClient) for the
+  // admin path. createServerClient is cookie-bound; even with the service role
+  // key it can drop the auth header in a request with no user session, which
+  // silently breaks writes against non-public schemas. createClient bypasses
+  // RLS reliably.
+  const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: { getAll: () => [], setAll: () => {} },
-    }
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: lookupErr } = await supabaseAdmin
     .schema("subs")
     .from("subscriptions")
     .select("stripe_customer_id")
     .eq("user_id", user.id)
     .maybeSingle();
 
+  if (lookupErr) {
+    console.error("[create-checkout] subs lookup failed:", lookupErr);
+    return Response.json({ error: "DB lookup failed" }, { status: 500 });
+  }
+
   let customerId = existing?.stripe_customer_id ?? null;
 
   if (!customerId) {
     const customer = await stripe.customers.create({ email, metadata: { user_id: user.id } });
     customerId = customer.id;
-    await supabaseAdmin
+    const { error: upsertErr } = await supabaseAdmin
       .schema("subs")
       .from("subscriptions")
       .upsert(
@@ -79,6 +87,14 @@ export async function POST(request: NextRequest) {
         },
         { onConflict: "user_id" }
       );
+    if (upsertErr) {
+      // CRITICAL: do NOT continue to Stripe Checkout — if we can't persist the
+      // customer_id, the webhook won't find a row to update, leaving the user
+      // paid but with no tier change. Roll back the Stripe customer too.
+      console.error("[create-checkout] subs upsert failed:", upsertErr);
+      try { await stripe.customers.del(customerId); } catch {}
+      return Response.json({ error: "Could not initialize subscription record" }, { status: 500 });
+    }
   }
 
   const sessionParams: Parameters<typeof stripe.checkout.sessions.create>[0] = {

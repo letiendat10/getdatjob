@@ -717,6 +717,10 @@ export default function KaiPage() {
   });
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [total3dCount, setTotal3dCount] = useState<number>(0);
+  // The actual search window (3, 7, or 14) used by the cascade in
+  // /api/onboarding/jobs. Paywall body needs this so its "in the last X days"
+  // phrasing matches what Kai already told the user in the bubble above.
+  const [windowDays, setWindowDays] = useState<number>(3);
   const [scanPhase, setScanPhase] = useState(0);
   const [scanJobCount, setScanJobCount] = useState<number | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -768,6 +772,7 @@ export default function KaiPage() {
           step: OnboardingStep;
           messages: ChatMessage[];
           total3dCount?: number;
+          windowDays?: number;
         };
         const resumableSteps: OnboardingStep[] = ["done", "paywall"];
         if (resumableSteps.includes(saved.step) && saved.messages?.length > 0) {
@@ -777,6 +782,9 @@ export default function KaiPage() {
             setStep(saved.step);
             if (typeof saved.total3dCount === "number") {
               setTotal3dCount(saved.total3dCount);
+            }
+            if (typeof saved.windowDays === "number") {
+              setWindowDays(saved.windowDays);
             }
             restoredFromLocalRef.current = true; // Don't re-sync a restored session
           }
@@ -840,10 +848,10 @@ export default function KaiPage() {
       if (stable.length === 0) localStorage.removeItem(KAI_HISTORY_KEY);
       else localStorage.setItem(
         KAI_HISTORY_KEY,
-        JSON.stringify({ step, messages: stable, total3dCount }),
+        JSON.stringify({ step, messages: stable, total3dCount, windowDays }),
       );
     } catch { /* storage full */ }
-  }, [messages, step, total3dCount]);
+  }, [messages, step, total3dCount, windowDays]);
 
   // Load auth user + enriched profile
   useEffect(() => {
@@ -1223,6 +1231,7 @@ export default function KaiPage() {
         const { jobs, total_count, window_days } = await jobsFetch;
         setAllJobs(jobs);
         setTotal3dCount(total_count);
+        setWindowDays(window_days || 3);
         setScanJobCount(jobs.length);
         setScanPhase(4);
         await delay(1300);
@@ -1437,6 +1446,7 @@ export default function KaiPage() {
     const { jobs, total_count, window_days } = await jobsPromise;
     setAllJobs(jobs);
     setTotal3dCount(total_count);
+    setWindowDays(window_days || 3);
     setScanJobCount(jobs.length);
     setScanPhase(4);
     await delay(1300);
@@ -1706,6 +1716,7 @@ export default function KaiPage() {
             <div style={{ paddingLeft: 50, paddingBottom: 24 }}>
               <PaywallScreen
                 jobCount={total3dCount}
+                windowDays={windowDays}
                 email={user?.email ?? undefined}
                 onContinueFree={() => {
                   setStep("done");

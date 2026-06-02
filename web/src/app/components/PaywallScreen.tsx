@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import s from "./PaywallScreen.module.css";
 
 type Props = {
   jobCount?: number;
+  /** Search window used to find the jobs (3, 7, or 14). Passed from Kai so
+      the paywall body's "in the last X days" matches Kai's own bubble. */
+  windowDays?: number;
   email?: string;
   onContinueFree: () => void;
 };
@@ -30,48 +33,28 @@ const PREFERRED_FEATURES = [
 
 type Tier = "preferred" | "passed";
 
-export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
+export default function PaywallScreen({ jobCount, windowDays = 3, email: _email, onContinueFree }: Props) {
   const [interval, setInterval] = useState<"monthly" | "annual">("monthly");
-  const [loadingTier, setLoadingTier] = useState<string | null>(null);
-  // Mobile-only: which tier's card is expanded. Default = preferred (the
-  // recommended path). Clicking the other tier's compact row swaps them.
-  const [expandedTier, setExpandedTier] = useState<Tier>("preferred");
-  const bottomRef = useRef<HTMLDivElement | null>(null);
-  const isFirstRenderRef = useRef(true);
+  const [loading, setLoading] = useState(false);
+  // Selection state — which tier the bottom CTA will check out
+  const [selectedTier, setSelectedTier] = useState<Tier>("preferred");
   const router = useRouter();
 
   const body = jobCount && jobCount > 0
-    ? `Unlock all ${jobCount} job matches in the last 3 days for your search.`
-    : "Unlock all job matches in the last 3 days for your search.";
+    ? `Unlock all ${jobCount} job matches in the last ${windowDays} days for your search.`
+    : `Unlock all job matches in the last ${windowDays} days for your search.`;
 
   const passedPrice = interval === "monthly" ? "$14.99/mo" : "$149.99/yr";
   const preferredPrice = interval === "monthly" ? "$19.99/mo" : "$199.99/yr";
 
-  // After a tier swap on mobile, scroll the bottom of the paywall into view so
-  // the user sees the newly-expanded card's CTA without manually scrolling.
-  // Skip on first render and on desktop (no swap happens there).
-  useEffect(() => {
-    if (isFirstRenderRef.current) {
-      isFirstRenderRef.current = false;
-      return;
-    }
-    if (typeof window === "undefined" || window.innerWidth >= 640) return;
-    // Small delay lets the layout settle from the visibility/order swap before
-    // the browser computes the scroll target.
-    const id = window.setTimeout(() => {
-      bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-    }, 60);
-    return () => window.clearTimeout(id);
-  }, [expandedTier]);
-
-  const handleCheckout = async (tier: Tier) => {
-    if (loadingTier) return;
-    setLoadingTier(tier);
+  const handleCheckout = async () => {
+    if (loading) return;
+    setLoading(true);
     try {
       const res = await fetch("/api/stripe/create-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier, interval }),
+        body: JSON.stringify({ tier: selectedTier, interval }),
       });
       const data = await res.json() as { url?: string; error?: string };
       if (data.url) {
@@ -80,7 +63,7 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
     } catch (err) {
       console.error("Checkout failed:", err);
     } finally {
-      setLoadingTier(null);
+      setLoading(false);
     }
   };
 
@@ -98,33 +81,43 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
       </h2>
       <p className={s.body}>{body}</p>
 
-      {/* Billing toggle — "Annual pricing · Save 20% · [switch]"
-          Centered on desktop, right-aligned on mobile via CSS */}
+      {/* Billing toggle — "[switch] · SAVE 20% · Annual plan"
+          Switch first, then badge, then label.
+          Centered on desktop, right-aligned on mobile via CSS.
+          Toggling also re-defaults the tier selection to Preferred. */}
       <div className={s["toggle-wrap"]}>
         <div className={s["toggle-row"]}>
-          <span className={s["toggle-label"]}>Annual pricing</span>
-          <span className={s["save-badge"]}>Save 20%</span>
           <button
             type="button"
             role="switch"
             aria-checked={interval === "annual"}
-            aria-label="Toggle annual pricing"
+            aria-label="Toggle annual plan"
             className={`${s["switch"]} ${interval === "annual" ? s["switch-on"] : ""}`}
-            onClick={() => setInterval(interval === "annual" ? "monthly" : "annual")}
+            onClick={() => {
+              setInterval(interval === "annual" ? "monthly" : "annual");
+              setSelectedTier("preferred");
+            }}
           >
             <span className={s["switch-knob"]} aria-hidden />
           </button>
+          <span className={s["save-badge"]}>Save 20%</span>
+          <span className={s["toggle-label"]}>Annual plan</span>
         </div>
       </div>
 
-      {/*
-        Cards container with `cards-{expandedTier}` class that drives
-        mobile-only show/hide CSS. Desktop always shows both full cards;
-        mobile shows one full card + the other's compact tappable row.
-      */}
-      <div className={`${s.cards} ${s[`cards-${expandedTier}`]}`}>
-        {/* Passed — FULL card */}
-        <div className={`${s.card} ${s["card-passed"]} ${s["passed-full"]}`}>
+      {/* Two equal-width cards, both always visible.
+          Each card is a selectable button — clicking sets selectedTier.
+          The single CTA at the bottom checks out whichever tier is selected. */}
+      <div className={s.cards}>
+        {/* Passed */}
+        <button
+          type="button"
+          className={`${s.card} ${s["card-passed"]} ${selectedTier === "passed" ? s["card-selected"] : ""}`}
+          onClick={() => setSelectedTier("passed")}
+          aria-pressed={selectedTier === "passed"}
+          aria-label="Select Passed plan"
+        >
+          <Tick selected={selectedTier === "passed"} />
           <div className={s["card-name"]}>Passed</div>
           <p className={s.tagline}>Just seeing what&rsquo;s out there.</p>
           <div className={s["price-block"]}>
@@ -138,37 +131,19 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
               <li key={f} className={s.feature}>{f}</li>
             ))}
           </ul>
-          <button
-            className={`${s.cta} ${loadingTier === "passed" ? s["cta-loading"] : ""}`}
-            onClick={() => handleCheckout("passed")}
-            disabled={!!loadingTier}
-          >
-            {loadingTier === "passed" ? "Loading…" : "Get started"}
-          </button>
-        </div>
-
-        {/* Passed — MOBILE compact tappable row. Tapping EXPANDS (does not
-            checkout); the user then taps the in-card CTA to start checkout. */}
-        <button
-          type="button"
-          className={s["passed-mobile-row"]}
-          onClick={() => setExpandedTier("passed")}
-          aria-label="Expand Passed plan"
-        >
-          <div className={s["mobile-row-top"]}>
-            <span className={s["mobile-row-name"]}>Passed</span>
-            <span className={s["mobile-row-price"]}>{passedPrice}</span>
-          </div>
-          <div className={s["mobile-row-desc"]}>Just seeing what&rsquo;s out there</div>
         </button>
 
-        {/* Preferred — FULL card (rainbow outer) */}
-        <div className={`${s["preferred-outer"]} ${s["preferred-full"]}`}>
-          <div className={`${s.card} ${s["card-preferred"]}`}>
-            {/* Chip absolute top-right so feature list stays at its natural position */}
-            <div className={s["recommended-chip"]}>
-              <span aria-hidden>⭐</span> RECOMMENDED
-            </div>
+        {/* Preferred — rainbow outline ALWAYS visible (regardless of selection) */}
+        <div className={s["preferred-outer"]}>
+          <button
+            type="button"
+            className={`${s.card} ${s["card-preferred"]} ${selectedTier === "preferred" ? s["card-selected"] : ""}`}
+            onClick={() => setSelectedTier("preferred")}
+            aria-pressed={selectedTier === "preferred"}
+            aria-label="Select Preferred plan"
+          >
+            <span className={s["best-value-flag"]}>BEST VALUE</span>
+            <Tick selected={selectedTier === "preferred"} />
             <div className={s["card-name"]}>Preferred</div>
             <p className={s.tagline}>For when you&rsquo;re actively applying.</p>
             <div className={s["price-block"]}>
@@ -182,44 +157,43 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
                 <li key={f} className={s.feature}>{f}</li>
               ))}
             </ul>
-            <button
-              className={`${s.cta} ${loadingTier === "preferred" ? s["cta-loading"] : ""}`}
-              onClick={() => handleCheckout("preferred")}
-              disabled={!!loadingTier}
-            >
-              {loadingTier === "preferred" ? "Loading…" : "Get started"}
-            </button>
-          </div>
+          </button>
         </div>
+      </div>
 
-        {/* Preferred — MOBILE compact tappable row. Tapping expands it.
-            Keeps the small RECOMMENDED chip inline so the editor's-pick
-            signal survives even when this tier is collapsed. */}
+      {/* Single CTA outside both cards — checks out whichever tier is selected */}
+      <div className={s["cta-row"]}>
         <button
           type="button"
-          className={s["preferred-mobile-row"]}
-          onClick={() => setExpandedTier("preferred")}
-          aria-label="Expand Preferred plan"
+          className={`${s.cta} ${loading ? s["cta-loading"] : ""}`}
+          onClick={handleCheckout}
+          disabled={loading}
         >
-          <div className={s["mobile-row-top"]}>
-            <span className={s["mobile-row-name"]}>Preferred</span>
-            <span className={s["mobile-row-chip"]}>
-              <span aria-hidden>⭐</span> RECOMMENDED
-            </span>
-            <span className={s["mobile-row-price"]}>{preferredPrice}</span>
-          </div>
-          <div className={s["mobile-row-desc"]}>For when you&rsquo;re actively applying</div>
+          {loading ? "Loading…" : "Get started"}
         </button>
       </div>
 
-      {/* Free demoted to a text link, not a card */}
+      {/* Free demoted to a text link, below the CTA */}
       <button className={s["free-link"]} onClick={onContinueFree}>
         Don&rsquo;t need unlimited job listings? <span className={s["free-link-cta"]}>Continue on Free →</span>
       </button>
-
-      {/* Scroll anchor for mobile expand/collapse — placed at the very bottom
-          so scrollIntoView reveals the newly expanded card's CTA + free link. */}
-      <div ref={bottomRef} aria-hidden style={{ height: 0 }} />
     </div>
+  );
+}
+
+/** Selection tick — top-right of each card. Filled ink circle with white ✓
+    when selected; empty outlined circle when not. */
+function Tick({ selected }: { selected: boolean }) {
+  return (
+    <span className={`${s["select-tick"]} ${selected ? s["select-tick-on"] : ""}`} aria-hidden>
+      {selected && (
+        <svg viewBox="0 0 24 24" width="14" height="14">
+          <path
+            d="M10.8334 13.8496L16.1956 8.48743L17.0206 9.31238L10.8334 15.4995L7.12109 11.7873L7.94606 10.9623L10.8334 13.8496Z"
+            fill="#F4F0E8"
+          />
+        </svg>
+      )}
+    </span>
   );
 }

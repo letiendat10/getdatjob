@@ -58,8 +58,7 @@
   line-height: 1.45;
 }
 
-/* ── Billing toggle — "Annual pricing · Save 20% · [switch]"
-   Centered on desktop; right-aligned on mobile (per mobile pattern). */
+/* ── Billing toggle — "Annual pricing · Save 20% · [switch]" ──────────── */
 .toggle-wrap {
   display: flex;
   justify-content: center;
@@ -91,7 +90,7 @@
   white-space: nowrap;
 }
 
-/* iOS-style switch — track + sliding knob. Off = pale, On = ink. */
+/* iOS-style switch */
 .switch {
   --w: 38px;
   --h: 22px;
@@ -141,7 +140,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 14px;
-  margin-bottom: 22px;
+  margin-bottom: 18px;
   align-items: stretch;
 }
 
@@ -152,7 +151,7 @@
   }
 }
 
-/* ── Card base ───────────────────────────────────────────────────────────── */
+/* ── Card base — now a clickable button ─────────────────────────────────── */
 .card {
   background: var(--card);
   border: 1px solid var(--line);
@@ -161,49 +160,97 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  /* Button reset */
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.05s;
 }
 
-/* ── Preferred — rainbow gradient outline ────────────────────────────────── */
+.card:hover {
+  border-color: var(--ink-3);
+}
+
+.card:active {
+  transform: translateY(0.5px);
+}
+
+.card:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--ink) 30%, transparent);
+  outline-offset: 2px;
+}
+
+/* Selected state — slight border darkening + subtle shadow lift */
+.card-selected {
+  border-color: var(--ink);
+  box-shadow: 0 4px 16px rgba(23, 22, 20, 0.08);
+}
+
+/* ── Preferred — rainbow gradient outline, ALWAYS visible ────────────────── */
 .preferred-outer {
   background: linear-gradient(135deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #a855f7);
   border-radius: 20px;
   padding: 2px;
   height: 100%;
+  position: relative;
 }
 
 .card-preferred {
+  width: 100%;
   border: none;
   border-radius: 18px;
   position: relative;
 }
 
-/* Recommended chip — absolutely positioned top-right corner.
-   Card content (Preferred name, tagline, price, first feature) keeps its
-   natural top-left position; chip floats over the corner instead of pushing
-   the feature list down. */
-.recommended-chip {
+.card-preferred:hover {
+  border: none;
+}
+
+.card-preferred.card-selected {
+  /* Selected Preferred — inner card gets the ink ring */
+  box-shadow: inset 0 0 0 1px var(--ink), 0 4px 16px rgba(23, 22, 20, 0.08);
+}
+
+/* ── "Best value" flag — top-left, sticking up like Headspace's chip ────── */
+.best-value-flag {
   position: absolute;
-  top: 18px;
-  right: 18px;
+  top: -12px;
+  left: 16px;
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
-  background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #a855f7);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  background: var(--ink);
+  color: #F4F0E8;
+  padding: 5px 10px;
+  border-radius: 6px;
   text-transform: uppercase;
+  white-space: nowrap;
+  z-index: 1;
   pointer-events: none;
 }
 
-.recommended-chip > span[aria-hidden] {
-  -webkit-text-fill-color: initial;
-  color: var(--gold);
+/* ── Selection tick — top-right corner of each card ──────────────────────── */
+.select-tick {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.select-tick-on {
+  background: var(--ink);
+  border-color: var(--ink);
 }
 
 /* ── Card content ────────────────────────────────────────────────────────── */
@@ -215,6 +262,8 @@
   letter-spacing: -0.01em;
   margin-bottom: 6px;
   line-height: 1.1;
+  /* Reserve space for the tick in the top-right */
+  padding-right: 30px;
 }
 
 .tagline {
@@ -261,7 +310,7 @@
 .features {
   list-style: none;
   padding: 0;
-  margin: 0 0 18px;
+  margin: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -277,8 +326,7 @@
   line-height: 1.4;
 }
 
-/* Brand-supplied pricing icon (Webflow CDN asset, inlined as data URI for
-   stability + no extra request). Filled black circle with white check. */
+/* Brand-supplied pricing icon — black circle with white check */
 .feature::before {
   content: "";
   display: inline-block;
@@ -289,17 +337,20 @@
   background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'><circle cx='12' cy='12' r='12' fill='%23111111'/><path d='M10.8334 13.8496L16.1956 8.48743L17.0206 9.31238L10.8334 15.4995L7.12109 11.7873L7.94606 10.9623L10.8334 13.8496Z' fill='white'/></svg>") center / contain no-repeat;
 }
 
-/* ── CTA — both cards use ink (black) pill per brand spec:
-   bg var(--ink), color #F4F0E8, padding 14px 24px, radius 999px,
-   weight 600, font-size 15.5px, deep box-shadow */
+/* ── CTA — single button below both cards ──────────────────────────────── */
+.cta-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
 .cta {
-  display: block;
-  width: 100%;
+  display: inline-block;
   text-align: center;
   font-family: inherit;
   font-size: 15.5px;
   font-weight: 600;
-  padding: 14px 24px;
+  padding: 14px 36px;
   border-radius: 999px;
   border: none;
   background: var(--ink);
@@ -307,7 +358,7 @@
   cursor: pointer;
   box-shadow: 0 6px 18px rgba(23, 22, 20, 0.18), 0 2px 4px rgba(23, 22, 20, 0.10);
   transition: transform 0.05s, opacity 0.15s, box-shadow 0.15s;
-  margin-top: auto;
+  min-width: 220px;
 }
 
 .cta:hover {
@@ -324,7 +375,7 @@
   cursor: not-allowed;
 }
 
-/* ── Free as a text link (no card, no button-look) ──────────────────────── */
+/* ── Free as a text link (below the CTA) ─────────────────────────────────── */
 .free-link {
   align-self: center;
   background: transparent;
@@ -346,137 +397,11 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
-/* ── Mobile compact rows — hidden on desktop ─────────────────────────────── */
-/* On desktop both full cards are always shown side-by-side. The compact
-   tappable rows below are mobile-only swap targets. */
-.passed-mobile-row,
-.preferred-mobile-row {
-  display: none;
-}
-
-/* Shared compact row styling (Passed + Preferred share visual structure) */
-.passed-mobile-row,
-.preferred-mobile-row {
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 14px 16px;
-  cursor: pointer;
-  font-family: inherit;
-  text-align: left;
-  transition: background 0.15s;
-}
-
-.passed-mobile-row:hover,
-.preferred-mobile-row:hover {
-  background: var(--bg-2);
-}
-
-.mobile-row-top {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  width: 100%;
-}
-
-.mobile-row-name {
-  font-family: var(--font-instrument-serif), Georgia, serif;
-  font-size: 20px;
-  color: var(--ink);
-  letter-spacing: -0.01em;
-  flex: 1;
-  line-height: 1.1;
-}
-
-.mobile-row-price {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink-3);
-  text-decoration: line-through;
-  text-decoration-color: var(--ink-3);
-  flex-shrink: 0;
-}
-
-.mobile-row-desc {
-  font-size: 13px;
-  color: var(--ink-3);
-  line-height: 1.35;
-}
-
-/* Small inline RECOMMENDED chip on the Preferred compact row — keeps the
-   editor's-pick signal visible even when Preferred is collapsed. */
-.mobile-row-chip {
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #a855f7);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-}
-
-.mobile-row-chip > span[aria-hidden] {
-  -webkit-text-fill-color: initial;
-  color: var(--gold);
-}
-
+/* ── Mobile (<640px) ────────────────────────────────────────────────────── */
 @media (max-width: 639px) {
-  /*
-    Mobile expand/collapse logic — the cards container gets either
-    `cards-preferred` or `cards-passed` from the React state, which
-    determines which card is shown full and which is shown as a row.
-
-    Positions are FIXED: Preferred always on top, Passed always on bottom.
-    Only the visual state (expanded vs compact) swaps in place — the cards
-    do not change positions when the user taps a row.
-  */
-  .preferred-full,
-  .preferred-mobile-row {
-    order: 0;
-  }
-  .passed-full,
-  .passed-mobile-row {
-    order: 1;
-  }
-
-  /* DEFAULT mobile state: Preferred expanded (top), Passed collapsed (bottom) */
-  .cards-preferred .passed-full {
-    display: none;
-  }
-  .cards-preferred .preferred-mobile-row {
-    display: none;
-  }
-  .cards-preferred .passed-mobile-row {
-    display: flex;
-  }
-
-  /* SWAPPED mobile state: Preferred collapsed (top), Passed expanded (bottom) */
-  .cards-passed .preferred-full {
-    display: none;
-  }
-  .cards-passed .passed-mobile-row {
-    display: none;
-  }
-  .cards-passed .passed-full {
-    display: flex;
-  }
-  .cards-passed .preferred-mobile-row {
-    display: flex;
-  }
-
-  /* Mobile-only overrides for the rest */
   .h1 {
     font-size: 28px;
     text-align: left;
@@ -487,17 +412,33 @@
   .trust-pill {
     align-self: flex-start;
   }
-  /* Toggle right-aligned on mobile (per inspiration pattern) */
+  /* Toggle right-aligned on mobile */
   .toggle-wrap {
     justify-content: flex-end;
   }
-  /* Make Preferred card slightly tighter on mobile */
+  /* Preferred card slightly tighter on mobile */
   .card-preferred {
     padding: 22px;
   }
-  /* Breathing room from the viewport edges on mobile */
+  /* Breathing room from the viewport edges */
   .wrap {
     padding-left: 4px;
     padding-right: 4px;
+  }
+  /* Single CTA aligned LEFT on mobile (per user spec) */
+  .cta-row {
+    justify-content: flex-start;
+    padding-left: 4px;
+    margin-bottom: 14px;
+  }
+  .cta {
+    padding: 13px 28px;
+    min-width: 180px;
+  }
+  /* Free link aligned left on mobile to match the CTA */
+  .free-link {
+    align-self: flex-start;
+    padding-left: 4px;
+    text-align: left;
   }
 }

@@ -89,9 +89,11 @@ One sentence: what we do + why it matters for visa holders. Max 25 words.
 - **Body:** 1–2 sentences, specific pain → our solution. No generalizations.
 
 ### CTA Button Copy
-- Primary: "Get dat job →" / "Browse jobs →" / "Find your next role"
+- Primary: "Get dat job →" / "Browse jobs →" / "Find your next role" / "Get started"
 - Secondary: "See all H-1B jobs" / "Browse remote roles"
-- Avoid: "Click here", "Learn more", "Submit", "Get started"
+- Avoid: "Click here", "Learn more", "Submit"
+
+**On "Get started":** allowed. It's short, action-led, and the right call on paywall / pricing / signup surfaces where the user has already decided to act and just needs the verb. Reserve the longer brand-specific CTAs ("Get dat job →", "Find your next role") for landing-page hero and ad-driven surfaces where the CTA is also doing the brand-voice work.
 
 ### Kai-specific Copy
 When describing Kai to users:

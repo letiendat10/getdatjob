@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import {
@@ -396,6 +397,26 @@ function FilterChip({ label, value, allValue = "all", options, onChange, isOpen,
     onToggle();
   };
 
+  // Render the dropdown into a portal at <body> so it can't be clipped or have its
+  // position:fixed coordinates reinterpreted by any ancestor that creates a
+  // containing block (overflow:hidden chain, backdrop-filter, transform, etc.).
+  // Without this the menu rendered fine on desktop but stayed invisible on
+  // iOS Safari mobile even though state was updating (the chevron rotated).
+  const menu = isOpen && dropPos && typeof document !== "undefined"
+    ? createPortal(
+        <div style={{ top: dropPos.top, left: dropPos.left }} className={s["matches-chip-menu"]}>
+          {options.map((opt) => (
+            <button key={opt.value} onClick={() => { onChange(opt.value); onToggle(); }}
+              className={`${s["matches-chip-option"]} ${opt.value === value ? s["matches-chip-option-active"] : ""}`}>
+              {opt.label}
+              {opt.value === value && <CheckCircle size={13} />}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )
+    : null;
+
   return (
     <div style={{ flexShrink: 0 }}>
       <button
@@ -407,17 +428,7 @@ function FilterChip({ label, value, allValue = "all", options, onChange, isOpen,
         {currentLabel}
         <ChevronDown size={12} style={{ transition: "transform .15s", transform: isOpen ? "rotate(180deg)" : "none" }} />
       </button>
-      {isOpen && dropPos && (
-        <div style={{ top: dropPos.top, left: dropPos.left }} className={s["matches-chip-menu"]}>
-          {options.map((opt) => (
-            <button key={opt.value} onClick={() => { onChange(opt.value); onToggle(); }}
-              className={`${s["matches-chip-option"]} ${opt.value === value ? s["matches-chip-option-active"] : ""}`}>
-              {opt.label}
-              {opt.value === value && <CheckCircle size={13} />}
-            </button>
-          ))}
-        </div>
-      )}
+      {menu}
     </div>
   );
 }

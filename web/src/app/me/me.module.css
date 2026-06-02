@@ -1329,7 +1329,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 7px 12px;
+  min-height: 34px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 500;
@@ -1339,6 +1340,10 @@
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: inherit;
+  /* iOS Safari: ensure tap registers immediately and isn't swallowed by the
+     horizontal scroll container the chip lives inside. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.04);
 }
 .matches-chip:hover {
   border-color: #71717a;
@@ -1370,7 +1375,8 @@
 .matches-chip-option {
   width: 100%;
   text-align: left;
-  padding: 8px 12px;
+  padding: 10px 12px;
+  min-height: 40px;
   font-size: 13px;
   border-radius: 8px;
   border: none;
@@ -1381,6 +1387,7 @@
   align-items: center;
   justify-content: space-between;
   font-family: inherit;
+  touch-action: manipulation;
 }
 .matches-chip-option:hover {
   background: #fafafa;
@@ -1560,7 +1567,15 @@
   white-space: nowrap;
 }
 .matches-card-chips { margin-top: 8px; }
-.matches-card-viewed { font-size: 11px; color: #a1a1aa; margin-top: 4px; display: block; }
+.matches-card-viewed {
+  position: absolute;
+  right: 16px;
+  bottom: 10px;
+  font-size: 10.5px;
+  color: #a1a1aa;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
 
 /* Gated area — blurred preview + centered modal */
 .matches-gate {

@@ -10,24 +10,22 @@ type Props = {
   onContinueFree: () => void;
 };
 
-const FREE_FEATURES = [
-  "6 job matches/day",
-  "USCIS-verified sponsorship data",
-  "Sponsorship history (LCA count + last filed)",
-  "All visa types (H-1B, OPT, E-3/TN)",
-  "Verified company point of contact",
-];
-
+// Side-by-side comparison: both cards list the same first 4 features so the eye
+// can scan in parallel; Preferred adds the 5th and 6th below them.
 const PASSED_FEATURES = [
-  "Everything in Free",
-  "Unlimited job matches",
+  "USCIS-verified data",
+  "Unlimited job listings",
+  "Sponsorship history",
+  "Contact of company POC",
 ];
 
 const PREFERRED_FEATURES = [
-  "Everything in Passed",
-  "Daily job alerts",
+  "USCIS-verified data",
+  "Unlimited job listings",
+  "Sponsorship history",
+  "Contact of company POC",
+  "Job alerts to make you first in line",
   '"I just got laid off" action plan',
-  "Salary benchmarking data",
 ];
 
 export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
@@ -35,9 +33,9 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
   const router = useRouter();
 
-  const headerText = jobCount && jobCount > 0
-    ? `Unlock ${jobCount} job${jobCount === 1 ? "" : "s"} matching your search in the last 3 days.`
-    : "Unlock jobs matching your search in the last 3 days.";
+  const body = jobCount && jobCount > 0
+    ? `Unlock all ${jobCount} job matches in the last 3 days for your search.`
+    : "Unlock all job matches in the last 3 days for your search.";
 
   const passedPrice = interval === "monthly" ? "$14.99/mo" : "$149.99/yr";
   const preferredPrice = interval === "monthly" ? "$19.99/mo" : "$199.99/yr";
@@ -64,48 +62,54 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
 
   return (
     <div className={s.wrap}>
-      <h2 className={s.header}>{headerText}</h2>
-      <p className={s.trust}>✨ Exclusive offer: first month free with WORKINGVISA. Cancel anytime.</p>
-
-      {/* Billing toggle */}
-      <div className={s.toggle}>
-        <button
-          className={`${s["toggle-btn"]} ${interval === "monthly" ? s["toggle-active"] : ""}`}
-          onClick={() => setInterval("monthly")}
-        >
-          Monthly
-        </button>
-        <button
-          className={`${s["toggle-btn"]} ${interval === "annual" ? s["toggle-active"] : ""}`}
-          onClick={() => setInterval("annual")}
-        >
-          Annual <span className={s["save-badge"]}>Save ~20%</span>
-        </button>
+      {/* Trust pill — credibility before the ask */}
+      <div className={s["trust-pill"]}>
+        <span className={s["trust-glyph"]}>✦</span>
+        Trusted by 1,120 working visa holders
       </div>
 
-      {/* Tier cards */}
-      <div className={s.cards}>
-        {/* Free */}
-        <div className={`${s.card} ${s["card-free"]}`}>
-          <div className={s["card-name"]}>Free</div>
-          <div className={s["price-area"]}>
-            <span className={s["price-zero"]}>$0</span>
-          </div>
-          <ul className={s.features}>
-            {FREE_FEATURES.map((f) => (
-              <li key={f} className={s.feature}>{f}</li>
-            ))}
-          </ul>
-          <button className={`${s.cta} ${s["cta-free"]}`} onClick={onContinueFree}>
-            Continue for free
+      {/* Brand-matched H1: Instrument Serif (parity with /c landing page) */}
+      <h2 className={s.h1}>
+        Don&rsquo;t let <em className={s["h1-em"]}>your visa</em> hold you back.
+      </h2>
+      <p className={s.body}>{body}</p>
+
+      {/* Billing toggle — pill above cards; Save 20% lives OUTSIDE the pill */}
+      <div className={s["toggle-wrap"]}>
+        <div className={s.toggle} role="tablist" aria-label="Billing interval">
+          <button
+            type="button"
+            className={`${s["toggle-btn"]} ${interval === "monthly" ? s["toggle-active"] : ""}`}
+            onClick={() => setInterval("monthly")}
+            role="tab"
+            aria-selected={interval === "monthly"}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            className={`${s["toggle-btn"]} ${interval === "annual" ? s["toggle-active"] : ""}`}
+            onClick={() => setInterval("annual")}
+            role="tab"
+            aria-selected={interval === "annual"}
+          >
+            Annually
           </button>
         </div>
+        <span className={s["save-badge"]}>Save 20%</span>
+      </div>
 
-        {/* Passed */}
-        <div className={`${s.card} ${s["card-passed"]}`}>
+      {/* Two equal-width cards for true side-by-side comparison */}
+      <div className={s.cards}>
+        {/* Passed — DESKTOP full card */}
+        <div className={`${s.card} ${s["card-passed"]} ${s["passed-desktop"]}`}>
           <div className={s["card-name"]}>Passed</div>
-          <div className={s["price-area"]}>
-            <span className={s["price-zero"]}>{passedPrice}</span>
+          <p className={s.tagline}>Perfect for seeing what the market has to offer.</p>
+          <div className={s["price-block"]}>
+            <div className={s["price-big"]}>
+              <span className={s["price-strike"]}>{passedPrice}</span>
+            </div>
+            <div className={s["price-offer"]}>First month on us</div>
           </div>
           <ul className={s.features}>
             {PASSED_FEATURES.map((f) => (
@@ -113,21 +117,41 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
             ))}
           </ul>
           <button
-            className={`${s.cta} ${s["cta-paid"]} ${loadingTier === "passed" ? s["cta-loading"] : ""}`}
+            className={`${s.cta} ${loadingTier === "passed" ? s["cta-loading"] : ""}`}
             onClick={() => handleCheckout("passed")}
             disabled={!!loadingTier}
           >
-            {loadingTier === "passed" ? "Loading…" : "Get first month free →"}
+            {loadingTier === "passed" ? "Loading…" : "Get started today →"}
           </button>
         </div>
 
-        {/* Preferred – rainbow border */}
+        {/* Passed — MOBILE compact tappable row (hidden on desktop) */}
+        <button
+          type="button"
+          className={`${s["passed-mobile-row"]} ${loadingTier === "passed" ? s["cta-loading"] : ""}`}
+          onClick={() => handleCheckout("passed")}
+          disabled={!!loadingTier}
+        >
+          <span className={s["passed-row-name"]}>Passed</span>
+          <span className={s["passed-row-desc"]}>See what&rsquo;s out there</span>
+          <span className={s["passed-row-price"]}>{passedPrice}</span>
+          <span className={s["passed-row-chevron"]} aria-hidden>→</span>
+        </button>
+
+        {/* Preferred — right, rainbow outline */}
         <div className={s["preferred-outer"]}>
           <div className={`${s.card} ${s["card-preferred"]}`}>
-            <div className={s["recommended-badge"]}>⭐ Recommended</div>
+            {/* Chip absolute top-right so feature list stays at its natural position */}
+            <div className={s["recommended-chip"]}>
+              <span aria-hidden>⭐</span> RECOMMENDED
+            </div>
             <div className={s["card-name"]}>Preferred</div>
-            <div className={s["price-area"]}>
-              <span className={s["price-zero"]}>{preferredPrice}</span>
+            <p className={s.tagline}>Necessary for serious job seekers.</p>
+            <div className={s["price-block"]}>
+              <div className={s["price-big"]}>
+                <span className={s["price-strike"]}>{preferredPrice}</span>
+              </div>
+              <div className={s["price-offer"]}>First month on us</div>
             </div>
             <ul className={s.features}>
               {PREFERRED_FEATURES.map((f) => (
@@ -135,25 +159,20 @@ export default function PaywallScreen({ jobCount, onContinueFree }: Props) {
               ))}
             </ul>
             <button
-              className={`${s.cta} ${s["cta-paid"]} ${loadingTier === "preferred" ? s["cta-loading"] : ""}`}
+              className={`${s.cta} ${loadingTier === "preferred" ? s["cta-loading"] : ""}`}
               onClick={() => handleCheckout("preferred")}
               disabled={!!loadingTier}
             >
-              {loadingTier === "preferred" ? "Loading…" : "Get first month free →"}
+              {loadingTier === "preferred" ? "Loading…" : "Get started today →"}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Footer */}
-      <div className={s.footer}>
-        <p className={s["footer-trust"]}>Trusted by 1,120 working visa holders.</p>
-        <p className={s["footer-promo"]}>
-          Promo code{" "}
-          <span className={s["promo-code"]}>WORKINGVISA</span>{" "}
-          auto-applied — first month free. One redemption per user.
-        </p>
-      </div>
+      {/* Free demoted to a text link, not a card */}
+      <button className={s["free-link"]} onClick={onContinueFree}>
+        Don&rsquo;t need unlimited job listings? <span className={s["free-link-cta"]}>Continue on Free →</span>
+      </button>
     </div>
   );
 }

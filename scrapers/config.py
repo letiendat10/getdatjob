@@ -1,7 +1,19 @@
 import os
+import sys
 
 SUPABASE_URL = "https://tdgptapfspleoobiyiqx.supabase.co"
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkZ3B0YXBmc3BsZW9vYml5aXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODc0MjAxNCwiZXhwIjoyMDk0MzE4MDE0fQ.SrC20Kgg5Xga1SuLD2komW7LZ2Cu3vbXS5SEofsLp70")
+# Service-role key comes from the environment ONLY — never commit it. CI provides it
+# via the `SUPABASE_KEY` GitHub Actions secret; locally, export it (or source a .env).
+# An absent GitHub secret renders the env var as an empty string, so guard against
+# unset *and* empty with a clear message — otherwise create_client dies with an opaque
+# "supabase_key is required".
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+if not SUPABASE_KEY:
+    sys.exit(
+        "SUPABASE_KEY is not set. Configure the GitHub Actions secret "
+        "(Settings -> Secrets -> Actions) and/or export SUPABASE_KEY locally "
+        "before running scrapers."
+    )
 
 DATA_DIR = "/Users/dat/getdatjob/data"
 LCA_FILE = f"{DATA_DIR}/raw/LCA_Dislclosure_Data_FY2026_Q2.xlsx"

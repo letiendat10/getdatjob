@@ -24,8 +24,12 @@ from title_utils import clean_title
 
 # ── Canonical taxonomies ──────────────────────────────────────────────────────
 LEVELS = ["Entry/Junior", "Senior", "Lead/Manager", "Director", "VP"]
-DEPARTMENTS = ["Product", "Engineering", "Data", "Design", "Sales", "Marketing",
-               "Finance", "Security"]
+# 15 canonical departments — matches the /jobs filter UI exactly, so the stored column
+# and the filter agree. Priority order (specific → the "engineer" catch-all) lives in
+# _DEPT_KEYWORDS below; DEPARTMENTS is the allowed-value set.
+DEPARTMENTS = ["AI / ML", "Data", "Security", "Design", "Product", "Finance", "Legal",
+               "HR / People", "Customer Success", "Marketing/Growth", "Sales",
+               "Platform / DevOps", "Facilities", "Operations", "Engineering"]
 
 # ── Level keyword ladder (highest match wins; checked top-to-bottom) ───────────
 _RX_VP = re.compile(
@@ -63,23 +67,45 @@ def classify_level(title: str | None) -> str | None:
     return None
 
 
-# ── Department keywords (priority order: specific before the "engineer" catch-all) ─
+# ── Department keywords ───────────────────────────────────────────────────────
+# Dict insertion order IS the match priority (specific depts before the "engineer"
+# catch-all). Matched as substrings against a space-padded lowercased haystack, so
+# boundary tokens (" ai ", " ml ", " hr ", " ops", " pm ", " cx ") are written with
+# the spaces they need. Ported from the /jobs DEPT_PATTERNS so column == filter.
 _DEPT_KEYWORDS: dict[str, list[str]] = {
-    "Data":        ["data scientist", "data engineer", "data analyst", "ml engineer",
-                    "machine learning", "analytics", "data science", "data architect"],
-    "Security":    ["security", "infosec", "cybersecurity", "soc analyst", "appsec"],
-    "Design":      ["designer", "ux", "product design", "user experience", "ui/ux", "ux/ui"],
-    "Product":     ["product manager", "product owner", "head of product", "product lead"],
-    "Finance":     ["finance", "financial", "accounting", "accountant", "controller", "cfo"],
-    "Marketing":   ["marketing", "growth", "seo", "content marketing", "brand"],
-    "Sales":       ["sales", "account executive", "account manager", "business development",
-                    "revenue"],
-    "Engineering": ["engineer", "developer", "swe", "software", "backend", "back end",
-                    "frontend", "front end", "full stack", "fullstack", "devops", "platform",
-                    "infrastructure", "sre", "programmer", "architect"],
+    "AI / ML":           ["machine learning", "deep learning", "artificial intelligence",
+                          " ai ", "ai/ml", " ml ", "ml engineer", "mlops", "nlp", "llm",
+                          "research scientist", "applied scientist"],
+    "Data":              ["data engineer", "data scientist", "data analyst", "data science",
+                          "data architect", "analytics", "business intelligence", " bi "],
+    "Security":          ["security", "infosec", "cybersecurity", "appsec", "devsecops",
+                          "soc analyst"],
+    "Design":            ["designer", "design", " ux", "ux ", " ui", "ui ",
+                          "user experience", "user research"],
+    "Product":           ["product manager", "product owner", "product lead",
+                          "product management", "head of product", " pm "],
+    "Finance":           ["finance", "financial", "accounting", "accountant", "controller",
+                          "fp&a", "treasury", "bookkeep"],
+    "Legal":             ["legal", "counsel", "attorney", "lawyer", "paralegal", "compliance"],
+    "HR / People":       ["recruit", "talent acquisition", "human resources", " hr ",
+                          "people ops", "people operations", "people partner", "hrbp"],
+    "Customer Success":  ["customer success", "customer support", "customer experience",
+                          "account manager", " cx ", "support engineer", "client success"],
+    "Marketing/Growth":  ["marketing", "growth", "seo", "brand", "demand generation",
+                          "communications", "social media", "content "],
+    "Sales":             ["sales", "account executive", "business development", "revenue",
+                          " sdr", " bdr"],
+    "Platform / DevOps": ["devops", "site reliability", " sre", "platform engineer",
+                          "infrastructure", "cloud engineer", "reliability engineer"],
+    "Facilities":        ["facilities", "mailroom", "real estate", "workplace", "janitorial",
+                          "custodial", "maintenance tech"],
+    "Operations":        ["operations", " ops", "logistics", "supply chain", "fulfillment",
+                          "warehouse", "procurement"],
+    "Engineering":       ["engineer", "developer", "swe", "software", "back end", "backend",
+                          "front end", "frontend", "full stack", "fullstack", "programmer",
+                          "architect", "sdet", "firmware", "embedded"],
 }
-_DEPT_PRIORITY = ["Data", "Security", "Design", "Product", "Finance", "Marketing", "Sales",
-                  "Engineering"]
+_DEPT_PRIORITY = list(_DEPT_KEYWORDS)  # dict preserves insertion (= priority) order
 
 
 def classify_department(title: str | None, source_dept: str | None = None) -> str | None:
@@ -90,7 +116,8 @@ def classify_department(title: str | None, source_dept: str | None = None) -> st
         return ov or None
     # Strip noisy numeric prefixes from source dept (Greenhouse: "7112 Data Science").
     hint = re.sub(r"^\s*\d+\s+", "", source_dept or "")
-    hay = f"{t} {hint}".lower()
+    # Pad so boundary keywords (" ai ", " ml ", " hr ", " ops", " pm ") match at the edges.
+    hay = f" {t} {hint} ".lower()
     for dept in _DEPT_PRIORITY:
         if any(kw in hay for kw in _DEPT_KEYWORDS[dept]):
             return dept
@@ -134,6 +161,26 @@ def _override(title: str, field: str) -> str | None:
     return row.get(field)  # str | None
 
 
+def merge_db_overrides(rows) -> None:
+    """Merge human title reviews (public.title_reviews rows) over the JSON seed so a
+    review instantly governs classification across daily pulls + backfills. Call once at
+    scraper startup, e.g.::
+
+        merge_db_overrides(sb.table("title_reviews")
+                             .select("title_norm,department,job_level").execute().data)
+
+    Only non-null fields override; a review that touched only title_clean leaves the
+    keyword heuristic in charge of dept/level."""
+    ov = _load_overrides()
+    for r in rows or []:
+        key = (r.get("title_norm") or "").strip().lower()
+        if not key:
+            continue
+        entry = {k: r[k] for k in ("department", "job_level") if r.get(k) is not None}
+        if entry:
+            ov[key] = {**ov.get(key, {}), **entry}
+
+
 if __name__ == "__main__":
     samples = [
         ("Senior Software Engineer", None),
@@ -147,6 +194,18 @@ if __name__ == "__main__":
         ("Principal Security Engineer", None),
         ("Sr. Account Executive", None),
         ("Data Engineer", "7112 Data Science"),
+        ("Machine Learning Engineer", None),   # AI / ML
+        ("Research Scientist", None),          # AI / ML
+        ("Site Reliability Engineer", None),   # Platform / DevOps
+        ("DevOps Engineer", None),             # Platform / DevOps (not Operations)
+        ("Technical Recruiter", None),         # HR / People
+        ("Customer Success Manager", None),    # Customer Success (not Sales)
+        ("Corporate Counsel", None),           # Legal
+        ("Growth Marketing Manager", None),    # Marketing/Growth
+        ("Supply Chain Analyst", None),        # Operations
+        ("Facilities Coordinator", None),      # Facilities
+        ("Account Manager", None),             # Customer Success (not Sales/Finance)
+        ("HR Business Partner", None),         # HR / People
     ]
     for title, sd in samples:
         print(f"{title!r:45} level={classify_level(title)!r:16} "

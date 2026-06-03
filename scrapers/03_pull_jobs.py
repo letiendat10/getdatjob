@@ -709,6 +709,13 @@ if __name__ == "__main__":
     parser.add_argument("--employer-ids", nargs="+", type=int, help="Only pull for these employer IDs")
     args = parser.parse_args()
 
+    # Human title reviews (from /admin/review) win over keyword heuristics for
+    # department/job_level on every job pulled. See classify.merge_db_overrides.
+    from classify import merge_db_overrides
+    merge_db_overrides(
+        sb.table("title_reviews").select("title_norm,department,job_level").execute().data
+    )
+
     ats_rows = sb.table("employer_ats").select("employer_id,ats_type,slug").execute().data
     if args.ats:
         ats_rows = [r for r in ats_rows if r["ats_type"] in args.ats]

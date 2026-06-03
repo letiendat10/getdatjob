@@ -276,7 +276,7 @@ function inferLevel(title: string): string | null {
   if (/\b(principal|staff engineer|distinguished|fellow)\b/.test(t)) return "Principal / Staff";
   if (/\b(senior|sr\.?)\b/.test(t)) return "Senior";
   if (/\b(lead|manager|director|head of|vp\b|vice president)\b/.test(t)) return "Lead / Manager";
-  return "Senior IC";
+  return "Senior";
 }
 
 interface Greeting {
@@ -1161,7 +1161,7 @@ export default function KaiPage() {
       const salaryStr = updatedIntake.salaryMin
         ? `earning minimum $${Math.round(updatedIntake.salaryMin / 1000)}K+`
         : null;
-      const levelStr = level === "senior_ic" ? "Senior IC" : level === "manager" ? "Manager / Lead" : "all levels";
+      const levelStr = level === "senior_ic" ? "IC" : level === "manager" ? "Manager / Lead" : "all levels";
       const locStr = updatedIntake.locationMode === "remote" ? "remote" : updatedIntake.locationMode === "anywhere" ? "anywhere in the US" : updatedIntake.location ?? "all locations";
       const filterTokens = [dept, levelStr, salaryStr, locStr].filter((t): t is string => Boolean(t));
 
@@ -1189,7 +1189,7 @@ export default function KaiPage() {
       // Fire-and-forget: persist intake preferences
       createSupabaseBrowser().auth.getUser().then(({ data }) => {
         if (!data.user) return;
-        const levelMap: Record<string, string> = { senior_ic: "Senior IC", manager: "Manager/Lead", either: "Either" };
+        const levelMap: Record<string, string | null> = { senior_ic: "Senior", manager: "People Manager", either: null };
         const visaMap: Record<string, string> = { "H-1B": "H-1B", "OPT": "OPT", "E-3": "E-3/TN" };
         const prefLocStr = updatedIntake.locationMode === "remote" ? "Remote" : updatedIntake.locationMode === "anywhere" ? null : updatedIntake.location;
         createSupabaseBrowser().schema("enriched").from("profiles").upsert({

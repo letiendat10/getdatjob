@@ -34,7 +34,7 @@ jobs:
       - name: Enrich descriptions + salary + dates
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python scrapers/04_enrich_descriptions.py --limit 1500
+        run: python scrapers/04_enrich_descriptions.py --limit 5000
 
       # Re-score confidence tiers using freshly enriched descriptions. Jobs whose
       # description_text just got filled in can now flip from 'friendly' → 'verified'

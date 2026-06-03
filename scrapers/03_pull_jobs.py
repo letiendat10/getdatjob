@@ -28,6 +28,7 @@ from bs4 import BeautifulSoup
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
 from title_utils import clean_title, build_lca_index
+from classify import classify_department, classify_level, detect_remote
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -167,49 +168,86 @@ def strip_html(html: str) -> str:
     return BeautifulSoup(html, "html.parser").get_text(" ", strip=True)
 
 
-_SAL_DASH = re.compile(r'\$[\d,]+(?:\.\d+)?K?\s*[–—\-]+\s*\$[\d,]+(?:\.\d+)?K?')
-_SAL_TO   = re.compile(r'(\$[\d,]+(?:\.\d+)?K?)\s+to\s+(\$[\d,]+(?:\.\d+)?K?)', re.I)
+# ── Salary parsing ────────────────────────────────────────────────────────────
+# A dollar amount, optionally K-suffixed: "$95K", "$120,000", "$58.50".
+_AMT = r'\$\s*\d[\d,]*(?:\.\d+)?\s*[kK]?'
+# Optional unit that can sit between an amount and the dash: "$120,000/year - $200,000".
+_UNIT = r'(?:\s*(?:/\s*(?:yr|year|hr|hour)|per\s+(?:year|hour|annum)|a\s+year|annually))?'
+_RANGE = re.compile(rf'({_AMT}){_UNIT}\s*(?:[-–—]+|to)\s*({_AMT})', re.I)
 # Amazon-style "142,800.00 – 193,200.00 USD" (no $ prefix, USD trails the range).
-# Mirrors the old DB extract_salary_from_desc() pattern so coverage doesn't regress.
-_SAL_USD  = re.compile(r'([\d,]+(?:\.\d+)?)\s*[–—\-]+\s*([\d,]+(?:\.\d+)?)\s*USD', re.I)
+_USD_RANGE = re.compile(r'(\d[\d,]{4,}(?:\.\d+)?)\s*(?:[-–—]+|to)\s*(\d[\d,]{4,}(?:\.\d+)?)\s*USD', re.I)
+_UPTO = re.compile(rf'up\s+to\s+({_AMT})', re.I)
+_PLUS = re.compile(rf'({_AMT})\s*\+', re.I)
+_HOURLY_HINT = re.compile(r'(/\s*(?:hr|hour)|per\s+hour|hourly|an\s+hour)', re.I)
 
-def extract_salary(html: str) -> str | None:
-    """Extract salary range from a job description (HTML or plain text).
 
-    Tries the Greenhouse pay-range div structure first, then falls back to
-    regex on plain text so it works for any ATS whose description contains
-    dollar amounts inline.
+def _sal_num(tok: str) -> int | None:
+    tok = tok.replace("$", "").replace(",", "").strip().lower()
+    k = tok.endswith("k")
+    if k:
+        tok = tok[:-1].strip()
+    try:
+        return round(float(tok) * (1000 if k else 1))
+    except ValueError:
+        return None
+
+
+def _fmt(lo: int | None, hi: int | None, period: str) -> str | None:
+    suffix = " /hr" if period == "hourly" else ""
+    if lo is not None and hi is not None:
+        return f"${lo:,} – ${hi:,}{suffix}"
+    if hi is not None:
+        return f"Up to ${hi:,}{suffix}"
+    if lo is not None:
+        return f"${lo:,}+{suffix}"
+    return None
+
+
+def parse_salary(html: str) -> dict | None:
+    """Extract a salary range from a description (HTML or text).
+
+    Returns {display, min_num, max_num, period} or None. `display` is what the card
+    shows; min_num/max_num are integers for filtering; period is 'annual' | 'hourly'.
+    Handles $-ranges (K-suffixed, with /year or /hr units between the bounds),
+    "X to Y", trailing-USD ranges, and single "up to $X" / "$X+" bounds.
     """
     if not html:
         return None
     soup = BeautifulSoup(html, "html.parser")
-    # Greenhouse content-pay-transparency block
+    # Greenhouse content-pay-transparency block first, then the whole description.
     pay_div = soup.find("div", class_="pay-range")
-    if pay_div:
-        spans = [s.get_text(strip=True) for s in pay_div.find_all("span")
-                 if "divider" not in (s.get("class") or [])]
-        dollar = [s for s in spans if s.startswith("$") or (s and s[0].isdigit())]
-        if len(dollar) >= 2:
-            max_val = dollar[-1].removesuffix(" USD").strip()
-            return f"{dollar[0]} – {max_val}"
-    text = soup.get_text(" ", strip=True)
-    m = _SAL_DASH.search(text)
-    if m:
-        return m.group(0).strip()
-    m = _SAL_TO.search(text)
-    if m:
-        return f"{m.group(1)} – {m.group(2)}"
-    m = _SAL_USD.search(text)
-    if m:
-        try:
-            lo = round(float(m.group(1).replace(",", "")))
-            hi = round(float(m.group(2).replace(",", "")))
-            # Guard against matching non-salary numeric ranges (e.g. "1 – 2 USD").
-            if lo > 10000:
-                return f"${lo:,} – ${hi:,}"
-        except ValueError:
-            pass
+    candidates = ([pay_div.get_text(" ", strip=True)] if pay_div else []) + [soup.get_text(" ", strip=True)]
+
+    for ctx in candidates:
+        m = _RANGE.search(ctx)
+        if m:
+            lo, hi = _sal_num(m.group(1)), _sal_num(m.group(2))
+            if lo is not None and hi is not None:
+                span = ctx[max(0, m.start() - 15):m.end() + 15]
+                period = "hourly" if (_HOURLY_HINT.search(span) or max(lo, hi) < 1000) else "annual"
+                return {"display": _fmt(lo, hi, period), "min_num": lo, "max_num": hi, "period": period}
+        m = _USD_RANGE.search(ctx)
+        if m:
+            lo, hi = _sal_num(m.group(1)), _sal_num(m.group(2))
+            if lo and hi and lo > 1000:  # guard against "1 – 2 USD" noise
+                return {"display": _fmt(lo, hi, "annual"), "min_num": lo, "max_num": hi, "period": "annual"}
+        m = _UPTO.search(ctx)
+        if m:
+            hi = _sal_num(m.group(1))
+            if hi and hi > 1000:
+                return {"display": _fmt(None, hi, "annual"), "min_num": None, "max_num": hi, "period": "annual"}
+        m = _PLUS.search(ctx)
+        if m:
+            lo = _sal_num(m.group(1))
+            if lo and lo > 1000:
+                return {"display": _fmt(lo, None, "annual"), "min_num": lo, "max_num": None, "period": "annual"}
     return None
+
+
+def extract_salary(html: str) -> str | None:
+    """Back-compat wrapper — returns just the display string."""
+    s = parse_salary(html)
+    return s["display"] if s else None
 
 
 def check_sponsorship(text: str) -> str | None:
@@ -231,6 +269,32 @@ def parse_iso(s: str | None) -> str | None:
         return datetime.fromisoformat(s.replace("Z", "+00:00")).isoformat()
     except Exception:
         return None
+
+
+_WD_DAYS = re.compile(r"posted\s+(\d+)\+?\s+days?\s+ago", re.I)
+
+
+def parse_workday_posted_on(s: str | None) -> str | None:
+    """Coarse posted_at from Workday's list 'postedOn' relative string.
+
+    "Posted Today" → now, "Posted Yesterday" → -1d, "Posted 5 Days Ago" → -5d,
+    "Posted 30+ Days Ago" → -31d. Unrecognized strings → None (never now()), so an
+    unknown format leaves the date blank rather than faking freshness; the exact
+    startDate is filled later by 04_enrich_descriptions.py.
+    """
+    if not s:
+        return None
+    low = s.lower()
+    now = datetime.now(timezone.utc)
+    if "today" in low:
+        return now.isoformat()
+    if "yesterday" in low:
+        return (now - timedelta(days=1)).isoformat()
+    m = _WD_DAYS.search(low)
+    if m:
+        days = int(m.group(1)) + (1 if "+" in low else 0)
+        return (now - timedelta(days=days)).isoformat()
+    return None
 
 
 # ── ATS fetchers ─────────────────────────────────────────────────────────────
@@ -259,7 +323,8 @@ def fetch_greenhouse(slug: str) -> list[dict]:
             "title": j.get("title", ""),
             "location": loc,
             "url": j.get("absolute_url", ""),
-            "posted_at": parse_iso(j.get("updated_at")),
+            "posted_at": parse_iso(j.get("first_published")) or parse_iso(j.get("updated_at")),
+            "source_dept": (j.get("departments") or [{}])[0].get("name", ""),
             "description_text": strip_html(content_html),
             "salary_range": salary,
         })
@@ -305,7 +370,7 @@ def fetch_ashby(slug: str) -> list[dict]:
             "title": j.get("title", ""),
             "location": loc,
             "url": j.get("jobUrl", ""),
-            "posted_at": parse_iso(j.get("publishedAt")) or datetime.now(timezone.utc).isoformat(),
+            "posted_at": parse_iso(j.get("publishedAt")) or parse_iso(j.get("updatedAt")),
             "description_text": strip_html(desc_html),
             "salary_range": extract_salary(desc_html),
         })
@@ -352,6 +417,10 @@ def fetch_workday(slug: str) -> list[dict]:
                 "title": j.get("title", ""),
                 "location": loc,
                 "url": f"{base_url}/{jobsite}{path}",
+                # The list API has no posting date. Left NULL here and filled with the
+                # exact jobPostingInfo.startDate by 04_enrich_descriptions.py. The upsert
+                # protects posted_at (drops NULLs) so this daily pull never clobbers the
+                # enriched date; meanwhile effective_posted_at falls back to scraped_at.
                 "posted_at": None,
                 "description_text": "",
             })
@@ -461,7 +530,7 @@ def fetch_amazon(_slug: str) -> list[dict]:
                 "title": j.get("title", ""),
                 "location": j.get("location", ""),
                 "url": f"{base}{path}" if path else "",
-                "posted_at": parse_iso(j.get("posted_date")) or datetime.now(timezone.utc).isoformat(),
+                "posted_at": parse_iso(j.get("posted_date")) or parse_iso(j.get("updated_time")),
                 "description_text": desc_text,
                 "salary_range": extract_salary(desc_text),
             })
@@ -502,7 +571,7 @@ def fetch_smartrecruiters(slug: str) -> list[dict]:
                 "title": j.get("name", ""),
                 "location": loc,
                 "url": f"https://jobs.smartrecruiters.com/{company_id}/{job_id}",
-                "posted_at": parse_iso(j.get("releasedDate")) or datetime.now(timezone.utc).isoformat(),
+                "posted_at": parse_iso(j.get("releasedDate")) or parse_iso(j.get("createdOn")),
                 "description_text": "",
             })
         if len(batch) < limit:
@@ -681,6 +750,11 @@ if __name__ == "__main__":
         job_rows = []
         signal_rows = []
         for j in raw_jobs:
+            # Salary: prefer a fetcher-provided range (e.g. Greenhouse pay_input_ranges),
+            # otherwise parse the description. parse_salary derives both the display
+            # string and the numeric bounds used for the keep-unknowns salary filter.
+            range_str = j.get("salary_range")
+            sal = parse_salary(range_str) if range_str else parse_salary(j.get("description_text") or "")
             job_rows.append({
                 "employer_id": emp_id,
                 "title": j["title"],
@@ -690,7 +764,13 @@ if __name__ == "__main__":
                 "ats_source": ats,
                 "ats_job_id": j["ats_job_id"],
                 "description_text": j["description_text"],
-                "salary_range": j.get("salary_range"),
+                "salary_range": range_str or (sal["display"] if sal else None),
+                "salary_min_num": sal["min_num"] if sal else None,
+                "salary_max_num": sal["max_num"] if sal else None,
+                "salary_period": sal["period"] if sal else None,
+                "department": classify_department(j["title"], j.get("source_dept")),
+                "job_level": classify_level(j["title"]),
+                "is_remote": detect_remote(j["title"], j["location"]),
                 "is_active": True,
                 "last_seen_at": datetime.now(timezone.utc).isoformat(),
             })
@@ -710,9 +790,14 @@ if __name__ == "__main__":
             # list-only ATSes like Workday — isn't clobbered on every daily run.
             # Rows in a chunk are homogeneous (one ATS), so PostgREST's column set
             # stays consistent across the batch.
+            # Drop empty enrichment fields so the enrichment pass (04_enrich_descriptions.py),
+            # which backfills these for list-only ATSes (Workday/SmartRecruiters/iCIMS),
+            # isn't clobbered with NULLs on every daily run.
             chunk = [
                 {k: v for k, v in r.items()
-                 if v or k not in ("description_text", "salary_range")}
+                 if v or k not in ("description_text", "salary_range",
+                                   "salary_min_num", "salary_max_num", "salary_period",
+                                   "posted_at")}
                 for r in job_rows[i:i+100]
             ]
             try:
@@ -785,7 +870,7 @@ if __name__ == "__main__":
     three_day_res = (
         sb.table("jobs")
         .select("id", count="exact")
-        .gte("created_at", three_days_ago)
+        .gte("scraped_at", three_days_ago)
         .execute()
     )
     sb.table("job_stats").upsert({

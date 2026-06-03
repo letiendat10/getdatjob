@@ -49,6 +49,31 @@ def load_lca(path: str) -> pd.DataFrame:
     print(f"  {len(df):,} certified filings loaded")
     return df
 
+# Domains we must NOT treat as the employer's own (free providers + immigration
+# law firms that file LCAs on behalf of employers).
+_GENERIC_EMAIL_DOMAINS = {
+    "gmail.com", "outlook.com", "yahoo.com", "hotmail.com", "icloud.com", "aol.com",
+    "protonmail.com", "me.com", "live.com", "msn.com",
+}
+_LAWFIRM_DOMAINS = {
+    "fragomen.com", "bal.com", "ogletree.com", "seyfarth.com", "jacksonlewis.com",
+    "foley.com", "flwlaw.com", "immigrationlaw.com", "klaskolaw.com", "maggio-kattar.com",
+}
+# Employers whose email domain differs from their web/brand (logo) domain.
+_BRAND_DOMAIN_FIX = {"sofi.org": "sofi.com"}
+
+
+def domain_from_poc(email: object) -> str | None:
+    """Company web/brand domain from an LCA POC email, or None when it's a generic
+    provider or a known immigration-law-firm domain."""
+    if not isinstance(email, str) or "@" not in email:
+        return None
+    dom = email.lower().strip().split("@", 1)[1]
+    if not dom or dom in _GENERIC_EMAIL_DOMAINS or dom in _LAWFIRM_DOMAINS:
+        return None
+    return _BRAND_DOMAIN_FIX.get(dom, dom)
+
+
 def upsert_employers(df: pd.DataFrame) -> dict[str, int]:
     """Insert all employers, return {name_clean: id}."""
     counts = (
@@ -121,11 +146,7 @@ def upsert_employers(df: pd.DataFrame) -> dict[str, int]:
         .drop_duplicates("name_clean")
         [["name_clean", "poc_first_name", "poc_last_name", "poc_job_title", "poc_email"]]
     )
-    poc_latest["company_domain_url"] = (
-        poc_latest["poc_email"]
-        .str.lower().str.strip()
-        .apply(lambda e: e.split("@", 1)[1] if "@" in e else None)
-    )
+    poc_latest["company_domain_url"] = poc_latest["poc_email"].apply(domain_from_poc)
     counts = (
         counts
         .merge(employer_city_df, on="name_clean", how="left")

@@ -450,7 +450,7 @@ function DescriptionSkeleton() {
 function JobCard({ job, isSelected, isViewed, isFilled, onClick }: {
   job: JobWithNorm; isSelected: boolean; isViewed: boolean; isFilled?: boolean; onClick: () => void;
 }) {
-  const posted = timeAgo(job.posted_at);
+  const posted = timeAgo(job.effective_posted_at ?? job.posted_at);
   return (
     <div onClick={onClick}
       className={`${s["matches-card"]} ${isSelected ? s["matches-card-selected"] : ""} ${isFilled ? s["matches-card-filled"] : ""}`}
@@ -489,7 +489,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
   salaryOverride?: string;
 }) {
   const lastFiling = formatLastFiling(job.last_filing_date);
-  const posted = timeAgo(job.posted_at);
+  const posted = timeAgo(job.effective_posted_at ?? job.posted_at);
   const extractedSalary = useMemo(() => extractSalary(descHtml), [descHtml]);
   const salary = salaryOverride ?? job.salary_range ?? extractedSalary;
   const experience = useMemo(() => extractExperience(descHtml), [descHtml]);

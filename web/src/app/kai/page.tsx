@@ -23,9 +23,12 @@ type Job = {
   location: string | null;
   url: string | null;
   posted_at: string | null;
+  effective_posted_at: string | null;
+  department: string | null;
+  job_level: string | null;
+  is_remote: boolean | null;
   visa_tier: string | null;
   salary_range: string | null;
-  salary_estimate: number | null;
   lca_count: number | null;
   lca_count_2025: number | null;
   lca_last_filed: string | null;
@@ -352,7 +355,7 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
     setSaved(v => !v);
   }
 
-  const posted = timeAgo(job.posted_at);
+  const posted = timeAgo(job.effective_posted_at ?? job.posted_at);
   const displayCompany = normalizeCompanyName(job.company);
 
   return (
@@ -417,7 +420,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const [descText, setDescText] = useState("");
   const [descLoading, setDescLoading] = useState(true);
   const displayCompany = normalizeCompanyName(job.company);
-  const posted = timeAgo(job.posted_at);
+  const posted = timeAgo(job.effective_posted_at ?? job.posted_at);
   const [apiSalary, setApiSalary] = useState<string | null>(null);
   const extractedSalary = useMemo(() => extractPostedSalary(descHtml || descText), [descHtml, descText]);
   const postedSalary = job.salary_range || apiSalary || extractedSalary;

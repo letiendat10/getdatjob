@@ -26,7 +26,11 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python scrapers/03_pull_jobs.py
 
-      - name: Enrich Workday descriptions
+      # Fill description_text, salary (range + numeric bounds) and the exact Workday
+      # posting date for list-only ATSes (Workday/SmartRecruiters/iCIMS). Runs right
+      # after the pull so new jobs get a precise posted_at the same day; the larger
+      # backlog is chewed by the separate enrich.yml workflow.
+      - name: Enrich descriptions + salary + dates
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python scrapers/enrich_workday_descriptions.py --limit 500
+        run: python scrapers/04_enrich_descriptions.py --limit 1500

@@ -44,35 +44,17 @@ _spec.loader.exec_module(pj)
 
 sb = pj.sb
 strip_html = pj.strip_html
-extract_salary = pj.extract_salary
+parse_salary = pj.parse_salary
+parse_workday_posted_on = pj.parse_workday_posted_on
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; getdatjob-bot/1.0)"}
 TIMEOUT = 20
 ENRICHABLE = ("workday", "smartrecruiters", "icims")
 
 
-def label_salary(text: str) -> str | None:
-    """extract_salary() plus an hourly/annual label.
+# ── per-ATS detail fetchers — return (description_html, posted_at_or_None) ─────
 
-    Many Workday roles (retail, healthcare) post hourly pay like "$16.00 - $24.00".
-    Shown bare on a card that looks like annual figures, so tag small-magnitude
-    ranges with "/hr". K-suffixed ($95K – $130K) and 5-6 digit ranges are annual.
-    """
-    raw = extract_salary(text)
-    if not raw:
-        return None
-    if re.search(r"\dK\b", raw, re.I):  # "$95K – $130K" → annual
-        return raw
-    nums = [float(n.replace(",", "")) for n in re.findall(r"([\d,]+(?:\.\d+)?)", raw)]
-    hi = max(nums) if nums else 0
-    if 0 < hi < 1000:  # small magnitude → hourly
-        return f"{raw} /hr"
-    return raw
-
-
-# ── per-ATS detail fetchers — return description HTML (or "") ──────────────────
-
-def detail_workday(slug: str, ats_job_id: str) -> str:
+def detail_workday(slug: str, ats_job_id: str) -> tuple[str, str | None]:
     # slug = "{subdomain}.{instance}/{jobsite}" e.g. "cvshealth.wd1/CVS_Health_Careers"
     # ats_job_id = externalPath e.g. "/job/PA---Mount-Carmel/Pharmacy-Technician_R0929734"
     host, jobsite = slug.split("/", 1)
@@ -80,10 +62,14 @@ def detail_workday(slug: str, ats_job_id: str) -> str:
     cxs = f"https://{host}.myworkdayjobs.com/wday/cxs/{tenant}/{jobsite}{ats_job_id}"
     r = requests.get(cxs, headers={**HEADERS, "Accept": "application/json"}, timeout=TIMEOUT)
     r.raise_for_status()
-    return r.json().get("jobPostingInfo", {}).get("jobDescription", "") or ""
+    info = r.json().get("jobPostingInfo", {}) or {}
+    html = info.get("jobDescription", "") or ""
+    # Exact posting date; fall back to the relative "postedOn" string if absent.
+    posted = info.get("startDate") or parse_workday_posted_on(info.get("postedOn"))
+    return html, posted
 
 
-def detail_smartrecruiters(slug: str, ats_job_id: str) -> str:
+def detail_smartrecruiters(slug: str, ats_job_id: str) -> tuple[str, str | None]:
     url = f"https://api.smartrecruiters.com/v1/companies/{slug}/postings/{ats_job_id}"
     r = requests.get(url, headers={**HEADERS, "Accept": "application/json"}, timeout=TIMEOUT)
     r.raise_for_status()
@@ -93,10 +79,10 @@ def detail_smartrecruiters(slug: str, ats_job_id: str) -> str:
         sec = sections.get(key) or {}
         if sec.get("text"):
             parts.append(sec["text"])
-    return "\n\n".join(parts)
+    return "\n\n".join(parts), None
 
 
-def detail_icims(slug: str, ats_job_id: str) -> str:
+def detail_icims(slug: str, ats_job_id: str) -> tuple[str, str | None]:
     # Best-effort: the public job page (in_iframe=1) carries the description body.
     url = f"https://{slug}.icims.com/jobs/{ats_job_id}/job?in_iframe=1"
     r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
@@ -105,7 +91,7 @@ def detail_icims(slug: str, ats_job_id: str) -> str:
     node = soup.select_one(
         ".iCIMS_JobContent, .iCIMS_InfoMsg_Job, #jobDescription, [class*='JobDescription']"
     )
-    return str(node) if node else ""
+    return (str(node) if node else ""), None
 
 
 DETAIL = {
@@ -168,7 +154,7 @@ def main():
             stats["errors"] += 1
             continue
         try:
-            html = DETAIL[ats](slug, j["ats_job_id"])
+            html, posted = DETAIL[ats](slug, j["ats_job_id"])
         except Exception as e:
             stats["errors"] += 1
             if stats["errors"] <= 20:
@@ -181,13 +167,21 @@ def main():
             stats["no_desc"] += 1
             time.sleep(args.sleep)
             continue
-        salary = label_salary(desc_text or html)
+        # parse_salary derives display + numeric bounds + annual/hourly period.
+        sal = parse_salary(html) or parse_salary(desc_text)
+        update = {"description_text": desc_text}
+        if posted:  # exact Workday startDate — the daily pull leaves posted_at NULL for it
+            update["posted_at"] = posted
+        if sal:
+            update["salary_range"] = sal["display"]
+            update["salary_min_num"] = sal["min_num"]
+            update["salary_max_num"] = sal["max_num"]
+            update["salary_period"] = sal["period"]
+        salary = sal["display"] if sal else None
 
         if not args.dry_run:
             try:
-                sb.table("jobs").update(
-                    {"description_text": desc_text, "salary_range": salary}
-                ).eq("id", j["id"]).execute()
+                sb.table("jobs").update(update).eq("id", j["id"]).execute()
             except Exception as e:
                 stats["errors"] += 1
                 print(f"  ERROR update id={j['id']} — {e}", flush=True)

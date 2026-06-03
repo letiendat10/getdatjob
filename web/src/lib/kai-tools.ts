@@ -28,7 +28,13 @@ export const KAI_TOOLS: Tool[] = [
         department: {
           type: "string",
           description:
-            'Job function — e.g. "Product", "Engineering", "Data", "Design", "Sales", "Marketing", "Finance"',
+            'Job function — e.g. "Product", "Engineering", "Data", "Design", "Sales", "Marketing", "Finance", "Security"',
+        },
+        level: {
+          type: "string",
+          enum: ["Entry/Junior", "Senior", "Lead/Manager", "Director", "VP"],
+          description:
+            "Seniority level. Use the closest bucket: Entry/Junior (entry, associate, new grad), Senior, Lead/Manager (team lead or people manager), Director, VP (VP and above).",
         },
         industry: {
           type: "string",
@@ -75,6 +81,7 @@ type SearchJobsInput = {
   query?: string;
   location?: string;
   department?: string;
+  level?: string;
   industry?: string;
   salary_min?: number;
   visa_category?: string;
@@ -82,23 +89,8 @@ type SearchJobsInput = {
   limit?: number;
 };
 
-const DEPT_KEYWORDS: Record<string, string[]> = {
-  product:     ["product manager", "product owner", "pm ", " pm,", "head of product"],
-  engineering: ["engineer", "developer", "swe", "software", "backend", "frontend", "full stack", "devops", "platform", "infrastructure", "sre"],
-  data:        ["data scientist", "data engineer", "data analyst", "ml engineer", "machine learning", "analytics"],
-  design:      ["designer", "ux", "ui ", "product design"],
-  sales:       ["sales", "account executive", "account manager", "business development", "revenue"],
-  marketing:   ["marketing", "growth", "seo", "content", "brand"],
-  finance:     ["finance", "financial", "accounting", "accountant", "controller", "cfo"],
-  security:    ["security", "infosec", "cybersecurity", "soc "],
-};
-
-// Level → title keyword map for countMatchingJobsInWindow.
-// Only applied when level is "senior_ic" or "manager"; "either" skips filtering.
-const LEVEL_KEYWORDS: Record<string, string[]> = {
-  senior_ic: ["senior", "sr.", "staff", "principal"],
-  manager:   ["manager", "director", "head of", "vp ", "vice president"],
-};
+// Department & level are now real, classified columns on `jobs` — filtered via the
+// canonical maps below (toCanonDepartment / toCanonLevel), not title-substring keywords.
 
 // Industry → company name keyword map.
 // Normalized key = input.industry lowercased, non-alphanumeric stripped
@@ -117,6 +109,37 @@ const INDUSTRY_COMPANY_KEYWORDS: Record<string, string[]> = {
   edtech:      ["education", "learning", "school", "university", "academy", "tutoring"],
 };
 
+// User-supplied department label → canonical stored value (classify.py output).
+const CANON_DEPARTMENT: Record<string, string> = {
+  product: "Product",
+  engineering: "Engineering",
+  data: "Data",
+  design: "Design",
+  sales: "Sales",
+  marketing: "Marketing",
+  finance: "Finance",
+  security: "Security",
+};
+function toCanonDepartment(d?: string | null): string | null {
+  if (!d) return null;
+  const key = d.toLowerCase().split(/\s*\/\s*/)[0].trim();
+  return CANON_DEPARTMENT[d.toLowerCase()] ?? CANON_DEPARTMENT[key] ?? null;
+}
+
+// User-supplied level label OR coarse onboarding token → canonical job_level.
+const CANON_LEVEL: Record<string, string> = {
+  "entry/junior": "Entry/Junior", entry: "Entry/Junior", junior: "Entry/Junior",
+  associate: "Entry/Junior", intern: "Entry/Junior", "new grad": "Entry/Junior",
+  senior: "Senior", sr: "Senior", senior_ic: "Senior",
+  "lead/manager": "Lead/Manager", lead: "Lead/Manager", manager: "Lead/Manager",
+  director: "Director",
+  vp: "VP", "vice president": "VP", executive: "VP",
+};
+function toCanonLevel(l?: string | null): string | null {
+  if (!l) return null;
+  return CANON_LEVEL[l.toLowerCase().trim()] ?? null;
+}
+
 export async function handleSearchJobs(input: SearchJobsInput) {
   const limit = Math.min(input.limit ?? 5, 10);
   const POSTED_DAYS: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "14d": 14, "30d": 30 };
@@ -134,24 +157,21 @@ export async function handleSearchJobs(input: SearchJobsInput) {
     visaTiers = ["verified", "friendly"];
   }
 
-  // Department → title keyword list
-  // Normalize compound labels like "marketing / growth" → "marketing" for dictionary lookup
-  const deptKey = input.department
-    ? input.department.toLowerCase().split(/\s*\/\s*/)[0].trim()
-    : null;
-  const titleKeywords: string[] | null = input.department
-    ? (DEPT_KEYWORDS[input.department.toLowerCase()] ?? DEPT_KEYWORDS[deptKey!] ?? [input.department.toLowerCase()])
-    : null;
+  // Department & level → canonical stored columns (filtered via p_department / p_level).
+  const department = toCanonDepartment(input.department);
+  const level = toCanonLevel(input.level);
 
   // Industry → company keyword list
   const companyKeywords: string[] | null = input.industry
     ? (INDUSTRY_COMPANY_KEYWORDS[input.industry.toLowerCase().replace(/[^a-z0-9]/g, "")] ?? [input.industry.toLowerCase()])
     : null;
 
-  // Location — normalize "anywhere" phrases to null (no filter); "remote" stays as-is
+  // Location — "remote" routes to the is_remote flag; "anywhere" phrases → no filter;
+  // anything else is a best-effort city/state ILIKE match.
   const rawLocation = input.location ? input.location.toLowerCase().trim() : null;
   const ANYWHERE_PHRASES = ["anywhere", "us", "usa", "united states", "united states of america", "nationwide", "open anywhere", "anywhere in the us", "anywhere in the usa"];
-  const location = rawLocation && !ANYWHERE_PHRASES.includes(rawLocation) ? rawLocation : null;
+  const remote = rawLocation === "remote" ? true : null;
+  const location = remote ? null : (rawLocation && !ANYWHERE_PHRASES.includes(rawLocation) ? rawLocation : null);
 
   // search_jobs_kai RPC deduplicates by company at the SQL level, so a single
   // bulk-posting employer (e.g. Lowe's 19K jobs, Amazon 10K jobs) can't crowd
@@ -160,12 +180,15 @@ export async function handleSearchJobs(input: SearchJobsInput) {
     p_cutoff:           cutoff,
     p_location:         location,
     p_query:            input.query?.trim() ?? null,
-    p_title_keywords:   titleKeywords,
+    p_title_keywords:   null,
     p_company_keywords: companyKeywords,
     p_visa_tiers:       visaTiers,
     p_visa_class:       visaClass,
     p_salary_min:       input.salary_min ?? null,
     p_result_limit:     limit,
+    p_department:       department,
+    p_level:            level,
+    p_remote:           remote,
   });
 
   if (error) return { error: error.message, jobs: [] };
@@ -178,10 +201,17 @@ export async function handleSearchJobs(input: SearchJobsInput) {
     location:       j.location,
     url:            j.url,
     posted_at:      j.posted_at,
+    // Honest freshness: real posted_at when known, else first-seen (scraped_at).
+    effective_posted_at: j.effective_posted_at ?? j.posted_at ?? null,
+    department:     j.department ?? null,
+    job_level:      j.job_level ?? null,
+    is_remote:      j.is_remote ?? null,
     visa_tier:      j.visa_tier,
     visa_class:     j.visa_class,
     salary_range:   j.salary_range ?? null,
-    salary_estimate: j.salary_estimate ? Number(j.salary_estimate) : null,
+    salary_min_num: j.salary_min_num ?? null,
+    salary_max_num: j.salary_max_num ?? null,
+    salary_period:  j.salary_period ?? null,
     lca_count:      j.lca_count,
     lca_count_2025: j.lca_count_2025 ? Number(j.lca_count_2025) : null,
     lca_last_filed: j.lca_last_filed ?? null,
@@ -213,39 +243,27 @@ export async function countMatchingJobsInWindow(params: {
   let query = supabaseServer
     .from("jobs_kai_view")
     .select("*", { count: "exact", head: true })
-    .gte("posted_at", cutoff);
+    .gte("effective_posted_at", cutoff);
 
   if (params.visa_category) {
     query = query.in("visa_tier", ["verified", "friendly"]);
   }
+  // Min-salary: real parsed salary only, keep unknowns visible (mirrors the RPC).
   if (params.salary_min && params.salary_min > 0) {
-    query = query.gte("salary_estimate", params.salary_min);
+    query = query.or(`salary_max_num.gte.${params.salary_min},salary_max_num.is.null`);
   }
   if (params.location === "remote") {
-    query = query.ilike("location", "%remote%");
+    query = query.eq("is_remote", true);
   } else if (params.location) {
     query = query.ilike("location", `%${params.location}%`);
   }
 
-  // Department filter — mirrors the DEPT_KEYWORDS lookup in handleSearchJobs
-  if (params.department) {
-    const deptKey = params.department.toLowerCase().split(/\s*\/\s*/)[0].trim();
-    const titleKeywords =
-      DEPT_KEYWORDS[params.department.toLowerCase()] ??
-      DEPT_KEYWORDS[deptKey] ??
-      [params.department.toLowerCase()];
-    if (titleKeywords.length) {
-      query = query.or(titleKeywords.map((kw) => `title.ilike.%${kw}%`).join(","));
-    }
-  }
+  // Department & level — exact match on the canonical stored columns (mirrors the RPC).
+  const department = toCanonDepartment(params.department);
+  if (department) query = query.eq("department", department);
 
-  // Level filter
-  if (params.level && params.level !== "either") {
-    const levelKeywords = LEVEL_KEYWORDS[params.level];
-    if (levelKeywords?.length) {
-      query = query.or(levelKeywords.map((kw) => `title.ilike.%${kw}%`).join(","));
-    }
-  }
+  const level = toCanonLevel(params.level);
+  if (level) query = query.eq("job_level", level);
 
   const { count, error } = await query;
   if (error) return 0;

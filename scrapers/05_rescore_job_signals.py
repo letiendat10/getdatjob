@@ -74,7 +74,12 @@ def rescore_employer(emp_id: int) -> dict:
             existing_signals[s["job_id"]] = s["confidence_tier"]
 
     for rec in jobs_res.data:
-        before[existing_signals.get(rec["id"], "no_signal")] += 1
+        current_tier = existing_signals.get(rec["id"], "no_signal")
+        before[current_tier] += 1
+        # verified/excluded can't improve further — skip
+        if current_tier in ("verified", "excluded"):
+            after[current_tier] += 1
+            continue
         tier, flag, tc, lca_count = score_job(
             rec["title"], rec["description_text"] or "", lca_titles, lca_counts
         )
@@ -105,8 +110,27 @@ def main() -> None:
         emp_ids = args.employer_ids
         print(f"Rescoring {len(emp_ids)} specified employer(s) …")
     else:
-        res = sb.table("jobs").select("employer_id").execute()
-        emp_ids = list({r["employer_id"] for r in res.data if r["employer_id"]})
+        # Distinct employer_ids via DB; keyset pagination to avoid PostgREST's 1000-row cap.
+        emp_ids_set: set[int] = set()
+        last_id = 0
+        while True:
+            batch = (
+                sb.table("jobs")
+                .select("employer_id")
+                .gt("employer_id", last_id)
+                .order("employer_id")
+                .limit(1000)
+                .execute()
+            )
+            if not batch.data:
+                break
+            for r in batch.data:
+                if r["employer_id"]:
+                    emp_ids_set.add(r["employer_id"])
+            if len(batch.data) < 1000:
+                break
+            last_id = batch.data[-1]["employer_id"]
+        emp_ids = sorted(emp_ids_set)
         print(f"Rescoring {len(emp_ids)} employer(s) with jobs …")
 
     totals_before: Counter = Counter()

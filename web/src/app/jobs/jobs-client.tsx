@@ -226,34 +226,8 @@ function extractExperience(html: string): string | null {
   const simple = text.match(/(\d+)\s*years?\s*(?:of\s*)?(?:experience|exp)/i);
   return simple ? `${simple[1]}+ years` : null;
 }
-function inferLevel(title: string): string | null {
-  const t = title.toLowerCase();
-  if (/\b(intern|internship)\b/.test(t)) return "Intern";
-  if (/\b(junior|jr\.?|entry[- ]level|associate(?! director| product))\b/.test(t)) return "Junior";
-  if (/\b(principal|staff engineer|distinguished|fellow)\b/.test(t)) return "Principal / Staff";
-  if (/\b(senior|sr\.?)\b/.test(t)) return "Senior";
-  if (/\b(lead|manager|director|head of|vp\b|vice president)\b/.test(t)) return "Lead / Manager";
-  return "Mid-level";
-}
-function inferDepartment(title: string): string | null {
-  const t = title.toLowerCase();
-  if (/\b(machine learning|ml |ai |artificial intelligence|nlp|llm|research scientist)\b/.test(t)) return "AI / ML";
-  if (/\b(data engineer|data scientist|data analyst|analytics|business intelligence)\b/.test(t)) return "Data";
-  if (/\b(security|infosec|cybersecurity|appsec|devsecops)\b/.test(t)) return "Security";
-  if (/\b(product manager|product owner|\bpm\b|product lead)\b/.test(t)) return "Product";
-  if (/\b(design|ux |ui |designer|user experience)\b/.test(t)) return "Design";
-  if (/\b(devops|site reliability|platform engineer|infrastructure|cloud engineer|sre)\b/.test(t)) return "Platform / DevOps";
-  if (/\b(sales|account executive|business development)\b/.test(t)) return "Sales";
-  if (/\b(marketing|growth|demand generation)\b/.test(t)) return "Marketing";
-  if (/\b(finance|accounting|financial analyst)\b/.test(t)) return "Finance";
-  if (/\b(facilities|mailroom|real estate|workplace|janitorial|custodial|maintenance tech|building)\b/.test(t)) return "Facilities";
-  if (/\b(operations|ops|logistics|supply chain|fulfillment|warehouse)\b/.test(t)) return "Operations";
-  if (/\b(legal|counsel|attorney|compliance|paralegal)\b/.test(t)) return "Legal";
-  if (/\b(recruiter|recruiting|talent acquisition|human resources|hr |people ops|people partner)\b/.test(t)) return "HR / People";
-  if (/\b(customer success|customer support|account manager|customer experience|cx |support engineer)\b/.test(t)) return "Customer Success";
-  if (/\b(engineer|engineering|developer|software|backend|frontend|fullstack|full.stack|firmware|embedded|mobile|ios|android|web|api|sdk|cloud|infrastructure|platform|sre|devops|ml|machine learning|data|security|infosec)\b/.test(t)) return "Engineering";
-  return null;
-}
+// Level/department are read from the stored jobs.job_level / jobs.department columns
+// (classify.py — single source of truth). The old title-inference helpers were removed.
 
 // ── Filter config ────────────────────────────────────────────────────────────
 
@@ -312,7 +286,7 @@ const DEPARTMENT_OPTIONS = [
   { label: "Design", value: "Design" },
   { label: "Platform / DevOps", value: "Platform / DevOps" },
   { label: "Sales", value: "Sales" },
-  { label: "Marketing", value: "Marketing" },
+  { label: "Marketing/Growth", value: "Marketing/Growth" },
   { label: "Finance", value: "Finance" },
   { label: "Operations", value: "Operations" },
   { label: "Legal", value: "Legal" },
@@ -321,14 +295,14 @@ const DEPARTMENT_OPTIONS = [
   { label: "Facilities", value: "Facilities" },
 ];
 
+// Values match the stored jobs.job_level vocabulary (classify.py) exactly.
 const LEVEL_OPTIONS = [
   { label: "All levels", value: "all" },
-  { label: "Intern", value: "Intern" },
-  { label: "Junior", value: "Junior" },
-  { label: "Mid-level", value: "Mid-level" },
+  { label: "Entry / Junior", value: "Entry/Junior" },
   { label: "Senior", value: "Senior" },
-  { label: "Principal / Staff", value: "Principal / Staff" },
-  { label: "Lead / Manager", value: "Lead / Manager" },
+  { label: "Lead / Manager", value: "Lead/Manager" },
+  { label: "Director", value: "Director" },
+  { label: "VP", value: "VP" },
 ];
 
 const VIEW_OPTIONS = [
@@ -576,8 +550,8 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
   const extractedSalary = useMemo(() => extractSalary(descHtml), [descHtml]);
   const salary = salaryOverride ?? job.salary_range ?? extractedSalary;
   const experience = useMemo(() => extractExperience(descHtml), [descHtml]);
-  const level = inferLevel(job.title);
-  const department = inferDepartment(job.title);
+  const level = job.job_level;
+  const department = job.department;
   const tnCategory = getTnCategory(job.title);
 
   return (
@@ -1100,12 +1074,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   }
 
   const clientFiltered = jobs.filter((j) => {
-    // P3: department + most levels are now server-side.
-    // "Mid-level" is the only level that remains client-side — it's a catch-all
-    // ("not intern/junior/senior/principal/lead") that can't be expressed as an
-    // ILIKE filter without many NOT conditions. Accept the limitation: Mid-level
-    // filters within the current page of results.
-    if (level === "Mid-level" && inferLevel(j.title) !== "Mid-level") return false;
+    // department + level are server-side now (stored jobs.department / job_level).
     // viewFilter is always client-side (depends on localStorage state)
     if (viewFilter === "viewed"    && !viewedJobs.has(j.id)) return false;
     if (viewFilter === "favorite"  && !savedJobs.has(j.id))  return false;

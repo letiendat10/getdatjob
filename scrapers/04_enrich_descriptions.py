@@ -26,6 +26,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timezone
 
 import requests
 from bs4 import BeautifulSoup
@@ -121,17 +122,21 @@ def get_slug(employer_id: int, ats: str) -> str | None:
 
 
 def fetch_candidates(ats_list: list[str], limit: int) -> list[dict]:
-    return (
-        sb.table("jobs")
-        .select("id, ats_source, ats_job_id, url, employer_id")
-        .eq("is_active", True)
-        .in_("ats_source", ats_list)
-        .or_("description_text.is.null,description_text.eq.")
-        .order("posted_at", desc=True, nullsfirst=False)
-        .limit(limit)
-        .execute()
-        .data
-    )
+    # Prioritize never-attempted jobs at the highest-LCA employers first, and let
+    # failures cool down (7d) instead of head-of-line blocking the queue. See
+    # select_enrich_candidates() in migration 20260603000005.
+    return sb.rpc(
+        "select_enrich_candidates", {"p_ats": ats_list, "p_limit": limit}
+    ).execute().data
+
+
+def stamp_attempt(job_id: int, extra: dict | None = None) -> None:
+    """Mark a job attempted now (optionally with enrichment fields) so a failure cools
+    down for 7 days instead of being re-selected every run and blocking the budget."""
+    payload = {"enrich_attempted_at": datetime.now(timezone.utc).isoformat()}
+    if extra:
+        payload.update(extra)
+    sb.table("jobs").update(payload).eq("id", job_id).execute()
 
 
 def main():
@@ -152,6 +157,8 @@ def main():
         slug = get_slug(j["employer_id"], ats)
         if not slug:
             stats["errors"] += 1
+            if not args.dry_run:
+                stamp_attempt(j["id"])  # cool down so it doesn't block the queue
             continue
         try:
             html, posted = DETAIL[ats](slug, j["ats_job_id"])
@@ -159,12 +166,16 @@ def main():
             stats["errors"] += 1
             if stats["errors"] <= 20:
                 print(f"  ERROR {ats} id={j['id']} — {e}", flush=True)
+            if not args.dry_run:
+                stamp_attempt(j["id"])
             time.sleep(args.sleep)
             continue
 
         desc_text = strip_html(html)[:8000]
         if not desc_text:
             stats["no_desc"] += 1
+            if not args.dry_run:
+                stamp_attempt(j["id"])
             time.sleep(args.sleep)
             continue
         # parse_salary derives display + numeric bounds + annual/hourly period.
@@ -181,7 +192,7 @@ def main():
 
         if not args.dry_run:
             try:
-                sb.table("jobs").update(update).eq("id", j["id"]).execute()
+                stamp_attempt(j["id"], update)  # enrichment fields + attempt time in one write
             except Exception as e:
                 stats["errors"] += 1
                 print(f"  ERROR update id={j['id']} — {e}", flush=True)

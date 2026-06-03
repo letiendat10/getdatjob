@@ -32,35 +32,9 @@ const VISA_PATTERNS: Record<string, string> = {
   "TN":  "TN",
 };
 
-// P3: Department keywords for server-side title ILIKE filtering.
-// Order matters: more-specific depts are listed before "Engineering" to avoid
-// over-broad matches (e.g. "Data Engineer" should match "Data", not "Engineering").
-const DEPT_PATTERNS: Record<string, string[]> = {
-  "AI / ML":           ["machine learning", "ai ", " ml ", "artificial intelligence", "nlp", "llm", "research scientist", "applied scientist", " scientist"],
-  "Data":              ["data engineer", "data scientist", "data analyst", "analytics", "business intelligence"],
-  "Security":          ["security", "infosec", "cybersecurity", "appsec", "devsecops"],
-  "Product":           ["product manager", "product owner", " pm ", "product lead"],
-  "Design":            ["design", "ux ", "ui ", "designer", "user experience"],
-  "Platform / DevOps": ["devops", "site reliability", "platform engineer", "infrastructure", "cloud engineer", " sre"],
-  "Sales":             ["sales", "account executive", "business development"],
-  "Marketing":         ["marketing", "growth marketing", "growth hacker", "demand generation"],
-  "Finance":           ["finance", "accounting", "financial analyst"],
-  "Facilities":        ["facilities", "mailroom", "real estate", "workplace", "janitorial", "custodial", "maintenance tech"],
-  "Operations":        ["operations", " ops", "logistics", "supply chain", "fulfillment", "warehouse"],
-  "Legal":             ["legal", "counsel", "attorney", "compliance", "paralegal"],
-  "HR / People":       ["recruiter", "recruiting", "talent acquisition", "human resources", "hr ", "people ops", "people partner"],
-  "Customer Success":  ["customer success", "customer support", "account manager", "customer experience", "cx ", "support engineer"],
-  "Engineering":       ["engineer", "developer", "software", "backend", "frontend", "fullstack", "full-stack"],
-};
-
-// P3: Level keywords matched against job title.
-const LEVEL_PATTERNS: Record<string, string[]> = {
-  "Junior":           ["junior", "jr.", "entry-level", "entry level", "associate"],
-  "Lead":             ["lead"],
-  "Senior":           ["senior", "sr."],
-  "Principal/Staff":  ["principal", "staff engineer", "distinguished", "fellow"],
-  "People Manager":   ["manager", "director", "head of", " vp ", "vice president"],
-};
+// Department/level filtering is now server-side equality on the stored canonical
+// jobs.department / jobs.job_level columns (classify.py is the single source of
+// truth) — see queryJobs below. The old title-ILIKE keyword maps were removed.
 
 // P1: Lean type — only fields actually rendered in the UI.
 // Fields removed: employer_id, lca_count (base), title_clean,
@@ -146,21 +120,11 @@ export async function queryJobs(params: {
     if (patterns) dbq = dbq.or(patterns.map((p) => `location.ilike.%${p}%`).join(","));
   }
 
-  // P3: Server-side department filter
-  if (department && department !== "all") {
-    const dPatterns = DEPT_PATTERNS[department];
-    if (dPatterns?.length) {
-      dbq = dbq.or(dPatterns.map((p) => `title.ilike.%${p}%`).join(","));
-    }
-  }
-
-  // P3: Server-side level filter ("Mid-level" stays client-side — it's a catch-all)
-  if (level && level !== "all" && level !== "Mid-level") {
-    const lPatterns = LEVEL_PATTERNS[level];
-    if (lPatterns?.length) {
-      dbq = dbq.or(lPatterns.map((p) => `title.ilike.%${p}%`).join(","));
-    }
-  }
+  // Filter on the stored canonical classification (classify.py → jobs.department /
+  // jobs.job_level), the single source of truth. Indexed by idx_jobs_department /
+  // idx_jobs_job_level. Values match DEPARTMENT_OPTIONS / LEVEL_OPTIONS in jobs-client.
+  if (department && department !== "all") dbq = dbq.eq("department", department);
+  if (level && level !== "all")           dbq = dbq.eq("job_level", level);
 
   dbq = dbq.order("is_active", { ascending: false });
   if (sort === "recent") {

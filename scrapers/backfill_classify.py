@@ -21,7 +21,7 @@ from collections import defaultdict
 from config import SUPABASE_URL, SUPABASE_KEY
 from supabase import create_client
 
-from classify import classify_department, classify_level
+from classify import classify_department, classify_level, merge_db_overrides
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -33,6 +33,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="classify + report, no writes")
     args = ap.parse_args()
+
+    # Human title reviews (from /admin/review) win over keyword heuristics.
+    merge_db_overrides(
+        sb.table("title_reviews").select("title_norm,department,job_level").execute().data
+    )
 
     # bucket: (department|None, job_level|None) -> [job_id, ...]
     buckets: dict[tuple[str | None, str | None], list[int]] = defaultdict(list)

@@ -25,4 +25,4 @@ jobs:
       - name: Enrich descriptions + salary + dates
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python scrapers/04_enrich_descriptions.py --limit 5000
+        run: python scrapers/04_enrich_descriptions.py --limit 20000

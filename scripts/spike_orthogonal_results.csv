@@ -1,0 +1,21 @@
+person,strategy,ms,cents,url,title,company,location,urlMatch,titleMatch,locMatch,success
+Alanna Gregory,A: ContactOut people/enrich,1193,55,,,,,,false,false,false
+Alanna Gregory,B: Tomba → ContactOut linkedin/enrich,7600,2,https://www.linkedin.com/in/alannagregory,"VP Consumer Marketing & Growth at Block (Cash App & Afterpay) | P&L, Brand & Growth at Scale",Cash App,"New York, New York, United States",true,true,true,true
+Alanna Gregory,C: SerpAPI (current),104,0.5,https://www.linkedin.com/in/alannagregory,,,,true,false,false,true
+Alanna Gregory,D: SerpAPI → ContactOut linkedin/enrich,4911,1.5,https://www.linkedin.com/in/alannagregory,"VP Consumer Marketing & Growth at Block (Cash App & Afterpay) | P&L, Brand & Growth at Scale",Cash App,"New York, New York, United States",true,true,true,true
+Bruno Calabretta,A: ContactOut people/enrich,531,55,,,,,,false,false,false
+Bruno Calabretta,B: Tomba → ContactOut linkedin/enrich,3282,1,,,,,,false,false,false
+Bruno Calabretta,C: SerpAPI (current),56,0.5,https://id.linkedin.com/in/bruno-calabretta,,,,true,false,false,true
+Bruno Calabretta,D: SerpAPI → ContactOut linkedin/enrich,4146,1.5,https://id.linkedin.com/in/bruno-calabretta,"AI & Blockchain | Strategy & Ecosystem Growth | GTM & Community Development | Institutional Partnerships | LinkedIn Positioning | Public Speaker | Most talk about AI, I build with it",,"Bali, Indonesia",true,true,true,true
+Patrick Degenhardt,A: ContactOut people/enrich,455,55,,,,,,false,false,false
+Patrick Degenhardt,B: Tomba → ContactOut linkedin/enrich,6718,2,https://www.linkedin.com/in/patdegenhardt,"Marketing for the new age of AI + Blockchain (ex World Economic Forum, Philips, Consensys, Binance)",,"Zurich, Zurich, Switzerland",true,true,true,true
+Patrick Degenhardt,C: SerpAPI (current),65,0.5,https://ch.linkedin.com/in/patdegenhardt,,,,true,false,false,true
+Patrick Degenhardt,D: SerpAPI → ContactOut linkedin/enrich,4155,1.5,https://ch.linkedin.com/in/patdegenhardt,"Marketing for the new age of AI + Blockchain (ex World Economic Forum, Philips, Consensys, Binance)",,"Zurich, Zurich, Switzerland",true,true,true,true
+Sigal Bareket,A: ContactOut people/enrich,561,55,,,,,,false,false,false
+Sigal Bareket,B: Tomba → ContactOut linkedin/enrich,3357,1,,,,,,false,false,false
+Sigal Bareket,C: SerpAPI (current),69,0.5,https://www.linkedin.com/in/sigalbareket,,,,true,false,false,true
+Sigal Bareket,D: SerpAPI → ContactOut linkedin/enrich,4199,1.5,https://www.linkedin.com/in/sigalbareket,"Growth CMO, Scale-stage growth operator | Lyft (ride-share), Afterpay (fintech), Welltech (health and fitness) | Building teams, systems & stories that scale",Welltech,"Atlanta, Georgia, United States",true,true,true,true
+Joshua Mack,A: ContactOut people/enrich,395,55,,,,,,false,false,false
+Joshua Mack,B: Tomba → ContactOut linkedin/enrich,7617,2,https://www.linkedin.com/in/joshuammack,Performance Marketing | Marketing Strategy | CRM | Loyalty | Lifecycle | Growth Marketing | Team Leader,Thumbtack,"Palm Springs, California, United States",true,true,true,true
+Joshua Mack,C: SerpAPI (current),64,0.5,https://www.linkedin.com/in/joshuammack,,,,true,false,false,true
+Joshua Mack,D: SerpAPI → ContactOut linkedin/enrich,3493,1.5,https://www.linkedin.com/in/joshuammack,Performance Marketing | Marketing Strategy | CRM | Loyalty | Lifecycle | Growth Marketing | Team Leader,Thumbtack,"Palm Springs, California, United States",true,true,true,true

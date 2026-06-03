@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 60;
 import { createSupabaseAdmin } from "@/lib/supabase-admin";
 import { trySerpAPI } from "@/lib/enrich-apollo";
+import { enrichByLinkedInUrl, deriveJobFunction, deriveJobLevel } from "@/lib/enrich-orthogonal";
 import { verifyOAuthState } from "@/lib/oauth-state";
 
 const LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken";
@@ -204,18 +205,53 @@ export async function GET(request: NextRequest) {
     .from("profiles")
     .upsert({ user_id: userId, enrich_status: "pending" }, { onConflict: "user_id" });
 
-  // Insert extension job NOW (before redirect) — extension starts scraping
-  // immediately while the user is being redirected through the magic-link flow.
+  // Tier 1 — Orthogonal/ContactOut: headless server call, ~3s, returns
+  // headline+location+company directly. If it succeeds we mark enriched DONE
+  // and skip the extension queue. Spike showed 5/5 hit rate on personal Gmail
+  // (see /Users/dat/.claude/plans/you-are-the-principal-snoopy-treasure.md).
+  //
+  // Tier 2 — Chrome extension via linkedin_import_queue (today's path).
+  // Fires only on Orthogonal miss/timeout. Same as before — zero user-visible
+  // change in that case.
+  let orthHit = false;
   if (resolvedUrl) {
+    const enriched = await enrichByLinkedInUrl(resolvedUrl);
+    if (enriched?.headline) {
+      orthHit = true;
+      const headline = enriched.headline;
+      const location = enriched.location;
+
+      await supabaseAdmin.schema("linkedin").from("profiles").update({
+        ...(headline ? { headline } : {}),
+        ...(location ? { location } : {}),
+      }).eq("id", userId);
+
+      const { error: rpcErr } = await supabaseAdmin.rpc("enrich_set_result", {
+        p_user_id:       userId,
+        p_location:      location,
+        p_current_title: headline,
+        p_job_function:  deriveJobFunction(headline),
+        p_job_level:     deriveJobLevel(headline),
+      });
+      if (rpcErr) {
+        console.error("[linkedin-custom] enrich_set_result error:", rpcErr);
+      } else {
+        console.log(`[linkedin-custom] orthogonal done: headline="${headline}" loc="${location}" cents=${enriched.priceCents}`);
+      }
+    }
+  }
+
+  // Extension fallback — only if Orthogonal missed or we have no URL at all.
+  if (!orthHit && resolvedUrl) {
     const { error: queueErr } = await supabaseAdmin
       .from("linkedin_import_queue")
       .insert({ user_id: userId, linkedin_url: resolvedUrl });
     if (queueErr) {
       console.error("[linkedin-custom] queue insert failed:", queueErr);
     } else {
-      console.log(`[linkedin-custom] queued extension job for ${resolvedUrl}`);
+      console.log(`[linkedin-custom] fallback: queued extension job for ${resolvedUrl}`);
     }
-  } else {
+  } else if (!resolvedUrl) {
     console.warn("[linkedin-custom] no LinkedIn URL found — skipping queue insert");
   }
 

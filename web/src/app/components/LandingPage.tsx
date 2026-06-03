@@ -501,6 +501,7 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
           <div className={s.fcol}>
             <h4>Resources</h4>
             <div className={s["fcol-links"]}>
+              <Link href="/pricing">Pricing</Link>
               <a href="#laidoff">&ldquo;I just got laid off&rdquo; plan</a>
               <a href="#laidoff">60-day grace period</a>
               <a href="#salary">Salary data</a>

@@ -11,6 +11,12 @@ type Props = {
   windowDays?: number;
   email?: string;
   onContinueFree: () => void;
+  /** Override the body subhead. When set, replaces the default
+      "Unlock all N job matches in the last X days for your search." */
+  body?: string;
+  /** Where to send the user if the checkout API returns 401 (unauthenticated).
+      Used on public surfaces like /pricing where cold visitors land before auth. */
+  signInUrl?: string;
 };
 
 // Side-by-side comparison: both cards list the same first 4 features so the eye
@@ -33,16 +39,17 @@ const PREFERRED_FEATURES = [
 
 type Tier = "preferred" | "passed";
 
-export default function PaywallScreen({ jobCount, windowDays = 3, email: _email, onContinueFree }: Props) {
+export default function PaywallScreen({ jobCount, windowDays = 3, email: _email, onContinueFree, body: bodyOverride, signInUrl }: Props) {
   const [interval, setInterval] = useState<"monthly" | "annual">("monthly");
   const [loading, setLoading] = useState(false);
   // Selection state — which tier the bottom CTA will check out
   const [selectedTier, setSelectedTier] = useState<Tier>("preferred");
   const router = useRouter();
 
-  const body = jobCount && jobCount > 0
-    ? `Unlock all ${jobCount} job matches in the last ${windowDays} days for your search.`
-    : `Unlock all job matches in the last ${windowDays} days for your search.`;
+  const bodyText = bodyOverride
+    ?? (jobCount && jobCount > 0
+      ? `Unlock all ${jobCount} job matches in the last ${windowDays} days for your search.`
+      : `Unlock all job matches in the last ${windowDays} days for your search.`);
 
   const passedPrice = interval === "monthly" ? "$14.99/mo" : "$149.99/yr";
   const preferredPrice = interval === "monthly" ? "$19.99/mo" : "$199.99/yr";
@@ -56,6 +63,12 @@ export default function PaywallScreen({ jobCount, windowDays = 3, email: _email,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tier: selectedTier, interval }),
       });
+      // Cold visitors on /pricing aren't authed — the API returns 401.
+      // Send them through signin first if the caller provided a signInUrl.
+      if (res.status === 401 && signInUrl) {
+        router.push(signInUrl);
+        return;
+      }
       const data = await res.json() as { url?: string; error?: string };
       if (data.url) {
         router.push(data.url);
@@ -79,7 +92,7 @@ export default function PaywallScreen({ jobCount, windowDays = 3, email: _email,
       <h2 className={s.h1}>
         Don&rsquo;t let <em className={s["h1-em"]}>your visa</em> hold you back.
       </h2>
-      <p className={s.body}>{body}</p>
+      <p className={s.body}>{bodyText}</p>
 
       {/* Billing toggle — "[switch] · SAVE 20% · Annual plan"
           Switch first, then badge, then label.

@@ -404,7 +404,7 @@ function FilterChip({ label, value, allValue = "all", options, onChange, isOpen,
   // iOS Safari mobile even though state was updating (the chevron rotated).
   const menu = isOpen && dropPos && typeof document !== "undefined"
     ? createPortal(
-        <div style={{ top: dropPos.top, left: dropPos.left }} className={s["matches-chip-menu"]}>
+        <div data-matches-chip-menu="" style={{ top: dropPos.top, left: dropPos.left }} className={s["matches-chip-menu"]}>
           {options.map((opt) => (
             <button key={opt.value} onClick={() => { onChange(opt.value); onToggle(); }}
               className={`${s["matches-chip-option"]} ${opt.value === value ? s["matches-chip-option-active"] : ""}`}>
@@ -747,9 +747,14 @@ export function MatchesPanel({ preferences, isUnlocked }: {
     } catch {}
   }, []);
 
-  // Close chip dropdowns on outside click
+  // Close chip dropdowns on outside click.
+  // Skip if the target is inside a portal chip menu — those are rendered at body,
+  // outside filterBarRef, so without this guard the mousedown closes the menu
+  // before the option's click event fires and the selection is lost.
   useEffect(() => {
     const handler = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest?.("[data-matches-chip-menu]")) return;
       if (filterBarRef.current && !filterBarRef.current.contains(e.target as Node)) setOpenChip(null);
     };
     document.addEventListener("mousedown", handler);

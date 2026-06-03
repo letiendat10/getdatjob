@@ -1,0 +1,31 @@
+name: Card Health QA
+
+# Daily routine QA. Snapshots card health (last-7-day window) into card_health_snapshot
+# and FAILS the run — which emails you — on any coverage regression or integrity breach
+# (rogue dept/level values, non-US leak, Workday description% dropping, etc.).
+# Runs entirely on GitHub's runners; no laptop or local process required.
+
+on:
+  schedule:
+    # 16:00 UTC = 9:00am Pacific (PDT). GitHub cron is UTC and does NOT observe DST,
+    # so this lands at 8:00am once PST returns in November. Bump to "0 17 * * *" if you
+    # prefer 9:00am during PST instead.
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r scrapers/requirements.txt
+      - name: Run card-health QA
+        env:
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python scrapers/10_qa_card_health.py

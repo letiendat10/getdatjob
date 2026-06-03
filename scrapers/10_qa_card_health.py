@@ -22,10 +22,14 @@ import os
 import sys
 from datetime import date
 
-from config import SUPABASE_URL, SUPABASE_KEY, DATA_DIR
+from config import SUPABASE_URL, SUPABASE_KEY
 from supabase import create_client
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Portable output dir (repo_root/data) — works locally AND on the CI runner, unlike
+# config.DATA_DIR which is an absolute macOS path that doesn't exist on Linux.
+OUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 # Integrity invariants — any non-zero value is a hard failure (the card is lying).
 INVARIANTS = ["bad_level", "bad_dept", "bad_salary_period", "bad_tier",
@@ -86,16 +90,19 @@ def main() -> None:
     wd = m.get("by_ats", {}).get("workday") or {}
     print(f"  workday:   n={wd.get('n')}  desc={wd.get('desc_pct')}%  (enrichment canary)")
 
-    # ── CSV ──
-    os.makedirs(DATA_DIR, exist_ok=True)
-    csv_path = os.path.join(DATA_DIR, f"card_health_{date.today().isoformat()}.csv")
-    flat = {k: v for k, v in m.items() if not isinstance(v, (dict, list))}
-    with open(csv_path, "w", newline="") as f:
-        wr = csv.writer(f)
-        wr.writerow(["metric", "value"])
-        for k, v in flat.items():
-            wr.writerow([k, v])
-    print(f"  csv -> {csv_path}")
+    # ── CSV (best-effort; the DB snapshot + exit code are the real outputs) ──
+    try:
+        os.makedirs(OUT_DIR, exist_ok=True)
+        csv_path = os.path.join(OUT_DIR, f"card_health_{date.today().isoformat()}.csv")
+        flat = {k: v for k, v in m.items() if not isinstance(v, (dict, list))}
+        with open(csv_path, "w", newline="") as f:
+            wr = csv.writer(f)
+            wr.writerow(["metric", "value"])
+            for k, v in flat.items():
+                wr.writerow([k, v])
+        print(f"  csv -> {csv_path}")
+    except OSError as e:
+        print(f"  (csv write skipped: {e})")
 
     if warnings:
         print("\nWARN:")

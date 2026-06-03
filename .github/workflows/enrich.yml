@@ -1,0 +1,28 @@
+name: Enrich Job Descriptions
+
+# Chews through the list-only ATS backlog (Workday is ~100k jobs with no description):
+# fills description_text, salary (range + numeric bounds) and the exact posted date.
+# Resumable — each run only touches jobs whose description is still empty — so running
+# it several times a day steadily clears the backlog and then keeps up with the delta.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours
+  workflow_dispatch:
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r scrapers/requirements.txt
+      - name: Enrich descriptions + salary + dates
+        env:
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python scrapers/04_enrich_descriptions.py --limit 5000

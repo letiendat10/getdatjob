@@ -35,6 +35,11 @@ from supabase import create_client
 
 from config import SUPABASE_URL, SUPABASE_KEY
 from title_utils import clean_title
+from classify import classify_department, classify_level
+
+# data/classification_overrides.json — consumed by classify.py (dept/level overrides).
+_OVERRIDES_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "data", "classification_overrides.json")
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -94,13 +99,18 @@ def build_review_data() -> list[dict]:
     tail = ranked[500:]
     random_50 = random.sample(tail, min(50, len(tail)))
 
-    result = []
-    for title, count in top500:
-        result.append({"original_title": title, "auto_clean": clean_map.get(title, clean_title(title)),
-                        "filing_count": count, "section": "top500"})
-    for title, count in random_50:
-        result.append({"original_title": title, "auto_clean": clean_map.get(title, clean_title(title)),
-                        "filing_count": count, "section": "random50"})
+    def row(title: str, count: int, section: str) -> dict:
+        return {
+            "original_title": title,
+            "auto_clean": clean_map.get(title, clean_title(title)),
+            "auto_department": classify_department(title) or "",
+            "auto_level": classify_level(title) or "",
+            "filing_count": count,
+            "section": section,
+        }
+
+    result = [row(t, c, "top500") for t, c in top500]
+    result += [row(t, c, "random50") for t, c in random_50]
     return result
 
 
@@ -121,10 +131,18 @@ def generate():
         print(f"Created sheet: {sh.url}")
         print(f"\n  *** Add this to config.py:  TITLE_REVIEW_SHEET_ID = \"{sh.id}\" ***\n")
 
-    header = ["original_title", "auto_clean", "override_clean", "filing_count", "_section"]
+    # One review pass covers title-cleaning AND department/level classification.
+    # Leave any override_* cell blank to accept the auto_* value; fill it to correct.
+    header = ["original_title", "auto_clean", "override_clean",
+              "auto_department", "override_department",
+              "auto_level", "override_level",
+              "filing_count", "_section"]
     ws.update("A1", [header])
     rows_out = [
-        [d["original_title"], d["auto_clean"], "", d["filing_count"], d["section"]]
+        [d["original_title"], d["auto_clean"], "",
+         d["auto_department"], "",
+         d["auto_level"], "",
+         d["filing_count"], d["section"]]
         for d in data
     ]
     ws.update("A2", rows_out)
@@ -137,6 +155,58 @@ def generate():
 
 # ── Apply ─────────────────────────────────────────────────────────────────────
 
+def apply_classification_overrides(records: list[dict]) -> None:
+    """Persist override_department / override_level into data/classification_overrides.json
+    (keyed by lowercased title, the same key classify.py looks up) and re-apply to jobs.
+
+    A non-empty override cell sets the value; the literal "none" clears it to NULL.
+    """
+    try:
+        with open(_OVERRIDES_PATH, encoding="utf-8") as f:
+            store: dict[str, dict[str, str]] = json.load(f)
+    except (FileNotFoundError, ValueError):
+        store = {}
+
+    def norm(v: str) -> str | None:
+        v = (v or "").strip()
+        if not v:
+            return None            # blank cell → no override for this field
+        return "" if v.lower() == "none" else v   # "none" → explicit clear
+
+    changed = 0
+    for r in records:
+        title = (r.get("original_title") or "").strip()
+        if not title:
+            continue
+        dept = norm(r.get("override_department", ""))
+        lvl = norm(r.get("override_level", ""))
+        if dept is None and lvl is None:
+            continue
+        key = title.lower()
+        row = store.get(key, {})
+        if dept is not None:
+            row["department"] = dept
+        if lvl is not None:
+            row["job_level"] = lvl
+        store[key] = row
+        # Re-apply to existing jobs with this exact title.
+        patch = {}
+        if dept is not None:
+            patch["department"] = dept or None
+        if lvl is not None:
+            patch["job_level"] = lvl or None
+        sb.table("jobs").update(patch).ilike("title", title).execute()
+        changed += 1
+
+    if changed:
+        os.makedirs(os.path.dirname(_OVERRIDES_PATH), exist_ok=True)
+        with open(_OVERRIDES_PATH, "w", encoding="utf-8") as f:
+            json.dump(store, f, indent=2, ensure_ascii=False, sort_keys=True)
+        print(f"{changed} department/level overrides written to {_OVERRIDES_PATH}")
+    else:
+        print("No department/level overrides found in sheet.")
+
+
 def apply_overrides():
     if not SHEET_ID:
         raise RuntimeError("TITLE_REVIEW_SHEET_ID not set — run --generate first")
@@ -145,16 +215,19 @@ def apply_overrides():
     ws = sh.sheet1
     records = ws.get_all_records()
 
+    # Classification (department/level) overrides — written for classify.py to consume.
+    apply_classification_overrides(records)
+
     overrides = {
         r["original_title"]: r["override_clean"].strip()
         for r in records
         if r.get("override_clean", "").strip()
     }
     if not overrides:
-        print("No overrides found in sheet.")
+        print("No title_clean overrides found in sheet.")
         return
 
-    print(f"{len(overrides)} overrides to apply …")
+    print(f"{len(overrides)} title_clean overrides to apply …")
     for original, corrected in overrides.items():
         sb.table("lca_filings").update({"job_title_clean": corrected}).eq("job_title", original).execute()
 

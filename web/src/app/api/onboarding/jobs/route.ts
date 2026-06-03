@@ -31,6 +31,8 @@ export async function POST(req: NextRequest) {
     // locationMode === "anywhere" → no location filter
 
     if (department) baseParams.department = department;
+    // Pass level to the search too (not just the count) so displayed jobs match the count.
+    if (level) baseParams.level = level;
 
     // Cascade: try 3d → 7d → 14d, stop at the first window with ≥5 matching jobs.
     // countMatchingJobsInWindow applies department + level filters for an accurate count.

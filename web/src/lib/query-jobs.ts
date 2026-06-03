@@ -72,6 +72,7 @@ export type JobRow = {
   location:          string;
   url:               string;
   posted_at:         string | null;
+  effective_posted_at: string | null;
   ats_source:        string;
   ats_job_id:        string;
   ats_slug:          string | null;
@@ -83,6 +84,8 @@ export type JobRow = {
   is_active:         boolean;
   salary_range:      string | null;
   e3_lca_count:      number | null;
+  department:        string | null;
+  job_level:         string | null;
   poc_first_name:    string | null;
   poc_last_name:     string | null;
   poc_email:         string | null;
@@ -107,16 +110,18 @@ export async function queryJobs(params: {
     .from("jobs_with_details")
     .select(
       // P1: explicit field list — visa_types excluded from payload, used only for filtering.
-      "id,title,location,url,posted_at,ats_source,ats_job_id,ats_slug," +
+      "id,title,location,url,posted_at,effective_posted_at,ats_source,ats_job_id,ats_slug," +
       "company,company_domain_url,lca_count_2025,last_filing_date,confidence_tier,is_active,salary_range,e3_lca_count," +
-      "poc_first_name,poc_last_name,poc_email",
+      "department,job_level,poc_first_name,poc_last_name,poc_email",
       { count: "planned" }
     );
 
   const days = POSTED_DAYS[posted];
   if (days) {
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
-    dbq = dbq.or(`posted_at.gte.${cutoff},posted_at.is.null`);
+    // Gate on effective_posted_at (real posted_at, else first-seen scraped_at) so undated
+    // list-only jobs are still ranked honestly. Backed by idx_jobs_active_effective.
+    dbq = dbq.gte("effective_posted_at", cutoff);
   }
 
   if (q.trim()) {
@@ -159,7 +164,7 @@ export async function queryJobs(params: {
 
   dbq = dbq.order("is_active", { ascending: false });
   if (sort === "recent") {
-    dbq = dbq.order("posted_at", { ascending: false, nullsFirst: false });
+    dbq = dbq.order("effective_posted_at", { ascending: false, nullsFirst: false });
   } else {
     dbq = dbq.order("lca_count_2025", { ascending: false });
   }

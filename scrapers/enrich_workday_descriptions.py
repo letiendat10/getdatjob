@@ -1,5 +1,10 @@
 """
 enrich_workday_descriptions.py
+
+DEPRECATED — superseded by 04_enrich_descriptions.py, which covers Workday +
+SmartRecruiters + iCIMS and also fills salary (range + numeric bounds) and the exact
+posted_at (jobPostingInfo.startDate). Kept only for reference; not run by CI.
+
 Backfills description_text for Workday jobs that have empty descriptions.
 
 Uses the Workday CXS API (the same endpoint the browser calls) which returns

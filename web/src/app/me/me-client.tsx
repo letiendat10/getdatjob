@@ -41,6 +41,10 @@ type Job = {
   location: string | null;
   url: string | null;
   posted_at: string | null;
+  effective_posted_at: string | null;
+  department: string | null;
+  job_level: string | null;
+  is_remote: boolean | null;
   visa_tier: string | null;
   salary_range: string | null;
   lca_count: number | null;
@@ -288,7 +292,7 @@ function KaiText({ text, isStreaming }: { text: string; isStreaming?: boolean })
 }
 
 function JobCard({ job }: { job: Job }) {
-  const posted = timeAgo(job.posted_at);
+  const posted = timeAgo(job.effective_posted_at ?? job.posted_at);
   const displayCompany = normalizeCompanyName(job.company);
   return (
     <a

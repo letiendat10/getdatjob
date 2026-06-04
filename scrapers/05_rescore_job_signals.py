@@ -46,13 +46,28 @@ def rescore_employer(emp_id: int) -> dict:
     """Re-score all jobs for one employer. Returns per-tier counts (before & after)."""
     lca_titles, lca_counts = build_lca_index(sb, emp_id)
 
-    jobs_res = (
-        sb.table("jobs")
-        .select("id,title,description_text")
-        .eq("employer_id", emp_id)
-        .execute()
-    )
-    if not jobs_res.data:
+    # Keyset-paginate the jobs fetch: selecting all of a mega-employer's jobs *with*
+    # description_text in one statement blows the Supabase statement timeout (57014).
+    # Page by id so each statement stays small.
+    jobs_data: list[dict] = []
+    last_id = 0
+    while True:
+        batch = (
+            sb.table("jobs")
+            .select("id,title,description_text")
+            .eq("employer_id", emp_id)
+            .gt("id", last_id)
+            .order("id")
+            .limit(500)
+            .execute()
+        )
+        if not batch.data:
+            break
+        jobs_data.extend(batch.data)
+        if len(batch.data) < 500:
+            break
+        last_id = batch.data[-1]["id"]
+    if not jobs_data:
         return {"jobs": 0}
 
     before: Counter = Counter()
@@ -60,7 +75,7 @@ def rescore_employer(emp_id: int) -> dict:
     signal_rows = []
 
     # Fetch current tiers for before/after comparison
-    job_ids = [r["id"] for r in jobs_res.data]
+    job_ids = [r["id"] for r in jobs_data]
     existing_signals: dict[int, str] = {}
     for i in range(0, len(job_ids), 1000):
         chunk = job_ids[i:i + 1000]
@@ -73,7 +88,7 @@ def rescore_employer(emp_id: int) -> dict:
         for s in sig_res.data:
             existing_signals[s["job_id"]] = s["confidence_tier"]
 
-    for rec in jobs_res.data:
+    for rec in jobs_data:
         current_tier = existing_signals.get(rec["id"], "no_signal")
         before[current_tier] += 1
         # verified/excluded can't improve further — skip
@@ -136,9 +151,15 @@ def main() -> None:
     totals_before: Counter = Counter()
     totals_after: Counter = Counter()
     total_jobs = 0
+    failed: list[int] = []
 
     for i, emp_id in enumerate(emp_ids, 1):
-        result = rescore_employer(emp_id)
+        try:
+            result = rescore_employer(emp_id)
+        except Exception as e:
+            failed.append(emp_id)
+            print(f"  ⚠ employer {emp_id} skipped ({str(e)[:100]})", flush=True)
+            continue
         if result["jobs"] == 0:
             continue
         total_jobs += result["jobs"]
@@ -161,6 +182,8 @@ def main() -> None:
         sign = "+" if delta > 0 else ""
         print(f"{tier:<12} {b:>8,} {a:>8,} {sign}{delta:>7,}")
     print(f"\nVerified jobs: {totals_before.get('verified', 0):,} → {totals_after.get('verified', 0):,}")
+    if failed:
+        print(f"\n⚠ {len(failed)} employer(s) skipped due to errors: {failed}")
 
 
 if __name__ == "__main__":

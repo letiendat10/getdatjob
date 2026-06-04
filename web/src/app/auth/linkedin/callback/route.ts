@@ -172,6 +172,18 @@ export async function GET(request: NextRequest) {
   const resolvedUrl = profile.linkedinUrl ?? serpResult?.url ?? null;
   const serpHeadline = serpResult?.headline ?? null;
 
+  // Check if this is a returning user who already completed enrichment.
+  // If so, skip re-enrichment and send them to /me/chat instead of /kai.
+  const { data: existingEnrich } = await supabaseAdmin
+    .schema("enriched")
+    .from("profiles")
+    .select("enrich_status")
+    .eq("user_id", userId)
+    .eq("enrich_status", "done")
+    .maybeSingle();
+
+  const isReturningUser = !!existingEnrich;
+
   // Stamp LinkedIn metadata onto the user record so /auth/callback can read it.
   await supabaseAdmin.auth.admin.updateUserById(userId, {
     user_metadata: {
@@ -198,6 +210,14 @@ export async function GET(request: NextRequest) {
     },
     { onConflict: "id" }
   );
+
+  if (isReturningUser) {
+    // Returning user: skip enrichment entirely, go straight to /me/chat.
+    console.log(`[linkedin-custom] returning user ${userId} — skipping enrichment, redirecting to /me/chat`);
+    const res = NextResponse.redirect(linkData.properties.action_link);
+    res.cookies.set("li_oauth_next", "/me/chat", { path: "/", maxAge: 300, sameSite: "lax" });
+    return res;
+  }
 
   // Plant pending enrichment row.
   await supabaseAdmin

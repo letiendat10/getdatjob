@@ -832,6 +832,46 @@
   margin-left: 10px;
 }
 
+/* ── Work experience ─────────────────────────────────────────────────────── */
+.work-exp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.work-exp-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.work-exp-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+.work-exp-company {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.work-exp-meta {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.work-exp-current {
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--accent);
+  color: #F4F0E8;
+  border-radius: 100px;
+  padding: 1px 7px;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 /* ── Alert preference row ────────────────────────────────────────────────── */
 .alert-row {
   display: flex;

@@ -13,6 +13,15 @@ import s from "./me.module.css";
 
 type AlertPrefs = { email_alerts: boolean; frequency: "daily" | "weekly" };
 
+type WorkHistoryItem = {
+  company: string;
+  title: string;
+  location: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_current: boolean;
+};
+
 type Profile = {
   id: string;
   full_name: string | null;
@@ -31,6 +40,7 @@ type Profile = {
     location: string | null;
     posted_within_days: number | null;
   } | null;
+  work_history: WorkHistoryItem[] | null;
 };
 
 type Job = {
@@ -702,8 +712,10 @@ const VISA_OPTIONS = [
   { label: "O-1 / Other", value: "Other" },
 ];
 const DEPT_OPTIONS = [
-  "Engineering", "Product", "Data / AI", "Marketing / Growth",
-  "Design", "Sales", "Finance", "Operations",
+  "Engineering", "Product", "AI / ML", "Data", "Design",
+  "Security", "Platform / DevOps", "Sales", "Marketing",
+  "Finance", "Operations", "Legal", "HR / People",
+  "Customer Success", "Facilities",
 ];
 const LEVEL_OPTIONS = ["Junior", "Lead", "Senior", "Principal/Staff", "People Manager"];
 const SALARY_OPTIONS = [
@@ -719,15 +731,43 @@ const POSTED_OPTIONS = [
   { label: "Last week", value: "7" },
   { label: "Last month", value: "30" },
 ];
+const LOCATION_PROFILE_OPTIONS = [
+  { label: "Any location", value: "" },
+  { label: "Remote", value: "Remote" },
+  { label: "San Francisco Bay Area", value: "San Francisco Bay Area" },
+  { label: "New York City", value: "New York City" },
+  { label: "Seattle, WA", value: "Seattle, WA" },
+  { label: "Chicago, IL", value: "Chicago, IL" },
+  { label: "Los Angeles, CA", value: "Los Angeles, CA" },
+  { label: "Austin, TX", value: "Austin, TX" },
+  { label: "Boston, MA", value: "Boston, MA" },
+  { label: "Denver, CO", value: "Denver, CO" },
+  { label: "Washington, DC", value: "Washington, DC" },
+  { label: "Atlanta, GA", value: "Atlanta, GA" },
+  { label: "Miami, FL", value: "Miami, FL" },
+  { label: "Nashville, TN", value: "Nashville, TN" },
+  { label: "Portland, OR", value: "Portland, OR" },
+  { label: "Salt Lake City, UT", value: "Salt Lake City, UT" },
+  { label: "Phoenix, AZ", value: "Phoenix, AZ" },
+  { label: "San Diego, CA", value: "San Diego, CA" },
+  { label: "Virginia", value: "Virginia" },
+  { label: "Pennsylvania", value: "Pennsylvania" },
+];
 const RAINBOW = "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)";
 const TIER_LABELS: Record<string, string> = { free: "Free", passed: "Passed", preferred: "Preferred" };
 const TIER_FEATURES: Record<string, string[]> = {
-  free: ["6 job matches/day", "USCIS-verified sponsorship data", "All visa types"],
-  passed: ["Unlimited job matches", "USCIS-verified sponsorship data", "All visa types"],
-  preferred: ["Unlimited job matches", "Daily job alerts", "Salary benchmarking"],
+  free:      ["6 job matches/day", "USCIS-verified data", "Sponsorship history", "Verified company contact"],
+  passed:    ["Unlimited job listings", "USCIS-verified data", "Sponsorship history", "Verified company contact"],
+  preferred: ["Unlimited job listings", "USCIS-verified data", "Sponsorship history", "Verified company contact", "Job alerts to make you first in line", "Lay-off action plan"],
 };
 
 // ── Account Tab ───────────────────────────────────────────────────────────────
+
+function formatWorkDate(dateStr: string | null): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
 
 function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut, onPrefsChange }: {
   profile: Profile;
@@ -896,13 +936,9 @@ function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut, onPrefs
               </div>
               <div className={s["pref-field"]}>
                 <label className={s["pref-label"]}>Location</label>
-                <input
-                  type="text"
-                  className={s["pref-input"]}
-                  placeholder="e.g. San Francisco, Remote"
-                  value={prefs.location}
-                  onChange={e => updatePref("location", e.target.value)}
-                />
+                <select className={s["pref-select"]} value={prefs.location} onChange={e => updatePref("location", e.target.value)}>
+                  {LOCATION_PROFILE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </div>
               <div className={s["pref-field"]}>
                 <label className={s["pref-label"]}>Posted within</label>
@@ -919,7 +955,30 @@ function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut, onPrefs
           <div className={s["profile-card-head"]}>
             <h3 className={s["profile-card-title"]}>Work Experience</h3>
           </div>
-          <div className={s["profile-card-body"]} style={{ minHeight: 48 }} />
+          <div className={s["profile-card-body"]}>
+            {!profile.work_history || profile.work_history.length === 0 ? (
+              <p className={s["profile-empty"]}>No work history imported yet.</p>
+            ) : (
+              <div className={s["work-exp-list"]}>
+                {profile.work_history.map((item, i) => (
+                  <div key={i} className={s["work-exp-item"]}>
+                    <div className={s["work-exp-title"]}>
+                      {item.title}
+                      {item.is_current && <span className={s["work-exp-current"]}>Current</span>}
+                    </div>
+                    <div className={s["work-exp-company"]}>
+                      {item.company}{item.location ? ` · ${item.location}` : ""}
+                    </div>
+                    <div className={s["work-exp-meta"]}>
+                      {formatWorkDate(item.start_date)}
+                      {" – "}
+                      {item.is_current ? "Present" : formatWorkDate(item.end_date)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 4. Subscription */}

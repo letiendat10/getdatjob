@@ -30,7 +30,7 @@ export default async function MeTabPage({ params }: { params: Promise<{ tab: str
     redirect("/auth/signin");
   }
 
-  const [{ data: profile }, { data: enrichedPrefs }, { data: liProfile }, { data: subData }, { data: alertPrefsData }] =
+  const [{ data: profile }, { data: enrichedPrefs }, { data: liProfile }, { data: subData }, { data: alertPrefsData }, { data: workHistoryData }] =
     await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase
@@ -55,6 +55,12 @@ export default async function MeTabPage({ params }: { params: Promise<{ tab: str
         .select("email_alerts, frequency")
         .eq("user_id", user.id)
         .maybeSingle(),
+      supabase
+        .from("user_work_history")
+        .select("company, title, location, start_date, end_date, is_current")
+        .eq("user_id", user.id)
+        .order("is_current", { ascending: false })
+        .order("start_date", { ascending: false }),
     ]);
 
   const profileData = {
@@ -89,6 +95,7 @@ export default async function MeTabPage({ params }: { params: Promise<{ tab: str
           posted_within_days: (enrichedPrefs as { posted_within_days?: number | null }).posted_within_days ?? null,
         }
       : null,
+    work_history: (workHistoryData as Array<{ company: string; title: string; location: string | null; start_date: string | null; end_date: string | null; is_current: boolean }> | null) ?? null,
   };
 
   const alertPrefs = alertPrefsData

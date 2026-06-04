@@ -7,7 +7,7 @@ name: Enrich Job Descriptions
 
 on:
   schedule:
-    - cron: "0 */6 * * *"   # every 6 hours
+    - cron: "0 * * * *"   # every hour (skips immediately if no candidates)
   workflow_dispatch:
 
 jobs:

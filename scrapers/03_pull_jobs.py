@@ -178,6 +178,12 @@ _RANGE = re.compile(rf'({_AMT}){_UNIT}\s*(?:[-–—]+|to)\s*({_AMT})', re.I)
 _USD_RANGE = re.compile(r'(\d[\d,]{4,}(?:\.\d+)?)\s*(?:[-–—]+|to)\s*(\d[\d,]{4,}(?:\.\d+)?)\s*USD', re.I)
 _UPTO = re.compile(rf'up\s+to\s+({_AMT})', re.I)
 _PLUS = re.compile(rf'({_AMT})\s*\+', re.I)
+# "$187,741.00-270,500.00 per annum" — dollar sign only on first number (PayPal / some Workday)
+_DOLLAR_SHARED = re.compile(
+    r'\$\s*(\d[\d,]*(?:\.\d+)?)\s*[-–—]\s*(\d[\d,]*(?:\.\d+)?)'
+    r'(?=\s*(?:per annum|annually|/yr|/year|a year|\s*$))',
+    re.I,
+)
 _HOURLY_HINT = re.compile(r'(/\s*(?:hr|hour)|per\s+hour|hourly|an\s+hour)', re.I)
 
 
@@ -230,6 +236,11 @@ def parse_salary(html: str) -> dict | None:
         if m:
             lo, hi = _sal_num(m.group(1)), _sal_num(m.group(2))
             if lo and hi and lo > 1000:  # guard against "1 – 2 USD" noise
+                return {"display": _fmt(lo, hi, "annual"), "min_num": lo, "max_num": hi, "period": "annual"}
+        m = _DOLLAR_SHARED.search(ctx)
+        if m:
+            lo, hi = _sal_num(m.group(1)), _sal_num(m.group(2))
+            if lo and hi and lo > 1000:
                 return {"display": _fmt(lo, hi, "annual"), "min_num": lo, "max_num": hi, "period": "annual"}
         m = _UPTO.search(ctx)
         if m:

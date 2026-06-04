@@ -10,8 +10,8 @@ Human corrections from the review sheet are stored in
 data/classification_overrides.json and win over the keyword heuristics, so a vetted
 title always classifies the way the reviewer decided.
 
-Level taxonomy (5 buckets, low → high):
-    Entry/Junior → Senior → Lead/Manager → Director → VP
+Level taxonomy (6 buckets, low → high):
+    Entry/Junior → Senior → Principal / Staff → Lead/Manager → Director → VP
 Plain mid-level ICs ("Software Engineer") classify as None == "any level".
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ import re
 from title_utils import clean_title
 
 # ── Canonical taxonomies ──────────────────────────────────────────────────────
-LEVELS = ["Entry/Junior", "Senior", "Lead/Manager", "Director", "VP"]
+LEVELS = ["Entry/Junior", "Senior", "Principal / Staff", "Lead/Manager", "Director", "VP"]
 # 15 canonical departments — matches the /jobs filter UI exactly, so the stored column
 # and the filter agree. Priority order (specific → the "engineer" catch-all) lives in
 # _DEPT_KEYWORDS below; DEPARTMENTS is the allowed-value set.
@@ -41,11 +41,29 @@ _RX_MANAGER = re.compile(
     r"|\b(team|tech|technical|engineering|eng|group|squad|project|delivery|program|"
     r"product|design|data|qa|it|dev)\s+lead\b"
     r"|^lead\s+(?!gen)", re.I)  # "Lead Engineer" yes; "Lead Generation Specialist" no
-# Senior-most ICs (no dedicated Staff/Principal bucket → fold into Senior)
-_RX_SENIOR = re.compile(r"\b(senior|sr\.?|staff|principal|distinguished|fellow)\b", re.I)
+# Senior-most ICs with a dedicated "Principal / Staff" track above plain Senior
+_RX_PRINCIPAL = re.compile(r"\b(principal|staff|distinguished|fellow)\b", re.I)
+_RX_SENIOR = re.compile(r"\b(senior|sr\.?)\b", re.I)
 _RX_ENTRY = re.compile(
     r"\b(intern|internship|junior|jr\.?|associate|entry[- ]?level|new\s*grad|graduate|"
     r"apprentice|trainee|co[- ]?op|early\s+career)\b", re.I)
+# Numeric IC levels: "Level 5", "L5", "E6", "IC5", "SWE4", or trailing digit "Engineer 5"
+# Groups: (1) letter-prefix level, (2) trailing digit, (3) IC/SWE prefix
+_RX_LEVEL_NUM = re.compile(
+    r"\b(?:level|l|e)[-\s]?([3-9]|1[0-9])\b"
+    r"|\b(?:ic|sw|swe)[-\s]?([3-9])\b"
+    r"|(?<!\d)\b(\d)\s*$",
+    re.I,
+)
+
+
+def _level_from_num(m: re.Match) -> str:
+    n = int(next(g for g in m.groups() if g is not None))
+    if n <= 3:
+        return "Entry/Junior"
+    if n <= 5:
+        return "Senior"
+    return "Principal / Staff"
 
 
 def classify_level(title: str | None) -> str | None:
@@ -58,12 +76,19 @@ def classify_level(title: str | None) -> str | None:
         return "VP"
     if _RX_DIRECTOR.search(t):
         return "Director"
+    # Principal/Staff checked before Manager so "Staff Product Manager" → "Principal / Staff"
+    # (HITL overrides handle the rare genuine people-manager with "Principal" in title)
+    if _RX_PRINCIPAL.search(t):
+        return "Principal / Staff"
     if _RX_MANAGER.search(t):
         return "Lead/Manager"
     if _RX_SENIOR.search(t):
         return "Senior"
     if _RX_ENTRY.search(t):
         return "Entry/Junior"
+    m = _RX_LEVEL_NUM.search(t)
+    if m:
+        return _level_from_num(m)
     return None
 
 

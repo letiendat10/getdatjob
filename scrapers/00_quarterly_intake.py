@@ -111,6 +111,35 @@ def clean_name(name: str) -> str:
     return re.sub(r"\s+", " ", str(name).lower().strip())
 
 
+def fetch_all_employers(columns: str) -> list[dict]:
+    """Fetch every employers row via keyset pagination.
+
+    A plain .select().execute() is silently capped by PostgREST's max-rows
+    (10,000 on this project) while the table holds ~31k rows. That truncation
+    yields an incomplete id map, which makes the filing insert below skip the
+    employers that were left out — dropping ~40% of a quarter's filings. Page by
+    ascending id so the map is always complete.
+    """
+    rows: list[dict] = []
+    last_id = 0
+    while True:
+        batch = (
+            sb.table("employers")
+            .select(columns)
+            .gt("id", last_id)
+            .order("id")
+            .limit(1000)
+            .execute()
+        )
+        if not batch.data:
+            break
+        rows.extend(batch.data)
+        if len(batch.data) < 1000:
+            break
+        last_id = batch.data[-1]["id"]
+    return rows
+
+
 # ── Tool 1: validate_xlsx_file ────────────────────────────────────────────────
 
 def validate_xlsx_file(path: str) -> dict:
@@ -236,9 +265,11 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
             .merge(poc_df, on="name_clean", how="left")
         )
 
-        # Fetch existing employers (with last_filing_date, domain, poc_email for recency check + null-preservation)
-        existing_result = sb.table("employers").select("id,name_clean,last_filing_date,company_domain_url,poc_email").execute()
-        existing_by_name = {e["name_clean"]: e for e in existing_result.data}
+        # Fetch existing employers (with last_filing_date, domain, poc_email for recency check + null-preservation).
+        # Paginated — an un-paginated select is capped at 10,000 rows and would misclassify
+        # beyond-cap employers as new, bypassing the recency guard and clobbering their POC.
+        existing_rows = fetch_all_employers("id,name_clean,last_filing_date,company_domain_url,poc_email")
+        existing_by_name = {e["name_clean"]: e for e in existing_rows}
 
         # Build batched upsert lists — avoids per-row HTTP calls that exhaust HTTP/2 streams
         new_count = updated_count = 0
@@ -287,9 +318,8 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
             sb.table("employers").upsert(rows_to_write[i:i + 500], on_conflict="name_clean").execute()
             print(f"    {min(i + 500, len(rows_to_write)):,}/{len(rows_to_write):,}")
 
-        # Fetch full employer ID map
-        id_result = sb.table("employers").select("id,name_clean").execute()
-        employer_ids = {r["name_clean"]: r["id"] for r in id_result.data}
+        # Fetch full employer ID map (paginated — see fetch_all_employers)
+        employer_ids = {r["name_clean"]: r["id"] for r in fetch_all_employers("id,name_clean")}
 
         # Replace filings for this file's received_date range (idempotent re-run)
         print(f"  Replacing lca_filings for received_date {rcvd_min} → {rcvd_max} …")

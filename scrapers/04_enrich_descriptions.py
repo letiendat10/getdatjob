@@ -122,9 +122,10 @@ def get_slug(employer_id: int, ats: str) -> str | None:
 
 
 def fetch_candidates(ats_list: list[str], limit: int) -> list[dict]:
-    # Prioritize never-attempted jobs at the highest-LCA employers first, and let
-    # failures cool down (7d) instead of head-of-line blocking the queue. See
-    # select_enrich_candidates() in migration 20260603000005.
+    # Prioritise the jobs that most improve a visa-seeker's search: jobs inside the Kai
+    # cascade window first, then biggest-LCA sponsors, newest first; failures cool down
+    # (7d) instead of head-of-line blocking the queue. Ordering lives in
+    # select_enrich_candidates(); see migration 20260604000002_enrich_sponsor_priority.
     return sb.rpc(
         "select_enrich_candidates", {"p_ats": ats_list, "p_limit": limit}
     ).execute().data
@@ -137,6 +138,52 @@ def stamp_attempt(job_id: int, extra: dict | None = None) -> None:
     if extra:
         payload.update(extra)
     sb.table("jobs").update(payload).eq("id", job_id).execute()
+
+
+def enrich_one(job: dict, *, dry_run: bool = False) -> dict:
+    """Fetch + parse + persist enrichment for a single job — the single source of
+    per-job enrichment logic, shared by main()'s batch loop and enrich_worker.py.
+
+    `job` needs id, ats_source, ats_job_id, employer_id. Returns a status dict
+    {"status": "no_slug"|"error"|"no_desc"|"enriched", ...}. Stamps enrich_attempted_at
+    on every outcome (unless dry_run) so failures cool down instead of blocking the queue.
+    """
+    ats = job["ats_source"]
+    slug = get_slug(job["employer_id"], ats)
+    if not slug:
+        if not dry_run:
+            stamp_attempt(job["id"])  # cool down so it doesn't block the queue
+        return {"status": "no_slug"}
+    try:
+        html, posted = DETAIL[ats](slug, job["ats_job_id"])
+    except Exception as e:
+        if not dry_run:
+            stamp_attempt(job["id"])
+        return {"status": "error", "error": str(e)}
+
+    desc_text = strip_html(html)[:8000]
+    if not desc_text:
+        if not dry_run:
+            stamp_attempt(job["id"])
+        return {"status": "no_desc"}
+
+    # parse_salary derives display + numeric bounds + annual/hourly period.
+    sal = parse_salary(html) or parse_salary(desc_text)
+    update = {"description_text": desc_text}
+    if posted:  # exact Workday startDate — the daily pull leaves posted_at NULL for it
+        update["posted_at"] = posted
+    if sal:
+        update["salary_range"] = sal["display"]
+        update["salary_min_num"] = sal["min_num"]
+        update["salary_max_num"] = sal["max_num"]
+        update["salary_period"] = sal["period"]
+
+    if not dry_run:
+        try:
+            stamp_attempt(job["id"], update)  # enrichment fields + attempt time in one write
+        except Exception as e:
+            return {"status": "error", "error": f"update: {e}"}
+    return {"status": "enriched", "with_salary": bool(sal)}
 
 
 def main():
@@ -153,54 +200,18 @@ def main():
 
     stats = {"enriched": 0, "with_salary": 0, "no_desc": 0, "errors": 0}
     for n, j in enumerate(jobs, 1):
-        ats = j["ats_source"]
-        slug = get_slug(j["employer_id"], ats)
-        if not slug:
-            stats["errors"] += 1
-            if not args.dry_run:
-                stamp_attempt(j["id"])  # cool down so it doesn't block the queue
-            continue
-        try:
-            html, posted = DETAIL[ats](slug, j["ats_job_id"])
-        except Exception as e:
-            stats["errors"] += 1
-            if stats["errors"] <= 20:
-                print(f"  ERROR {ats} id={j['id']} — {e}", flush=True)
-            if not args.dry_run:
-                stamp_attempt(j["id"])
-            time.sleep(args.sleep)
-            continue
-
-        desc_text = strip_html(html)[:8000]
-        if not desc_text:
+        res = enrich_one(j, dry_run=args.dry_run)
+        st = res["status"]
+        if st == "enriched":
+            stats["enriched"] += 1
+            if res.get("with_salary"):
+                stats["with_salary"] += 1
+        elif st == "no_desc":
             stats["no_desc"] += 1
-            if not args.dry_run:
-                stamp_attempt(j["id"])
-            time.sleep(args.sleep)
-            continue
-        # parse_salary derives display + numeric bounds + annual/hourly period.
-        sal = parse_salary(html) or parse_salary(desc_text)
-        update = {"description_text": desc_text}
-        if posted:  # exact Workday startDate — the daily pull leaves posted_at NULL for it
-            update["posted_at"] = posted
-        if sal:
-            update["salary_range"] = sal["display"]
-            update["salary_min_num"] = sal["min_num"]
-            update["salary_max_num"] = sal["max_num"]
-            update["salary_period"] = sal["period"]
-        salary = sal["display"] if sal else None
-
-        if not args.dry_run:
-            try:
-                stamp_attempt(j["id"], update)  # enrichment fields + attempt time in one write
-            except Exception as e:
-                stats["errors"] += 1
-                print(f"  ERROR update id={j['id']} — {e}", flush=True)
-                continue
-
-        stats["enriched"] += 1
-        if salary:
-            stats["with_salary"] += 1
+        else:  # no_slug | error
+            stats["errors"] += 1
+            if st == "error" and stats["errors"] <= 20:
+                print(f"  ERROR {j['ats_source']} id={j['id']} — {res.get('error')}", flush=True)
         if n % 250 == 0:
             print(
                 f"  {n}/{len(jobs)} — enriched {stats['enriched']}, "

@@ -35,29 +35,17 @@ export default function PricingPage() {
   return (
     <div className={s.page}>
 
-      {/* NAV — mirrors LandingPage.tsx; wordmark links home so users can
-          navigate back from /pricing */}
+      {/* NAV — minimal centered wordmark. No CTA on /pricing because the
+          pricing cards themselves are the call to action; another CTA in
+          the nav would compete. Inline justify-content override on the
+          existing flex container. */}
       <header className={s.nav}>
-        <div className={`${s.wrap} ${s["nav-inner"]}`}>
+        <div
+          className={`${s.wrap} ${s["nav-inner"]}`}
+          style={{ justifyContent: "center" }}
+        >
           <Link href="/" className={s.brand} aria-label="getdatjob — home">
             getdatjob
-          </Link>
-          <Link href="/jobs" className={`${s.btn} ${s["btn-dark"]}`}>
-            Get access
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <polyline points="13 6 19 12 13 18" />
-            </svg>
           </Link>
         </div>
       </header>
@@ -66,7 +54,7 @@ export default function PricingPage() {
           cards, CTA, and Free link. We just give it vertical room. */}
       <main>
         <h1 style={srOnly}>Pricing</h1>
-        <section style={{ padding: "56px 0 80px" }}>
+        <section style={{ padding: "32px 0 64px" }}>
           <div className={s.wrap}>
             <PricingClient />
           </div>

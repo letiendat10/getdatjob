@@ -16,10 +16,9 @@ export default function PricingClient() {
   const router = useRouter();
   return (
     <PaywallScreen
-      // No live job count on a public pricing page; use a brand-aligned
-      // pricing-specific subhead instead of the "Unlock all N matches…" copy
-      // that's tied to Kai's search context.
-      body="Two plans for working visa holders. First month on us."
+      // No body subhead on /pricing — empty string skips the <p> entirely.
+      // The cards + Free link carry the full story.
+      body=""
       // Cold visitor → signin first; after auth they land back here and
       // checkout proceeds.
       signInUrl="/auth/signin?next=/pricing"

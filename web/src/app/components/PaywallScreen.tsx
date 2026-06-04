@@ -88,11 +88,14 @@ export default function PaywallScreen({ jobCount, windowDays = 3, email: _email,
         Trusted by 1,120 working visa holders
       </div>
 
-      {/* Brand-matched H1: Instrument Serif (parity with /c landing page) */}
+      {/* Brand-matched H1: Instrument Serif (parity with /c landing page).
+          Line break before "hold you back." for hero rhythm. */}
       <h2 className={s.h1}>
-        Don&rsquo;t let <em className={s["h1-em"]}>your visa</em> hold you back.
+        Don&rsquo;t let <em className={s["h1-em"]}>your visa</em>
+        <br />
+        hold you back.
       </h2>
-      <p className={s.body}>{bodyText}</p>
+      {bodyText && <p className={s.body}>{bodyText}</p>}
 
       {/* Billing toggle — "[switch] · SAVE 20% · Annual plan"
           Switch first, then badge, then label.
@@ -182,7 +185,25 @@ export default function PaywallScreen({ jobCount, windowDays = 3, email: _email,
           onClick={handleCheckout}
           disabled={loading}
         >
-          {loading ? "Loading…" : "Get started"}
+          {loading ? "Loading…" : (
+            <>
+              Get started
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                width="16"
+                height="16"
+                aria-hidden="true"
+              >
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="13 6 19 12 13 18" />
+              </svg>
+            </>
+          )}
         </button>
       </div>
 

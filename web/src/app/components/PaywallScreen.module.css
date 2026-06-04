@@ -32,15 +32,15 @@
   line-height: 1;
 }
 
-/* ── H1 — brand-matched, Instrument Serif (parity with /c) ─────────────── */
+/* ── H1 — brand hero spec (parity with /c landing page) ────────────────── */
 .h1 {
   font-family: var(--font-instrument-serif), Georgia, serif;
-  font-size: clamp(30px, 4.4vw, 44px);
+  font-size: clamp(38px, 4.6vw, 58px);
   font-weight: 400;
   color: var(--ink);
   letter-spacing: -0.015em;
   line-height: 1.05;
-  margin: 0 0 10px;
+  margin: 0 0 32px;
   text-align: center;
 }
 
@@ -62,7 +62,7 @@
 .toggle-wrap {
   display: flex;
   justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 28px;
 }
 
 .toggle-row {
@@ -140,14 +140,15 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 14px;
-  margin-bottom: 18px;
+  margin-bottom: 28px;
   align-items: stretch;
 }
 
 @media (min-width: 640px) {
   .cards {
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    gap: 28px;
+    margin-bottom: 40px;
   }
 }
 
@@ -341,24 +342,31 @@
 .cta-row {
   display: flex;
   justify-content: center;
-  margin-bottom: 12px;
+  margin-bottom: 18px;
 }
 
 .cta {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   text-align: center;
   font-family: inherit;
   font-size: 15.5px;
   font-weight: 600;
-  padding: 14px 36px;
+  padding: 14px 28px;
   border-radius: 999px;
   border: none;
   background: var(--ink);
-  color: #F4F0E8;
+  color: #ffffff;
   cursor: pointer;
   box-shadow: 0 6px 18px rgba(23, 22, 20, 0.18), 0 2px 4px rgba(23, 22, 20, 0.10);
   transition: transform 0.05s, opacity 0.15s, box-shadow 0.15s;
   min-width: 220px;
+}
+
+.cta svg {
+  flex-shrink: 0;
 }
 
 .cta:hover {

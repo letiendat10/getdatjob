@@ -1,13 +1,12 @@
 name: Enrich Job Descriptions
 
-# Chews through the list-only ATS backlog (Workday is ~100k jobs with no description):
-# fills description_text, salary (range + numeric bounds) and the exact posted date.
-# Resumable — each run only touches jobs whose description is still empty — so running
-# it several times a day steadily clears the backlog and then keeps up with the delta.
+# BACKSTOP ONLY. The realtime enrich_worker.yml is now the primary enricher (LISTEN/NOTIFY
+# + continuous backlog sweep). This once-a-day batch run is insurance in case the worker
+# workflow is ever down — it's resumable and skips immediately when there are no candidates.
 
 on:
   schedule:
-    - cron: "0 * * * *"   # every hour (skips immediately if no candidates)
+    - cron: "30 5 * * *"   # once daily backstop (worker handles the rest in realtime)
   workflow_dispatch:
 
 jobs:

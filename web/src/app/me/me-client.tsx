@@ -754,7 +754,7 @@ const LOCATION_PROFILE_OPTIONS = [
 const RAINBOW = "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)";
 const TIER_LABELS: Record<string, string> = { free: "Free", passed: "Passed", preferred: "Preferred" };
 const TIER_FEATURES: Record<string, string[]> = {
-  free:      ["6 job matches/day", "USCIS-verified data", "Sponsorship history", "Verified company contact"],
+  free:      ["20 job matches/day", "USCIS-verified data", "Sponsorship history", "Verified company contact"],
   passed:    ["Unlimited job listings", "USCIS-verified data", "Sponsorship history", "Verified company contact"],
   preferred: ["Unlimited job listings", "USCIS-verified data", "Sponsorship history", "Verified company contact", "Job alerts to make you first in line", "Lay-off action plan"],
 };

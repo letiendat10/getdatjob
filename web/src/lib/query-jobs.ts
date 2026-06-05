@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { toCanonicalDepartments } from "@/lib/taxonomy";
 
 export const PAGE_SIZE = 30;
 
@@ -123,7 +124,12 @@ export async function queryJobs(params: {
   // Filter on the stored canonical classification (classify.py → jobs.department /
   // jobs.job_level), the single source of truth. Indexed by idx_jobs_department /
   // idx_jobs_job_level. Values match DEPARTMENT_OPTIONS / LEVEL_OPTIONS in jobs-client.
-  if (department && department !== "all") dbq = dbq.eq("department", department);
+  if (department && department !== "all") {
+    // Normalize to canonical stored department(s) so a non-canonical label
+    // (e.g. "Marketing" → "Marketing/Growth") can never silently match zero rows.
+    const depts = toCanonicalDepartments(department);
+    if (depts.length) dbq = dbq.in("department", depts);
+  }
   if (level && level !== "all")           dbq = dbq.eq("job_level", level);
 
   dbq = dbq.order("is_active", { ascending: false });

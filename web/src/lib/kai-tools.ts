@@ -184,7 +184,9 @@ export async function handleSearchJobs(input: SearchJobsInput) {
     p_visa_class:       visaClass,
     p_salary_min:       input.salary_min ?? null,
     p_result_limit:     limit,
-    p_departments:      departments.length ? departments : null,
+    // departments is [] for a live bucket outside the canonical 15 (e.g. an LLM-coined
+    // "Healthcare"); fall back to the literal value so it filters instead of being dropped.
+    p_departments:      departments.length ? departments : (input.department ? [input.department] : null),
     p_level:            level,
     p_remote:           remote,
   });

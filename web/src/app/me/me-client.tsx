@@ -7,6 +7,7 @@ import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { MatchesPanel } from "./matches-panel";
 import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
+import { DEPARTMENTS, departmentLabel } from "@/lib/taxonomy";
 import s from "./me.module.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -711,12 +712,9 @@ const VISA_OPTIONS = [
   { label: "OPT", value: "OPT" },
   { label: "O-1 / Other", value: "Other" },
 ];
-const DEPT_OPTIONS = [
-  "Engineering", "Product", "AI / ML", "Data", "Design",
-  "Security", "Platform / DevOps", "Sales", "Marketing",
-  "Finance", "Operations", "Legal", "HR / People",
-  "Customer Success", "Facilities",
-];
+// Canonical values from the taxonomy SSOT (e.g. "Marketing/Growth", not "Marketing")
+// so the stored job_function round-trips through toCanonicalDepartments everywhere.
+const DEPT_OPTIONS = DEPARTMENTS.map((d) => ({ label: departmentLabel(d), value: d }));
 const LEVEL_OPTIONS = ["Junior", "Lead", "Senior", "Principal/Staff", "People Manager"];
 const SALARY_OPTIONS = [
   { label: "Any", value: "" },
@@ -794,6 +792,20 @@ function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut, onPrefs
   });
   const [prefsSaved, setPrefsSaved] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Department options follow the unified-vocabulary SoT (department_facets via /api/jobs/meta);
+  // the canonical taxonomy is the fallback. New approved buckets appear here with no code change.
+  const [deptOptions, setDeptOptions] = useState(DEPT_OPTIONS);
+  useEffect(() => {
+    fetch("/api/jobs/meta")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.departments) && d.departments.length) {
+          setDeptOptions(d.departments.map((x: { value: string; label: string }) => ({ label: x.label, value: x.value })));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Alert prefs state — immediate autosave
   const [alerts, setAlerts] = useState<AlertPrefs>({
@@ -918,7 +930,7 @@ function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut, onPrefs
                 <label className={s["pref-label"]}>Job department</label>
                 <select className={s["pref-select"]} value={prefs.job_function} onChange={e => updatePref("job_function", e.target.value)}>
                   <option value="">Select</option>
-                  {DEPT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  {deptOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div className={s["pref-field"]}>

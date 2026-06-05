@@ -458,6 +458,8 @@ def fetch_lever(slug: str) -> list[dict]:
             "location": loc,
             "url": j.get("hostedUrl", ""),
             "posted_at": posted_at,
+            # ATS-native department (org structure) — the right signal for dept search.
+            "source_dept": (j.get("categories") or {}).get("department") or (j.get("categories") or {}).get("team", ""),
             "description_text": strip_html(desc_html),
             "salary_range": salary,
         })
@@ -492,6 +494,7 @@ def fetch_ashby(slug: str) -> list[dict]:
             "location": loc,
             "url": j.get("jobUrl", ""),
             "posted_at": parse_iso(j.get("publishedAt")) or parse_iso(j.get("updatedAt")),
+            "source_dept": j.get("department") or j.get("team", ""),
             "description_text": strip_html(desc_html),
             "salary_range": salary or extract_salary(desc_html),
         })
@@ -513,6 +516,7 @@ def fetch_workday(slug: str) -> list[dict]:
     # and use it to bound pagination (subsequent pages often return total=0).
     total = None
 
+    first_data = None
     while True:
         r = requests.post(
             api_url,
@@ -522,6 +526,8 @@ def fetch_workday(slug: str) -> list[dict]:
         )
         r.raise_for_status()
         data = r.json()
+        if first_data is None:
+            first_data = data  # holds the facet list (only the first page carries it)
         if total is None:
             total = data.get("total", 0)
         postings = data.get("jobPostings", [])
@@ -551,7 +557,56 @@ def fetch_workday(slug: str) -> list[dict]:
             break
         time.sleep(0.5)
 
+    # Department signal: Workday's detail API exposes NO job family, but the list FACETS do.
+    # Enumerate the jobFamilyGroup (fallback jobFamily) facet and re-query per value to tag
+    # each externalPath with its family descriptor — that's source_dept for Workday.
+    fam_by_path = _workday_family_map(api_url, {**HEADERS, "Content-Type": "application/json"}, first_data)
+    for jb in jobs:
+        jb["source_dept"] = fam_by_path.get(jb["ats_job_id"], "")
+
     return jobs
+
+
+def _workday_family_map(api_url: str, headers: dict, first_data: dict | None) -> dict:
+    """Map Workday externalPath -> job-family descriptor using the list facets (the detail
+    API carries none). Prefers the coarser jobFamilyGroup, falls back to jobFamily. Bounded
+    to one paginated sweep per facet value (~one extra full pull's worth of requests).
+    Best-effort: any facet failure is swallowed so it never blocks the daily pull."""
+    facets = (first_data or {}).get("facets", []) or []
+    fam = (next((f for f in facets if f.get("facetParameter") == "jobFamilyGroup"), None)
+           or next((f for f in facets if f.get("facetParameter") == "jobFamily"), None))
+    if not fam:
+        return {}
+    param = fam.get("facetParameter")
+    out: dict = {}
+    for v in (fam.get("values") or []):
+        fid, desc = v.get("id"), v.get("descriptor")
+        if not fid or not desc:
+            continue
+        cnt = v.get("count") or 0
+        offset, limit = 0, 20
+        while True:
+            try:
+                r = requests.post(
+                    api_url,
+                    json={"appliedFacets": {param: [fid]}, "limit": limit, "offset": offset, "searchText": ""},
+                    headers=headers, timeout=TIMEOUT,
+                )
+                r.raise_for_status()
+                posts = r.json().get("jobPostings", [])
+            except Exception:
+                break
+            if not posts:
+                break
+            for p in posts:
+                ep = p.get("externalPath")
+                if ep:
+                    out.setdefault(ep, desc)
+            offset += limit
+            if (cnt and offset >= cnt) or len(posts) < limit:
+                break
+            time.sleep(0.3)
+    return out
 
 
 def fetch_workable(slug: str) -> list[dict]:
@@ -571,6 +626,7 @@ def fetch_workable(slug: str) -> list[dict]:
             "location": loc,
             "url": j.get("url", ""),
             "posted_at": parse_iso(j.get("created_at")),
+            "source_dept": j.get("department") or j.get("function", ""),
             "description_text": desc,
             "salary_range": extract_salary(desc_html),
         })
@@ -652,6 +708,7 @@ def fetch_amazon(_slug: str) -> list[dict]:
                 "location": j.get("location", ""),
                 "url": f"{base}{path}" if path else "",
                 "posted_at": parse_iso(j.get("posted_date")) or parse_iso(j.get("updated_time")),
+                "source_dept": j.get("job_category") or j.get("business_category", ""),
                 "description_text": desc_text,
                 "salary_range": extract_salary(desc_text),
             })
@@ -700,6 +757,8 @@ def fetch_smartrecruiters(slug: str) -> list[dict]:
                 "location": loc,
                 "url": f"https://jobs.smartrecruiters.com/{company_id}/{job_id}",
                 "posted_at": parse_iso(j.get("releasedDate")) or parse_iso(j.get("createdOn")),
+                # function.label is the populated field; department.label is usually empty.
+                "source_dept": (j.get("function") or {}).get("label") or (j.get("department") or {}).get("label", ""),
                 "description_text": "",
                 "salary_range": salary,
             })
@@ -962,6 +1021,9 @@ if __name__ == "__main__":
                 "salary_max_num": sal["max_num"] if sal else None,
                 "salary_period": sal["period"] if sal else None,
                 "department": classify_department(j["title"], j.get("source_dept")),
+                # Raw ATS department (source of truth). map_source_dept.run_batch() folds it
+                # into the unified jobs.department post-pull (rule -> LLM) and re-stamps.
+                "source_department": (j.get("source_dept") or None),
                 "job_level": classify_level(j["title"]),
                 "is_remote": detect_remote(j["title"], j["location"]),
                 "is_active": True,
@@ -990,7 +1052,7 @@ if __name__ == "__main__":
                 {k: v for k, v in r.items()
                  if v or k not in ("description_text", "salary_range",
                                    "salary_min_num", "salary_max_num", "salary_period",
-                                   "posted_at")}
+                                   "posted_at", "department", "source_department")}
                 for r in job_rows[i:i+100]
             ]
             try:

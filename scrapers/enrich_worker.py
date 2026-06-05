@@ -84,7 +84,10 @@ def main() -> None:
                 if status not in ("enriched",):
                     print(f"  [{status}] job {jid} {job.get('ats_source')} {res.get('error', '')}".rstrip(), flush=True)
                 else:
-                    print(f"  [enriched{'+salary' if res.get('with_salary') else ''}] job {jid}", flush=True)
+                    tag = "+salary" if res.get("with_salary") else ""
+                    rescored = res.get("rescored")
+                    note = f" →{rescored}" if rescored else ""
+                    print(f"  [enriched{tag}] job {jid}{note}", flush=True)
             except Exception as e:  # never let a thread die silently
                 print(f"  [crash] job {jid} — {e}", flush=True)
             finally:

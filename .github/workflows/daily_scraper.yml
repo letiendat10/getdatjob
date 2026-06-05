@@ -26,22 +26,30 @@ jobs:
       - name: Pull jobs from all ATS
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python scrapers/03_pull_jobs.py
+        # tee to a log so the failure report below can surface the real error on the run's
+        # Summary page (pipefail makes the step still fail on a non-zero python exit).
+        run: |
+          set -o pipefail
+          python scrapers/03_pull_jobs.py 2>&1 | tee /tmp/pull.log
 
-      # Fill description_text, salary (range + numeric bounds) and the exact Workday
-      # posting date for list-only ATSes (Workday/SmartRecruiters/iCIMS). Runs right
-      # after the pull so new jobs get a precise posted_at the same day; the larger
-      # backlog is chewed by the separate enrich.yml workflow.
-      - name: Enrich descriptions + salary + dates
-        env:
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python scrapers/04_enrich_descriptions.py --limit 20000
+      # Enrichment (description_text + salary + exact posted_at) AND the confidence-tier
+      # rescore both run continuously now: the realtime worker (enrich_worker.yml) is fired
+      # by a LISTEN/NOTIFY trigger the moment a list-only-ATS job is pulled, and enrich_one()
+      # finalizes the tier per-job right after the description lands. enrich.yml is the
+      # once-daily backstop. So the pull no longer enriches or rescores inline — which also
+      # means a transient pull hiccup can't take those steps down with it (see run #13).
 
-      # Re-score confidence tiers using freshly enriched descriptions. Jobs whose
-      # description_text just got filled in can now flip from 'friendly' → 'verified'
-      # (or get 'excluded' if a no-sponsor clause appears). Runs fast — skips
-      # already-verified/excluded jobs.
-      - name: Rescore job signals
-        env:
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python scrapers/05_rescore_job_signals.py
+      # Surface WHY a run failed on the Summary page instead of a bare "exit code 1".
+      - name: Failure report
+        if: failure()
+        run: |
+          {
+            echo "## ❌ Daily Job Scraper failed"
+            echo ""
+            echo "Step **Pull jobs from all ATS** (\`scrapers/03_pull_jobs.py\`) exited non-zero."
+            echo ""
+            echo "### Last 40 log lines"
+            echo '```'
+            tail -n 40 /tmp/pull.log 2>/dev/null || echo "(no log captured — failure was before the pull step, e.g. dependency install)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

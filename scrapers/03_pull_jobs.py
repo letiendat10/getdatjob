@@ -763,7 +763,15 @@ if __name__ == "__main__":
             print(f"  ERROR {ats}:{slug} — {e}", flush=True)
             continue
 
-        lca_titles, lca_counts = build_lca_index(sb, emp_id)
+        # A transient PostgREST/httpx timeout on this one lookup must not abort the whole
+        # run. It previously did exactly that (run #13): the exception propagated out of the
+        # per-employer loop and killed every later employer plus the downstream steps.
+        # Degrade to "no LCA-title boost for this employer this run"; the next run re-scores.
+        try:
+            lca_titles, lca_counts = build_lca_index(sb, emp_id)
+        except Exception as e:
+            print(f"  ERROR lca_index emp={emp_id} — {e}", flush=True)
+            lca_titles, lca_counts = set(), {}
 
         job_rows = []
         signal_rows = []

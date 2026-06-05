@@ -1,8 +1,11 @@
 name: Enrich Job Descriptions
 
 # BACKSTOP ONLY. The realtime enrich_worker.yml is now the primary enricher (LISTEN/NOTIFY
-# + continuous backlog sweep). This once-a-day batch run is insurance in case the worker
-# workflow is ever down — it's resumable and skips immediately when there are no candidates.
+# + continuous backlog sweep) and finalizes each job's confidence tier in enrich_one() as
+# soon as the description lands. This once-a-day batch run is insurance in case the worker
+# workflow is ever down (resumable, skips immediately when there are no candidates), and it
+# also runs the FULL tier rescore — the place a freshly-loaded LCA quarter gets reflected
+# across existing jobs. Decoupled from the daily pull so a pull failure can never skip it.
 
 on:
   schedule:
@@ -24,4 +27,29 @@ jobs:
       - name: Enrich descriptions + salary + dates
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python scrapers/04_enrich_descriptions.py --limit 20000
+        run: |
+          set -o pipefail
+          python scrapers/04_enrich_descriptions.py --limit 20000 2>&1 | tee /tmp/enrich.log
+
+      # Full confidence-tier rescore — backstop for the per-job rescore in enrich_one(), and
+      # the place a freshly-loaded LCA quarter is reflected across existing jobs
+      # (friendly→verified when an older filing now matches). Skips verified/excluded, so it's
+      # fast. Decoupled from the daily pull on purpose.
+      - name: Rescore job signals (backstop)
+        env:
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          set -o pipefail
+          python scrapers/05_rescore_job_signals.py 2>&1 | tee /tmp/rescore.log
+
+      - name: Failure report
+        if: failure()
+        run: |
+          {
+            echo "## ❌ Enrich / Rescore backstop failed"
+            echo ""
+            echo "### Last 40 log lines"
+            echo '```'
+            tail -n 40 /tmp/rescore.log /tmp/enrich.log 2>/dev/null || echo "(no log captured)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

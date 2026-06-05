@@ -13,7 +13,7 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 200      # pull + concurrent inline enrichment (public repo = free minutes)
+    timeout-minutes: 120      # pull + concurrent inline enrichment (public repo = free minutes)
 
     steps:
       - uses: actions/checkout@v4

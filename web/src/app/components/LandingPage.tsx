@@ -5,22 +5,29 @@ import HeroCardStack from "./HeroCardStack";
 import s from "../landing.module.css";
 import { getStats, formatStat, type VisaStat } from "@/lib/stats";
 
-// ── Laurel leaf SVG ──────────────────────────────────────────────────────────
+// ── Laurel wreath SVG ─────────────────────────────────────────────────────────
+// Full laurel from the brand stat-block asset — wreathes each stat on both sides.
 
 function LaurelSVG({ flip }: { flip?: boolean }) {
   return (
     <svg
       className={flip ? `${s["laurel-svg"]} ${s.r}` : s["laurel-svg"]}
-      viewBox="0 0 30 60"
-      fill="currentColor"
+      viewBox="8 0 29 80"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       aria-hidden="true"
     >
-      <ellipse cx="22" cy="54" rx="5.5" ry="2.2" transform="rotate(-35 22 54)" />
-      <ellipse cx="16" cy="46" rx="6" ry="2.4" transform="rotate(-55 16 46)" />
-      <ellipse cx="11" cy="36" rx="6.2" ry="2.5" transform="rotate(-75 11 36)" />
-      <ellipse cx="9" cy="26" rx="6.2" ry="2.5" transform="rotate(-95 9 26)" />
-      <ellipse cx="11" cy="16" rx="6" ry="2.4" transform="rotate(-115 11 16)" />
-      <ellipse cx="17" cy="8" rx="5.5" ry="2.2" transform="rotate(-140 17 8)" />
+      <path d="M34 74 C 22 70, 13 58, 11 44 C 9 30, 14 16, 24 7" opacity=".5" />
+      <path d="M31 70 C 23 73, 15 70, 13 62 C 21 59, 29 62, 31 70 Z" />
+      <path d="M26 59 C 18 61, 11 57, 10 49 C 18 46, 25 50, 26 59 Z" />
+      <path d="M23 47 C 15 48, 9 44, 9 36 C 17 34, 23 38, 23 47 Z" />
+      <path d="M22 36 C 14 36, 9 31, 11 24 C 18 23, 24 27, 22 36 Z" />
+      <path d="M24 26 C 17 24, 13 19, 16 13 C 22 13, 26 18, 24 26 Z" />
+      <path d="M28 17 C 22 14, 19 9, 22 5 C 28 6, 30 11, 28 17 Z" />
+      <circle cx="34" cy="72" r="1.9" fill="currentColor" stroke="none" />
     </svg>
   );
 }

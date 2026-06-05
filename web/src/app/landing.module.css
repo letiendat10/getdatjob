@@ -62,8 +62,8 @@
   gap: 22px; margin: 0 auto; flex-wrap: wrap; max-width: 920px;
   order: 5;
 }
-.laurel-item { display: flex; align-items: center; gap: 7px; }
-.laurel-svg { color: var(--gold); width: 16px; height: 32px; flex-shrink: 0; display: block; }
+.laurel-item { display: flex; align-items: center; gap: 9px; }
+.laurel-svg { color: var(--gold); width: 23px; height: 62px; flex-shrink: 0; display: block; }
 .r { transform: scaleX(-1); }
 .laurel-content { text-align: center; line-height: 1.2; min-width: 0; }
 .laurel-b { display: block; font-family: var(--font-instrument-serif), Georgia, serif; font-size: 18px; font-weight: 400; color: var(--ink); letter-spacing: -.01em; line-height: 1.05; }
@@ -395,10 +395,11 @@
   .hero-sub { font-size: 14px; margin: 14px auto 22px; padding: 0 4px; max-width: 440px; }
   .btn-primary { padding: 15px 28px; font-size: 16px; }
   .hero-media { margin: 20px auto 10px; }
-  /* Laurel moves below media on mobile via order */
-  .hero-laurel { order: 5; gap: 10px 20px; padding: 0; margin: 0; }
-  .laurel-svg { width: 13px; height: 26px; }
-  .laurel-item { gap: 5px; }
+  /* Laurel sits below media (order: 5). Keep all 3 stats on ONE row on phones —
+     no wrap — by tightening the gaps between and around the stats so they fit. */
+  .hero-laurel { order: 5; flex-wrap: nowrap; gap: 4px; padding: 0; margin: 0; }
+  .laurel-svg { width: 20px; height: 56px; }
+  .laurel-item { gap: 2px; }
   .laurel-b { font-size: 16px; }
   .laurel-lbl { font-size: 12px; }
   .hero-media { flex: 1; min-height: 0; margin-top: 28px; margin-left: 0; margin-right: 0; width: 100%; height: auto; }

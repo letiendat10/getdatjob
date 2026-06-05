@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
+import { toCanonicalDepartments, toCanonicalLevel } from "@/lib/taxonomy";
 
 const supabaseServer = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,9 +33,9 @@ export const KAI_TOOLS: Tool[] = [
         },
         level: {
           type: "string",
-          enum: ["Entry/Junior", "Senior", "Lead/Manager", "Director", "VP"],
+          enum: ["Entry/Junior", "Senior", "Principal / Staff", "Lead/Manager", "Director", "VP"],
           description:
-            "Seniority level. Use the closest bucket: Entry/Junior (entry, associate, new grad), Senior, Lead/Manager (team lead or people manager), Director, VP (VP and above).",
+            "Seniority level. Use the closest bucket: Entry/Junior (entry, associate, new grad), Senior, Principal / Staff (principal, staff, distinguished, fellow), Lead/Manager (team lead or people manager), Director, VP (VP and above).",
         },
         industry: {
           type: "string",
@@ -80,6 +81,7 @@ export const KAI_TOOLS: Tool[] = [
 type SearchJobsInput = {
   query?: string;
   location?: string;
+  location_tokens?: string[]; // metro / multi-city OR-match; takes precedence over `location`
   department?: string;
   level?: string;
   industry?: string;
@@ -89,8 +91,8 @@ type SearchJobsInput = {
   limit?: number;
 };
 
-// Department & level are now real, classified columns on `jobs` — filtered via the
-// canonical maps below (toCanonDepartment / toCanonLevel), not title-substring keywords.
+// Department & level are real, classified columns on `jobs` — translated from user-facing
+// labels to the canonical stored values via @/lib/taxonomy (single source of truth).
 
 // Industry → company name keyword map.
 // Normalized key = input.industry lowercased, non-alphanumeric stripped
@@ -109,39 +111,30 @@ const INDUSTRY_COMPANY_KEYWORDS: Record<string, string[]> = {
   edtech:      ["education", "learning", "school", "university", "academy", "tutoring"],
 };
 
-// User-supplied department label → canonical stored value (classify.py output).
-const CANON_DEPARTMENT: Record<string, string> = {
-  product: "Product",
-  engineering: "Engineering",
-  data: "Data",
-  design: "Design",
-  sales: "Sales",
-  marketing: "Marketing",
-  finance: "Finance",
-  security: "Security",
+// Metro → the messy free-text city fragments that should all count as "in this metro".
+// Used by the onboarding cascade (api/onboarding/jobs/route.ts) and the search/count
+// helpers below. Lowercase; each token is matched as ILIKE '%token%' against jobs.location.
+export const METRO_TOKENS: Record<string, { display: string; tokens: string[] }> = {
+  bay_area: {
+    display: "the Bay Area",
+    tokens: ["san francisco", "south san francisco", "oakland", "san jose", "palo alto",
+             "mountain view", "sunnyvale", "menlo park", "berkeley", "redwood city",
+             "santa clara", "cupertino", "foster city", "san mateo", "bay area"],
+  },
+  nyc: {
+    display: "the NYC area",
+    tokens: ["new york", "nyc", "brooklyn", "manhattan", "jersey city", "newark", "hoboken"],
+  },
 };
-function toCanonDepartment(d?: string | null): string | null {
-  if (!d) return null;
-  const key = d.toLowerCase().split(/\s*\/\s*/)[0].trim();
-  return CANON_DEPARTMENT[d.toLowerCase()] ?? CANON_DEPARTMENT[key] ?? null;
-}
 
-// User-supplied level label OR coarse onboarding token → canonical job_level.
-const CANON_LEVEL: Record<string, string> = {
-  "entry/junior": "Entry/Junior", entry: "Entry/Junior", junior: "Entry/Junior",
-  associate: "Entry/Junior", intern: "Entry/Junior", "new grad": "Entry/Junior",
-  senior: "Senior", sr: "Senior", senior_ic: "Senior",
-  "lead/manager": "Lead/Manager", lead: "Lead/Manager", manager: "Lead/Manager",
-  director: "Director",
-  vp: "VP", "vice president": "VP", executive: "VP",
-};
-function toCanonLevel(l?: string | null): string | null {
-  if (!l) return null;
-  return CANON_LEVEL[l.toLowerCase().trim()] ?? null;
+// Strip characters that would break a PostgREST `.or()` filter string or an ILIKE pattern,
+// so a city token can never inject extra conditions or wildcards.
+export function escapeIlike(s: string): string {
+  return s.replace(/[%,()*]/g, " ").trim();
 }
 
 export async function handleSearchJobs(input: SearchJobsInput) {
-  const limit = Math.min(input.limit ?? 5, 10);
+  const limit = Math.min(input.limit ?? 5, 25);
   const POSTED_DAYS: Record<string, number> = { "1d": 1, "3d": 3, "7d": 7, "14d": 14, "30d": 30 };
 
   const postedWithin = input.posted_within ?? "7d";
@@ -157,28 +150,33 @@ export async function handleSearchJobs(input: SearchJobsInput) {
     visaTiers = ["verified", "friendly"];
   }
 
-  // Department & level → canonical stored columns (filtered via p_department / p_level).
-  const department = toCanonDepartment(input.department);
-  const level = toCanonLevel(input.level);
+  // Department & level → canonical stored columns (filtered via p_departments / p_level).
+  // A single UX bucket can map to several departments (e.g. "Data / AI" → Data + AI/ML).
+  const departments = toCanonicalDepartments(input.department);
+  const level = toCanonicalLevel(input.level);
 
   // Industry → company keyword list
   const companyKeywords: string[] | null = input.industry
     ? (INDUSTRY_COMPANY_KEYWORDS[input.industry.toLowerCase().replace(/[^a-z0-9]/g, "")] ?? [input.industry.toLowerCase()])
     : null;
 
-  // Location — "remote" routes to the is_remote flag; "anywhere" phrases → no filter;
-  // anything else is a best-effort city/state ILIKE match.
+  // Location — "remote" routes to the is_remote flag; "anywhere" phrases → no filter.
+  // location_tokens (metro / multi-city) take precedence; else a single best-effort token.
   const rawLocation = input.location ? input.location.toLowerCase().trim() : null;
   const ANYWHERE_PHRASES = ["anywhere", "us", "usa", "united states", "united states of america", "nationwide", "open anywhere", "anywhere in the us", "anywhere in the usa"];
   const remote = rawLocation === "remote" ? true : null;
-  const location = remote ? null : (rawLocation && !ANYWHERE_PHRASES.includes(rawLocation) ? rawLocation : null);
+  const singleLocation = remote ? null : (rawLocation && !ANYWHERE_PHRASES.includes(rawLocation) ? rawLocation : null);
+  const locationTokens = input.location_tokens?.length
+    ? input.location_tokens.map((t) => t.toLowerCase().trim()).filter(Boolean)
+    : (singleLocation ? [singleLocation] : null);
 
   // search_jobs_kai RPC deduplicates by company at the SQL level, so a single
   // bulk-posting employer (e.g. Lowe's 19K jobs, Amazon 10K jobs) can't crowd
   // out all other companies when we fetch the top-N.
   const { data, error } = await supabaseServer.rpc("search_jobs_kai", {
     p_cutoff:           cutoff,
-    p_location:         location,
+    p_location:         null,
+    p_location_tokens:  locationTokens,
     p_query:            input.query?.trim() ?? null,
     p_title_keywords:   null,
     p_company_keywords: companyKeywords,
@@ -186,7 +184,7 @@ export async function handleSearchJobs(input: SearchJobsInput) {
     p_visa_class:       visaClass,
     p_salary_min:       input.salary_min ?? null,
     p_result_limit:     limit,
-    p_department:       department,
+    p_departments:      departments.length ? departments : null,
     p_level:            level,
     p_remote:           remote,
   });
@@ -233,7 +231,8 @@ export async function handleSearchJobs(input: SearchJobsInput) {
 export async function countMatchingJobsInWindow(params: {
   visa_category?: string;
   salary_min?: number;
-  location?: string;
+  remote?: boolean;            // true → is_remote filter
+  locationTokens?: string[];   // OR-match of ILIKE city fragments (metro / single city)
   department?: string;
   level?: string;  // "senior_ic" | "manager" | "either"
   days: number;
@@ -252,17 +251,19 @@ export async function countMatchingJobsInWindow(params: {
   if (params.salary_min && params.salary_min > 0) {
     query = query.or(`salary_max_num.gte.${params.salary_min},salary_max_num.is.null`);
   }
-  if (params.location === "remote") {
+  if (params.remote) {
     query = query.eq("is_remote", true);
-  } else if (params.location) {
-    query = query.ilike("location", `%${params.location}%`);
+  } else if (params.locationTokens?.length) {
+    // OR of ILIKE fragments so a metro (or single city) matches the messy free-text
+    // location column. escapeIlike keeps a token from breaking the PostgREST or() string.
+    query = query.or(params.locationTokens.map((t) => `location.ilike.%${escapeIlike(t)}%`).join(","));
   }
 
-  // Department & level — exact match on the canonical stored columns (mirrors the RPC).
-  const department = toCanonDepartment(params.department);
-  if (department) query = query.eq("department", department);
+  // Department & level — match the canonical stored columns (mirrors the RPC's ANY / =).
+  const departments = toCanonicalDepartments(params.department);
+  if (departments.length) query = query.in("department", departments);
 
-  const level = toCanonLevel(params.level);
+  const level = toCanonicalLevel(params.level);
   if (level) query = query.eq("job_level", level);
 
   const { count, error } = await query;

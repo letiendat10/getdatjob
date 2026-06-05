@@ -2,9 +2,12 @@ name: Daily Job Scraper
 
 on:
   schedule:
-    - cron: "0 6 * * *"    # 11 PM PT — catches overnight posts before morning
-    - cron: "0 14 * * *"   # 7 AM PT — catches jobs posted during business hours
-    - cron: "0 20 * * *"   # 3 AM PT — catches jobs posted during business hours
+    - cron: "0 2 * * *"   # 7 PM PT  — Evening check
+    - cron: "0 6 * * *"   # 11 PM PT — Overnights
+    - cron: "0 10 * * *"  # 3 AM PT  — Early morning
+    - cron: "0 14 * * *"  # 7 AM PT  — Start of business
+    - cron: "0 18 * * *"  # 11 AM PT — Mid-day
+    - cron: "0 22 * * *"  # 3 PM PT  — End of business
   workflow_dispatch:        # allow manual runs from GitHub UI
 
 jobs:

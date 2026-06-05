@@ -47,6 +47,13 @@ sb = pj.sb
 strip_html = pj.strip_html
 parse_salary = pj.parse_salary
 parse_workday_posted_on = pj.parse_workday_posted_on
+# Re-scoring after enrichment reuses the puller's scorer + the LCA title index, so a
+# freshly-enriched description can finalize its confidence tier (notably friendly→excluded
+# when it carries a no-sponsor clause) — the same logic 05_rescore_job_signals.py runs in
+# batch, applied per-job the moment the description lands.
+score_job = pj.score_job
+from functools import lru_cache
+from title_utils import build_lca_index
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; getdatjob-bot/1.0)"}
 TIMEOUT = 20
@@ -140,6 +147,55 @@ def stamp_attempt(job_id: int, extra: dict | None = None) -> None:
     sb.table("jobs").update(payload).eq("id", job_id).execute()
 
 
+@lru_cache(maxsize=4096)
+def _lca_index(employer_id: int):
+    """Per-employer LCA title index, cached for the process lifetime. LCA data only changes
+    on a quarterly bulk load, so caching across a worker's ~5.5h run is safe and avoids a DB
+    round-trip per enriched job."""
+    return build_lca_index(sb, employer_id)
+
+
+def rescore_after_enrich(job_id: int, employer_id: int | None, desc_text: str) -> str | None:
+    """Finalize a job's confidence tier once its description lands — the per-job equivalent
+    of 05_rescore_job_signals.rescore_employer(). Re-runs score_job against the now-present
+    description; the only enrichment-driven change is friendly→excluded when a no-sponsor
+    clause appears (title-derived verified/excluded are terminal, matching 05's skip rule).
+    Returns the new tier when it changed, else None. Callers wrap this so a rescore hiccup
+    never fails a successful enrichment."""
+    if not employer_id:
+        return None
+    sig = (
+        sb.table("job_signals")
+        .select("confidence_tier,no_sponsor_in_desc_flag")
+        .eq("job_id", job_id)
+        .limit(1)
+        .execute()
+        .data
+    )
+    cur_tier = sig[0]["confidence_tier"] if sig else None
+    cur_flag = sig[0]["no_sponsor_in_desc_flag"] if sig else None
+    if cur_tier in ("verified", "excluded"):
+        return None  # terminal — see 05_rescore_job_signals.rescore_employer
+    jr = sb.table("jobs").select("title").eq("id", job_id).limit(1).execute().data
+    if not jr:
+        return None
+    titles, counts = _lca_index(employer_id)
+    tier, flag, tc, lca_count = score_job(jr[0]["title"], desc_text or "", titles, counts)
+    if tier == cur_tier and flag == cur_flag:
+        return None  # unchanged — skip the write (and the enrich_priority trigger churn)
+    sb.table("job_signals").upsert(
+        {
+            "job_id": job_id,
+            "confidence_tier": tier,
+            "no_sponsor_in_desc_flag": flag,
+            "title_clean": tc,
+            "title_employer_lca_count": lca_count,
+        },
+        on_conflict="job_id",
+    ).execute()
+    return tier
+
+
 def enrich_one(job: dict, *, dry_run: bool = False) -> dict:
     """Fetch + parse + persist enrichment for a single job — the single source of
     per-job enrichment logic, shared by main()'s batch loop and enrich_worker.py.
@@ -183,7 +239,16 @@ def enrich_one(job: dict, *, dry_run: bool = False) -> dict:
             stamp_attempt(job["id"], update)  # enrichment fields + attempt time in one write
         except Exception as e:
             return {"status": "error", "error": f"update: {e}"}
-    return {"status": "enriched", "with_salary": bool(sal)}
+
+    # Finalize the confidence tier now that the description exists (per-job 05). Best-effort:
+    # a rescore hiccup must never turn a successful enrichment into a failure.
+    rescored = None
+    if not dry_run:
+        try:
+            rescored = rescore_after_enrich(job["id"], job.get("employer_id"), desc_text)
+        except Exception as e:
+            print(f"  [rescore-skip] job {job['id']} — {e}", flush=True)
+    return {"status": "enriched", "with_salary": bool(sal), "rescored": rescored}
 
 
 def main():

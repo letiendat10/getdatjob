@@ -155,14 +155,20 @@ function decodeHtmlEntities(s: string): string {
 }
 function extractSalary(html: string): string | null {
   const text = decodeHtmlEntities(html).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  const dollarRange = text.match(/\$[\d,]+(?:\.\d+)?K?\s*[–—\-]+\s*\$[\d,]+(?:\.\d+)?K?/i);
-  if (dollarRange) return dollarRange[0].replace(/\s+/g, " ").trim();
-  const dollarTo = text.match(/(\$[\d,]+(?:\.\d+)?K?)\s+to\s+(\$[\d,]+(?:\.\d+)?K?)/i);
-  if (dollarTo) return `${dollarTo[1]} – ${dollarTo[2]}`;
-  const usdRange = text.match(/([\d,]{6,}(?:\.\d+)?)\s*USD\s*[–—\-]+\s*([\d,]{6,}(?:\.\d+)?)\s*USD/i);
-  if (usdRange) return `$${usdRange[1]} – $${usdRange[2]}`;
-  const single = text.match(/\$\d{2,3},\d{3}/);
-  return single ? single[0] : null;
+  // A dollar amount, tolerant of a space after "$": Workday renders the upper bound as
+  // "$ 260,400.00" (nbsp collapses to a space), which used to break the "$X to $Y"
+  // pattern and fall through to the single-number grab — showing only the minimum.
+  const money = String.raw`\$\s*[\d,]+(?:\.\d+)?\s*K?`;
+  const norm = (s: string) => s.replace(/\$\s*/, "$").replace(/\.00\b/g, "").replace(/\s+/g, " ").trim();
+  // "$X – $Y" or "$X to $Y" (dash or the word "to", optional "USD" before the separator).
+  const range = text.match(new RegExp(`(${money})\\s*(?:USD)?\\s*(?:[\\u2013\\u2014-]+|to)\\s*(${money})`, "i"));
+  if (range) return `${norm(range[1])} – ${norm(range[2])}`;
+  // Bare-number USD range without a "$": "150,000 USD – 200,000 USD".
+  const usdRange = text.match(/([\d,]{5,}(?:\.\d+)?)\s*USD\s*(?:[–—-]+|to)\s*\$?\s*([\d,]{5,}(?:\.\d+)?)\s*USD/i);
+  if (usdRange) return `$${usdRange[1].replace(/\.00\b/, "")} – $${usdRange[2].replace(/\.00\b/, "")}`;
+  // Genuinely single figure (no range present in the posting).
+  const single = text.match(/\$\s*\d{2,3},\d{3}/);
+  return single ? norm(single[0]) : null;
 }
 function extractExperience(html: string): string | null {
   const text = html.replace(/<[^>]+>/g, " ");

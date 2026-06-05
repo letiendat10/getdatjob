@@ -9,9 +9,12 @@ import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 import PaywallScreen from "@/app/components/PaywallScreen";
 
-// Feature flag: "paywall" → Stripe gate after batch1 (5 jobs shown)
+// Feature flag: "paywall" → Stripe gate after batch1 (FREE_DAILY_MATCHES shown)
 //               anything else → Venmo support screen after batch2 (3+3 jobs shown)
 const PAYWALL_MODE = process.env.NEXT_PUBLIC_PAYWALL_PAGE === "paywall";
+
+// Free tier: matches shown per day before the paywall. Keep the gate and its copy in sync.
+const FREE_DAILY_MATCHES = 20;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1504,7 +1507,7 @@ export default function KaiPage() {
 
     setScanPhase(0);
     // API already returns company-unique results sorted by recency
-    const batch1 = jobs.slice(0, 5);
+    const batch1 = jobs.slice(0, FREE_DAILY_MATCHES);
     const hasVerified = batch1.some((j) => j.visa_tier === "verified");
 
     if (jobs.length === 0) {
@@ -1762,7 +1765,7 @@ export default function KaiPage() {
                   setMessages((prev) => [...prev, {
                     id: "k-continue-free",
                     role: "assistant",
-                    content: "No worries — your 5 free daily matches are always here. Come back tomorrow for fresh ones.",
+                    content: `No worries — your ${FREE_DAILY_MATCHES} free daily matches are always here. Come back tomorrow for fresh ones.`,
                   }]);
                 }}
               />

@@ -282,7 +282,9 @@ const SORT_OPTIONS = [
   { label: "Relevance", value: "relevance" },
 ];
 
-const DEPARTMENT_OPTIONS = [
+// Fallback only — shown until the live vocabulary (department_facets via /api/jobs/meta)
+// loads, so the dropdown is never empty. Live options replace this and pick up new buckets.
+const DEPARTMENT_OPTIONS_FALLBACK = [
   { label: "All departments", value: "all" },
   { label: "AI / ML", value: "AI / ML" },
   { label: "Data", value: "Data" },
@@ -713,6 +715,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   const [allCompanies, setAllCompanies] = useState<string[]>([]);
   const [threeDayCount, setThreeDayCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [departments, setDepartments] = useState<{ value: string; label: string }[]>([]);
   const [metaLoaded, setMetaLoaded] = useState(false);
   const metaInflightRef = useRef(false);
 
@@ -747,6 +750,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
       .then((r) => r.json())
       .then((data) => {
         setAllCompanies(data.companies ?? []);
+        setDepartments(data.departments ?? []);
         setThreeDayCount(data.threeDayCount ?? 0);
         setTotalCount(data.totalCount ?? 0);
         setMetaLoaded(true);
@@ -1065,6 +1069,15 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
     return [{ label: "All companies", value: "" }, ...opts];
   }, [allCompanies, metaLoaded]);
 
+  // Live unified-department vocabulary (department_facets via /api/jobs/meta); canonical
+  // taxonomy fallback while it loads. Single SoT for the chip — new buckets appear automatically.
+  const departmentOptions = useMemo(
+    () => departments.length
+      ? [{ label: "All departments", value: "all" }, ...departments.map((d) => ({ label: d.label, value: d.value }))]
+      : DEPARTMENT_OPTIONS_FALLBACK,
+    [departments],
+  );
+
   const selectedJob = useMemo(
     () => (selectedJobId !== null ? (jobs.find((j) => j.id === selectedJobId) ?? null) : null),
     [selectedJobId, jobs]
@@ -1210,7 +1223,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
             label="Department"
             value={department}
             defaultValue="all"
-            options={DEPARTMENT_OPTIONS}
+            options={departmentOptions}
             onChange={setDepartment}
             isOpen={openChip === "department"}
             onToggle={() => setOpenChip(openChip === "department" ? null : "department")}

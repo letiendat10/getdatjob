@@ -32,6 +32,16 @@ jobs:
           set -o pipefail
           python scrapers/03_pull_jobs.py 2>&1 | tee /tmp/pull.log
 
+      - name: Map source departments -> unified
+        env:
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # After the pull, fold any NEW raw ATS department values (jobs.source_department) into
+        # the unified taxonomy — keyword rule first, LLM for the long tail — cache them in
+        # dept_mapping, and re-stamp jobs.department. Same job, right after 03: reliable
+        # (sequential), not a separate flaky cron. LLM is skipped if ANTHROPIC_API_KEY is unset.
+        run: python scrapers/map_source_dept.py
+
       # 03_pull_jobs.py now ENRICHES as it pulls: a concurrent pool fills description_text +
       # salary + exact posted_at and finalizes the confidence tier for each new list-only-ATS
       # job (Workday/SmartRecruiters/iCIMS) within minutes of pulling it — reusing enrich_one().

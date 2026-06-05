@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { JobRow } from "@/lib/query-jobs";
 import { getTnCategory } from "@/lib/tn-eligible";
+import { DEPARTMENTS, departmentLabel, toCanonicalDepartments } from "@/lib/taxonomy";
 import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 import s from "./me.module.css";
@@ -188,25 +189,6 @@ function inferLevel(title: string): string | null {
   if (/\b(lead|manager|director|head of|vp\b|vice president)\b/.test(t)) return "Lead / Manager";
   return "Mid-level";
 }
-function inferDepartment(title: string): string | null {
-  const t = title.toLowerCase();
-  if (/\b(machine learning|ml |ai |artificial intelligence|nlp|llm|research scientist)\b/.test(t)) return "AI / ML";
-  if (/\b(data engineer|data scientist|data analyst|analytics|business intelligence)\b/.test(t)) return "Data";
-  if (/\b(security|infosec|cybersecurity|appsec|devsecops)\b/.test(t)) return "Security";
-  if (/\b(product manager|product owner|\bpm\b|product lead)\b/.test(t)) return "Product";
-  if (/\b(design|ux |ui |designer|user experience)\b/.test(t)) return "Design";
-  if (/\b(devops|site reliability|platform engineer|infrastructure|cloud engineer|sre)\b/.test(t)) return "Platform / DevOps";
-  if (/\b(sales|account executive|business development)\b/.test(t)) return "Sales";
-  if (/\b(marketing|growth|demand generation)\b/.test(t)) return "Marketing";
-  if (/\b(finance|accounting|financial analyst)\b/.test(t)) return "Finance";
-  if (/\b(facilities|mailroom|real estate|workplace|janitorial|custodial|maintenance tech|building)\b/.test(t)) return "Facilities";
-  if (/\b(operations|ops|logistics|supply chain|fulfillment|warehouse)\b/.test(t)) return "Operations";
-  if (/\b(legal|counsel|attorney|compliance|paralegal)\b/.test(t)) return "Legal";
-  if (/\b(recruiter|recruiting|talent acquisition|human resources|hr |people ops|people partner)\b/.test(t)) return "HR / People";
-  if (/\b(customer success|customer support|account manager|customer experience|cx |support engineer)\b/.test(t)) return "Customer Success";
-  if (/\b(engineer|engineering|developer|software|backend|frontend|fullstack|full.stack|firmware|embedded|mobile|ios|android|web|api|sdk|cloud|infrastructure|platform|sre|devops|ml|machine learning|data|security|infosec)\b/.test(t)) return "Engineering";
-  return null;
-}
 
 function toJobWithNorm(raw: JobRow): JobWithNorm {
   return { ...raw, _normLoc: normalizeLocation(raw.location ?? ""), _normCompany: normalizeCompanyName(raw.company ?? "") };
@@ -268,17 +250,10 @@ function prefToSalary(f: number | null): string {
 }
 
 function prefToDepartment(d: string | null): string {
-  if (!d) return "all";
-  const p = d.toLowerCase();
-  if (p.includes("data") || p.includes("ai") || p.includes("ml")) return "AI / ML";
-  if (p.includes("engineering")) return "Engineering";
-  if (p.includes("product")) return "Product";
-  if (p.includes("design")) return "Design";
-  if (p.includes("marketing") || p.includes("growth")) return "Marketing";
-  if (p.includes("sales")) return "Sales";
-  if (p.includes("finance")) return "Finance";
-  if (p.includes("operations")) return "Operations";
-  return "all";
+  // Route every stored job_function (canonical, Kai tokens, or legacy) through the
+  // taxonomy SSOT so the chip value always equals a real jobs.department value.
+  const canon = toCanonicalDepartments(d);
+  return canon.length ? canon[0] : "all";
 }
 
 function prefToPosted(d: number | null): string {
@@ -330,15 +305,12 @@ const SORT_OPTIONS = [
   { label: "Most recent", value: "recent" }, { label: "Most LCAs", value: "lcas" },
   { label: "Relevance", value: "relevance" },
 ];
-const DEPARTMENT_OPTIONS = [
-  { label: "All departments", value: "all" }, { label: "AI / ML", value: "AI / ML" },
-  { label: "Data", value: "Data" }, { label: "Engineering", value: "Engineering" },
-  { label: "Security", value: "Security" }, { label: "Product", value: "Product" },
-  { label: "Design", value: "Design" }, { label: "Platform / DevOps", value: "Platform / DevOps" },
-  { label: "Sales", value: "Sales" }, { label: "Marketing", value: "Marketing" },
-  { label: "Finance", value: "Finance" }, { label: "Operations", value: "Operations" },
-  { label: "Legal", value: "Legal" }, { label: "HR / People", value: "HR / People" },
-  { label: "Customer Success", value: "Customer Success" }, { label: "Facilities", value: "Facilities" },
+// Fallback only — shown while the live vocabulary loads (or if /api/jobs/meta fails) so the
+// dropdown is never empty. The live options come from department_facets, so new unified
+// buckets appear automatically. Values equal stored jobs.department ("Marketing/Growth").
+const DEPARTMENT_OPTIONS_FALLBACK = [
+  { label: "All departments", value: "all" },
+  ...DEPARTMENTS.map((d) => ({ label: departmentLabel(d), value: d })),
 ];
 const LEVEL_OPTIONS = [
   { label: "All levels", value: "all" }, { label: "Intern", value: "Intern" },
@@ -500,7 +472,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
   const salary = salaryOverride ?? job.salary_range ?? extractedSalary;
   const experience = useMemo(() => extractExperience(descHtml), [descHtml]);
   const level = inferLevel(job.title);
-  const department = inferDepartment(job.title);
+  const department = job.department;
   const tnCategory = getTnCategory(job.title);
 
   return (
@@ -623,6 +595,7 @@ export function MatchesPanel({ preferences, isUnlocked }: {
   const [metaLoaded, setMetaLoaded] = useState(false);
   const [threeDayCount, setThreeDayCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [departments, setDepartments] = useState<{ value: string; label: string }[]>([]);
   const metaInflightRef = useRef(false);
 
   // Detail panel
@@ -648,6 +621,7 @@ export function MatchesPanel({ preferences, isUnlocked }: {
       .then((r) => r.json())
       .then((data) => {
         setAllCompanies(data.companies ?? []);
+        setDepartments(data.departments ?? []);
         setThreeDayCount(data.threeDayCount ?? 0);
         setTotalCount(data.totalCount ?? 0);
         setMetaLoaded(true);
@@ -657,6 +631,15 @@ export function MatchesPanel({ preferences, isUnlocked }: {
 
   // Kick off meta load on mount — headline stats render with the page.
   useEffect(() => { loadMetaOnce(); }, [loadMetaOnce]);
+
+  // Live unified-department vocabulary from /api/jobs/meta (department_facets); the canonical
+  // taxonomy is the fallback while it loads / if the endpoint fails. Single SoT for the chip.
+  const departmentOptions = useMemo(
+    () => departments.length
+      ? [{ label: "All departments", value: "all" }, ...departments.map((d) => ({ label: d.label, value: d.value }))]
+      : DEPARTMENT_OPTIONS_FALLBACK,
+    [departments],
+  );
 
   // Cascade Account-tab preference edits into the filter chips (one-way).
   // The state initializers run once on mount; this effect re-syncs whenever the
@@ -987,7 +970,7 @@ export function MatchesPanel({ preferences, isUnlocked }: {
           <FilterChip label="Visa category" value={visa} options={VISA_OPTIONS} onChange={setVisa} isOpen={openChip === "visa"} onToggle={() => setOpenChip(openChip === "visa" ? null : "visa")} icon={FilterIconVisa} />
           <FilterChip label="Sponsorship signal" value={signal} options={SIGNAL_OPTIONS} onChange={setSignal} isOpen={openChip === "signal"} onToggle={() => setOpenChip(openChip === "signal" ? null : "signal")} icon={FilterIconSponsorship} />
           <FilterChip label="Company" value={company} allValue="" options={companyOptions} onChange={setCompany} isOpen={openChip === "company"} onToggle={() => setOpenChip(openChip === "company" ? null : "company")} icon={FilterIconCompany} />
-          <FilterChip label="Department" value={department} options={DEPARTMENT_OPTIONS} onChange={setDepartment} isOpen={openChip === "department"} onToggle={() => setOpenChip(openChip === "department" ? null : "department")} icon={FilterIconDepartment} />
+          <FilterChip label="Department" value={department} options={departmentOptions} onChange={setDepartment} isOpen={openChip === "department"} onToggle={() => setOpenChip(openChip === "department" ? null : "department")} icon={FilterIconDepartment} />
           <FilterChip label="Experience" value={level} options={LEVEL_OPTIONS} onChange={setLevel} isOpen={openChip === "level"} onToggle={() => setOpenChip(openChip === "level" ? null : "level")} icon={FilterIconExperience} />
           <FilterChip label="Compensation" value={salary} options={SALARY_OPTIONS} onChange={setSalary} isOpen={openChip === "salary"} onToggle={() => setOpenChip(openChip === "salary" ? null : "salary")} icon={FilterIconCompensation} />
           <FilterChip label="Location" value={location} options={LOCATION_OPTIONS} onChange={setLocation} isOpen={openChip === "location"} onToggle={() => setOpenChip(openChip === "location" ? null : "location")} icon={FilterIconLocation} />

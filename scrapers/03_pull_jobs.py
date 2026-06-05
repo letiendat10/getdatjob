@@ -20,8 +20,13 @@ match_patterns column.
 
 from __future__ import annotations
 
+import importlib.util
+import os
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
 from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
@@ -748,6 +753,55 @@ if __name__ == "__main__":
     ats_rows.sort(key=lambda r: r["ats_type"] == "amazon")
     print(f"Pulling jobs for {len(ats_rows)} employer-ATS mappings …", flush=True)
 
+    # ── Concurrent enrichment — enrichment rides the pull (Tier 2) ─────────────────
+    # New list-only-ATS jobs (Workday/SmartRecruiters/iCIMS) arrive with no description.
+    # Rather than depend on a separate always-on worker (whose GitHub hourly cron never
+    # reliably fired), we enrich them HERE — concurrently, as each employer is pulled — by
+    # reusing enrich_one(). A job's salary/description/posted_at/tier is filled within
+    # minutes of being pulled, in this one reliable process. enrich.yml is a daily backstop.
+    _enr_spec = importlib.util.spec_from_file_location(
+        "enrich_descriptions",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "04_enrich_descriptions.py"),
+    )
+    _enr = importlib.util.module_from_spec(_enr_spec)
+    _enr_spec.loader.exec_module(_enr)
+    enrich_one = _enr.enrich_one
+    ENRICHABLE = set(_enr.ENRICHABLE)
+
+    _enrich_pool = ThreadPoolExecutor(max_workers=8)
+    _in_flight: set[int] = set()
+    _enrich_lock = threading.Lock()
+    _enrich_stats = {"enriched": 0, "salary": 0, "excluded": 0, "errors": 0}
+
+    def _submit_enrich(job: dict) -> None:
+        jid = job.get("id")
+        if jid is None:
+            return
+        with _enrich_lock:
+            if jid in _in_flight:
+                return
+            _in_flight.add(jid)
+
+        def _run() -> None:
+            try:
+                res = enrich_one(job)  # fetch detail → salary/desc/posted_at → rescore tier
+                if res.get("status") == "enriched":
+                    with _enrich_lock:
+                        _enrich_stats["enriched"] += 1
+                        if res.get("with_salary"):
+                            _enrich_stats["salary"] += 1
+                        if res.get("rescored") == "excluded":
+                            _enrich_stats["excluded"] += 1
+            except Exception as e:
+                with _enrich_lock:
+                    _enrich_stats["errors"] += 1
+                print(f"  enrich error job {jid} — {e}", flush=True)
+            finally:
+                with _enrich_lock:
+                    _in_flight.discard(jid)
+
+        _enrich_pool.submit(_run)
+
     total_jobs = 0
     for mapping in ats_rows:
         emp_id = mapping["employer_id"]
@@ -884,11 +938,47 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"  ERROR signals {ats}:{slug} — {e}", flush=True)
 
+        # Enrich this employer's new list-only jobs NOW, concurrently — so salary /
+        # description / posted_at / tier are filled within minutes, not left for a separate
+        # run. Submitted AFTER the per-employer job_signals upsert above, so enrich_one's
+        # rescore updates an existing signal (no race with the pull's signal write). The
+        # pull thread doesn't wait on these; the pool drains alongside the rest of the pull.
+        # Cooldown-aware (skip jobs whose enrich was attempted in the last 7d); PostgREST's
+        # 1000-row cap naturally bounds a huge new employer to 1000/run (rest next run).
+        if ats in ENRICHABLE:
+            try:
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+                cands = (
+                    sb.table("jobs")
+                    .select("id,ats_source,ats_job_id,employer_id")
+                    .eq("employer_id", emp_id)
+                    .eq("ats_source", ats)
+                    .is_("description_text", "null")
+                    .or_(f"enrich_attempted_at.is.null,enrich_attempted_at.lt.{cutoff}")
+                    .execute()
+                    .data
+                )
+                for cand in cands:
+                    _submit_enrich(cand)
+            except Exception as e:
+                print(f"  ERROR enrich-queue {ats}:{slug} — {e}", flush=True)
+
         total_jobs += len(job_rows)
         print(f"  {ats}:{slug} → {len(job_rows)} jobs", flush=True)
         time.sleep(1)
 
     print(f"\nDone. {total_jobs} jobs synced.", flush=True)
+
+    # Join the enrichment tail: the pool has been draining each employer's new jobs
+    # throughout the pull; wait for the remainder so they're done before the run ends.
+    print(f"Draining enrichment pool ({len(_in_flight)} in flight) …", flush=True)
+    _enrich_pool.shutdown(wait=True)
+    print(
+        f"Enrichment done — {_enrich_stats['enriched']} enriched "
+        f"({_enrich_stats['salary']} w/ salary, {_enrich_stats['excluded']} excluded, "
+        f"{_enrich_stats['errors']} errors).",
+        flush=True,
+    )
 
     # Update pre-aggregated counts so /api/jobs/meta reads instantly
     three_days_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()

@@ -1,15 +1,16 @@
 name: Enrich Job Descriptions
 
-# BACKSTOP ONLY. The realtime enrich_worker.yml is now the primary enricher (LISTEN/NOTIFY
-# + continuous backlog sweep) and finalizes each job's confidence tier in enrich_one() as
-# soon as the description lands. This once-a-day batch run is insurance in case the worker
-# workflow is ever down (resumable, skips immediately when there are no candidates), and it
-# also runs the FULL tier rescore — the place a freshly-loaded LCA quarter gets reflected
-# across existing jobs. Decoupled from the daily pull so a pull failure can never skip it.
+# DAILY BACKSTOP. Primary enrichment now rides the pull: 03_pull_jobs.py enriches each new
+# list-only-ATS job concurrently as it is pulled (reusing enrich_one), so this run normally
+# finds only a handful of detail-fetch failures to retry — resumable, and skips fast when
+# there are no candidates. It ALSO runs the FULL tier rescore — the place a freshly-loaded
+# LCA quarter gets reflected across existing jobs. (The old always-on enrich_worker is
+# retired: its GitHub hourly cron never reliably fired, and jobs arrive in pull batches
+# anyway, so a 24/7 listener was both unreliable and unnecessary.)
 
 on:
   schedule:
-    - cron: "30 5 * * *"   # once daily backstop (worker handles the rest in realtime)
+    - cron: "30 5 * * *"   # once daily backstop (03 enriches inline as it pulls)
   workflow_dispatch:
 
 jobs:

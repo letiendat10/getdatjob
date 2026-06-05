@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Always-on realtime enrichment worker — LISTEN/NOTIFY driven, with a polling net.
 
+RETIRED on GitHub Actions (2026-06-05): the hourly schedule never reliably fired, and new
+jobs arrive in daily pull batches (not continuously), so enrichment now rides the pull —
+03_pull_jobs.py enriches each new job concurrently as it is pulled (reusing enrich_one).
+This script is kept (unscheduled) as the basis for an optional always-on host such as
+Fly.io, if sub-second latency is ever wanted (Tier 3). It still runs standalone.
+
 A Postgres AFTER INSERT trigger (migration 20260604000003_enrich_notify) pg_notify()s
 the channel 'enrich_new' with {id, ats_source, ats_job_id, employer_id} whenever a
 list-only-ATS job lands without a description. This worker LISTENs on that channel and

@@ -10,7 +10,7 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 200      # pull + concurrent inline enrichment (public repo = free minutes)
 
     steps:
       - uses: actions/checkout@v4
@@ -32,12 +32,13 @@ jobs:
           set -o pipefail
           python scrapers/03_pull_jobs.py 2>&1 | tee /tmp/pull.log
 
-      # Enrichment (description_text + salary + exact posted_at) AND the confidence-tier
-      # rescore both run continuously now: the realtime worker (enrich_worker.yml) is fired
-      # by a LISTEN/NOTIFY trigger the moment a list-only-ATS job is pulled, and enrich_one()
-      # finalizes the tier per-job right after the description lands. enrich.yml is the
-      # once-daily backstop. So the pull no longer enriches or rescores inline — which also
-      # means a transient pull hiccup can't take those steps down with it (see run #13).
+      # 03_pull_jobs.py now ENRICHES as it pulls: a concurrent pool fills description_text +
+      # salary + exact posted_at and finalizes the confidence tier for each new list-only-ATS
+      # job (Workday/SmartRecruiters/iCIMS) within minutes of pulling it — reusing enrich_one().
+      # Enrichment rides the pull because the pull is the one process that reliably runs AND
+      # the only source of new jobs (they arrive in these 3 daily batches, not continuously),
+      # so the GitHub-cron always-on worker was both unreliable and unnecessary (now retired).
+      # enrich.yml remains the daily backstop for the few detail-fetch failures.
 
       # Surface WHY a run failed on the Summary page instead of a bare "exit code 1".
       - name: Failure report

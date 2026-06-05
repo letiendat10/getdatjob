@@ -364,7 +364,8 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
       <section className={s["founder-section"]}>
         <div className={s["founder-card"]}>
           <div className={s["founder-photo"]}>
-            <div className={s["founder-photo-inner"]} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/founder-green.jpg" alt="Dat, founder of getdatjob" />
           </div>
           <div className={s["founder-text"]}>
             <h2 className={s["founder-h"]}>Built for visa holders,<br />by a <em>H-1B visa holder.</em></h2>

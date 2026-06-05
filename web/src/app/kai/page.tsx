@@ -212,7 +212,54 @@ function postedWithin(jobs: { posted_at: string | null }[]): string | null {
   const oldestHours = Math.floor((Date.now() - Math.min(...dates)) / 3600000);
   if (oldestHours < 24) return "the last 24 hours";
   if (oldestHours < 48) return "the last 2 days";
-  return "the last 3 days";
+  const days = Math.ceil(oldestHours / 24);
+  if (days <= 7) return "the last week";
+  if (days <= 14) return "the last 2 weeks";
+  return "the last month";
+}
+
+// How the onboarding search was widened vs the user's exact ask (null = strict hit).
+// Mirrors the `broadened` field returned by /api/onboarding/jobs.
+type Broadened =
+  | { kind: "window"; days: number }
+  | { kind: "salary"; days: number }
+  | { kind: "nationwide"; days: number }
+  | null;
+
+const VERIFIED_NOTE =
+  "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before, so the sponsorship signal is extremely high.";
+
+// Honest, capture-on-zero copy. The employer is always the subject of sponsorship.
+const ZERO_CAPTURE =
+  "Genuinely nothing live for this exact search today, and I won't pad it with employers that don't sponsor.";
+
+function broadenDayLabel(days: number): string {
+  if (days <= 7) return "7 days";
+  if (days <= 14) return "2 weeks";
+  return "30 days";
+}
+
+// One reveal line for BOTH the Venmo and Paywall paths, so they can never drift. When the
+// search had to widen, Kai says so plainly instead of pretending the strict ask hit.
+function revealLineFor(
+  broadened: Broadened,
+  ctx: { total: number; capped: boolean; place: string | null; hasVerified: boolean; freshLabel?: string | null },
+): string {
+  const plus = ctx.capped ? "+" : "";
+  const roleWord = ctx.total === 1 && !ctx.capped ? "role" : "roles";
+  const roles = `${ctx.total}${plus} ${roleWord} from employers that sponsor`;
+  const place = ctx.place && ctx.place !== "anywhere in the US" ? ctx.place : null;
+  let line: string;
+  if (!broadened) {
+    line = `Found ${roles}${ctx.freshLabel ? `, posted within ${ctx.freshLabel}` : ""}.`;
+  } else if (broadened.kind === "window") {
+    line = `Expanded to the last ${broadenDayLabel(broadened.days)} to get you more. Found ${roles}.`;
+  } else if (broadened.kind === "salary") {
+    line = `Eased your salary floor a bit to open things up. Found ${roles}.`;
+  } else {
+    line = `${place ? `Slim pickings in ${place} this week` : "Slim pickings this week"}, so I opened it up across the US. Found ${roles}. Some may mean relocating.`;
+  }
+  return ctx.hasVerified ? line + VERIFIED_NOTE : line;
 }
 
 function formatLcaDate(dateStr: string | null): string | null {
@@ -753,7 +800,7 @@ export default function KaiPage() {
   const onboardingStartedRef = useRef(false);
   // Paywall mode: jobs fetch starts during Q6 so it runs while user answers alert_optin
   const pendingScanRef = useRef<{
-    jobsPromise: Promise<{ jobs: Job[]; total_count: number; window_days: number }>;
+    jobsPromise: Promise<{ jobs: Job[]; total_count: number; capped: boolean; window_days: number; broadened: Broadened; place: string | null }>;
     filterTokens: string[];
   } | null>(null);
 
@@ -1143,37 +1190,41 @@ export default function KaiPage() {
 
     } else if (step === "q6") {
       const level = intake.level ?? "either";
-      const locMap: Record<string, { location: string | null; locationMode: string }> = {
-        local:    { location: intake.location, locationMode: "local"    },
-        bay_area: { location: "San Francisco", locationMode: "local"    },
-        nyc:      { location: "New York",      locationMode: "local"    },
-        remote:   { location: null,            locationMode: "remote"   },
-        anywhere: { location: null,            locationMode: "anywhere" },
+      const locMap: Record<string, { location: string | null; locationMetro: string | null; locationMode: string }> = {
+        local:    { location: intake.location, locationMetro: null,       locationMode: "local"    },
+        bay_area: { location: null,            locationMetro: "bay_area", locationMode: "local"    },
+        nyc:      { location: null,            locationMetro: "nyc",      locationMode: "local"    },
+        remote:   { location: null,            locationMetro: null,       locationMode: "remote"   },
+        anywhere: { location: null,            locationMetro: null,       locationMode: "anywhere" },
       };
-      const loc = locMap[qr.value] ?? { location: null, locationMode: "anywhere" };
-      const updatedIntake = { ...intake, ...loc, level };
+      const loc = locMap[qr.value] ?? { location: null, locationMetro: null, locationMode: "anywhere" };
+      const locationMetro = loc.locationMetro;
+      const updatedIntake = { ...intake, location: loc.location, locationMode: loc.locationMode, level };
       setIntake(updatedIntake);
       setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: "user", content: qr.label }]);
       await delay(500);
 
-      const funcLabelMap: Record<string, string> = { Marketing: "marketing / growth", Growth: "marketing / growth", Data: "data / AI", "Data / AI": "data / AI" };
+      // The canonicalizer in kai-tools (@/lib/taxonomy) understands the raw quick-reply
+      // values ("Marketing", "Growth", "Data", "Data / AI", ...) plus inferred strings, so
+      // pass the chosen function straight through — no lossy pre-mapping.
       const dept = updatedIntake.jobFunction && updatedIntake.jobFunction !== "Other"
-        ? (funcLabelMap[updatedIntake.jobFunction] ?? updatedIntake.jobFunction.toLowerCase())
+        ? updatedIntake.jobFunction
         : inferDepartment(linkedIn?.headline ?? enriched?.current_title ?? null);
       // Order: department · level · earning minimum $X · location
       const salaryStr = updatedIntake.salaryMin
         ? `earning minimum $${Math.round(updatedIntake.salaryMin / 1000)}K+`
         : null;
       const levelStr = level === "senior_ic" ? "IC" : level === "manager" ? "Manager / Lead" : "all levels";
-      const locStr = updatedIntake.locationMode === "remote" ? "remote" : updatedIntake.locationMode === "anywhere" ? "anywhere in the US" : updatedIntake.location ?? "all locations";
+      const locStr = updatedIntake.locationMode === "remote" ? "remote" : updatedIntake.locationMode === "anywhere" ? "anywhere in the US" : (updatedIntake.location ?? qr.label);
       const filterTokens = [dept, levelStr, salaryStr, locStr].filter((t): t is string => Boolean(t));
 
-      const jobsFetch: Promise<{ jobs: Job[]; total_count: number; window_days: number }> = fetch("/api/onboarding/jobs", {
+      const jobsFetch: Promise<{ jobs: Job[]; total_count: number; capped: boolean; window_days: number; broadened: Broadened; place: string | null }> = fetch("/api/onboarding/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           visa: updatedIntake.visa,
           location: updatedIntake.location,
+          location_metro: locationMetro,
           locationMode: updatedIntake.locationMode,
           salary_min: updatedIntake.salaryMin,
           intent: updatedIntake.intent,
@@ -1185,9 +1236,12 @@ export default function KaiPage() {
         .then((d) => ({
           jobs: (d.jobs ?? []) as Job[],
           total_count: (d.total_count ?? 0) as number,
+          capped: (d.capped ?? false) as boolean,
           window_days: (d.window_days ?? 0) as number,
+          broadened: (d.broadened ?? null) as Broadened,
+          place: (d.place ?? null) as string | null,
         }))
-        .catch(() => ({ jobs: [] as Job[], total_count: 0, window_days: 0 }));
+        .catch(() => ({ jobs: [] as Job[], total_count: 0, capped: false, window_days: 0, broadened: null as Broadened, place: null }));
 
       // Fire-and-forget: persist intake preferences
       createSupabaseBrowser().auth.getUser().then(({ data }) => {
@@ -1231,7 +1285,7 @@ export default function KaiPage() {
         setScanPhase(3);
         await delay(1000);
 
-        const { jobs, total_count, window_days } = await jobsFetch;
+        const { jobs, total_count, capped, window_days, broadened: brd, place } = await jobsFetch;
         setAllJobs(jobs);
         setTotal3dCount(total_count);
         setWindowDays(window_days || 3);
@@ -1242,27 +1296,21 @@ export default function KaiPage() {
         setScanPhase(0);
         // API already returns company-unique results sorted by recency
         const batch1 = jobs.slice(0, 3);
-        const count = batch1.length;
         const hasVerified = batch1.some((j) => j.visa_tier === "verified");
 
-        // Bubble 2 — context window message, only if 5+ jobs were found
-        if (window_days > 0 && jobs.length >= 5) {
-          const windowMsg = window_days === 3
-            ? "I'm looking at the last 3 days – so everything I bring back is fresh."
-            : window_days === 7
-            ? "Not many in the last 3 days – I expanded to 7 days to get you more options."
-            : "Light on recent postings – pulling from the last 2 weeks.";
-          setMessages((prev) => [...prev, { id: "k-window-msg", role: "assistant", content: windowMsg }]);
-          await delay(700);
+        if (jobs.length > 0) {
+          const revealText = revealLineFor(brd, { total: total_count, capped, place, hasVerified, freshLabel: postedWithin(batch1) });
+          setMessages((prev) => [...prev, { id: "k-reveal1", role: "assistant", content: revealText, jobs: batch1 }]);
+          setStep("batch1");
+        } else {
+          // Genuine zero — capture the alert instead of dead-ending the first experience.
+          setMessages((prev) => [...prev, { id: "k-reveal1", role: "assistant", content: `${ZERO_CAPTURE} Want me to ping you the moment fresh ones land? No spam.` }]);
+          setQuickReplies([
+            { label: "Yes, keep me posted", value: "yes" },
+            { label: "No thanks",           value: "no"  },
+          ]);
+          setStep("email_optin");
         }
-
-        const freshLabel = postedWithin(batch1);
-        const jobsDesc = freshLabel ? `posted within ${freshLabel}` : "worth your time";
-        const revealText = count > 0
-          ? `Okay, found ${count} job${count !== 1 ? "s" : ""} ${jobsDesc}.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before – so the sponsorship signal is extremely high." : ""}`
-          : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks. Or try adjusting your job search preferences.";
-        setMessages((prev) => [...prev, { id: "k-reveal1", role: "assistant", content: revealText, jobs: batch1 }]);
-        setStep("batch1");
       }
 
     // Venmo mode: email opt-in → batch2
@@ -1429,7 +1477,7 @@ export default function KaiPage() {
     const ctx = pendingScanRef.current;
     pendingScanRef.current = null;
     const filterTokens = ctx?.filterTokens ?? [];
-    const jobsPromise = ctx?.jobsPromise ?? Promise.resolve({ jobs: [] as Job[], total_count: 0, window_days: 0 });
+    const jobsPromise = ctx?.jobsPromise ?? Promise.resolve({ jobs: [] as Job[], total_count: 0, capped: false, window_days: 0, broadened: null as Broadened, place: null });
 
     // Bubble 1 — scan announcement, always shown
     setMessages((prev) => [...prev, {
@@ -1446,7 +1494,7 @@ export default function KaiPage() {
     setScanPhase(3);
     await delay(1000);
 
-    const { jobs, total_count, window_days } = await jobsPromise;
+    const { jobs, total_count, capped, window_days, broadened: brd, place } = await jobsPromise;
     setAllJobs(jobs);
     setTotal3dCount(total_count);
     setWindowDays(window_days || 3);
@@ -1457,43 +1505,31 @@ export default function KaiPage() {
     setScanPhase(0);
     // API already returns company-unique results sorted by recency
     const batch1 = jobs.slice(0, 5);
-    const count = batch1.length;
     const hasVerified = batch1.some((j) => j.visa_tier === "verified");
 
-    // Bubble 2 — window context message, only if 5+ jobs found
-    if (window_days > 0 && jobs.length >= 5) {
-      const windowMsg = window_days === 3
-        ? "I'm looking at the last 3 days – so everything I bring back is fresh."
-        : window_days === 7
-        ? "Not many in the last 3 days – I expanded to 7 days to get you more options."
-        : "Light on recent postings – pulling from the last 2 weeks.";
-      setMessages((prev) => [...prev, { id: "k-window-msg", role: "assistant", content: windowMsg }]);
-      await delay(700);
+    if (jobs.length === 0) {
+      // Genuine zero — the alert opt-in already ran before the scan, so just be honest.
+      setMessages((prev) => [...prev, { id: "k-reveal1", role: "assistant", content: `${ZERO_CAPTURE} You're on the alert list, so the next match comes straight to you.` }]);
+      setStep("batch1");
+      return;
     }
 
-    const freshLabel = postedWithin(batch1);
-    const jobsDesc = freshLabel ? `posted within ${freshLabel}` : "worth your time";
-    const revealText = count > 0
-      ? `Okay, found ${count} job${count !== 1 ? "s" : ""} ${jobsDesc}.${hasVerified ? "\n\nThe ones marked 'Verified LCA Filings' mean the company has filed an LCA with a similar job title before – so the sponsorship signal is extremely high." : ""}`
-      : "Hmm, nothing matching exactly right now – this changes daily. Come back tomorrow for fresh picks. Or try adjusting your job search preferences.";
+    const revealText = revealLineFor(brd, { total: total_count, capped, place, hasVerified, freshLabel: postedWithin(batch1) });
     setMessages((prev) => [...prev, { id: "k-reveal1", role: "assistant", content: revealText, jobs: batch1 }]);
     setStep("batch1");
 
-    // Paywall auto-advance: show "Want to see all?" directly after cards render
-    if (count > 0) {
-      await delay(900);
-      const windowLabel = window_days === 7 ? "7" : window_days === 14 ? "14" : "3";
-      setMessages((prev) => [...prev, {
-        id: "k-see-more-auto",
-        role: "assistant",
-        content: `We found ${total_count} jobs from visa-sponsoring employers posted in the last ${windowLabel} days that match your preferences. Want to see all of them?`,
-      }]);
-      setQuickReplies([
-        { label: "Yes, show me", value: "yes" },
-        { label: "Not now",      value: "no"  },
-      ]);
-      setStep("see_more");
-    }
+    // Paywall auto-advance: show "Want to see all?" right after the cards render.
+    await delay(900);
+    setMessages((prev) => [...prev, {
+      id: "k-see-more-auto",
+      role: "assistant",
+      content: `We found ${total_count}${capped ? "+" : ""} ${total_count === 1 && !capped ? "role" : "roles"} from employers that sponsor. Want to see all of them?`,
+    }]);
+    setQuickReplies([
+      { label: "Yes, show me", value: "yes" },
+      { label: "Not now",      value: "no"  },
+    ]);
+    setStep("see_more");
   };
 
   // ── Free chat ─────────────────────────────────────────────────────────────────

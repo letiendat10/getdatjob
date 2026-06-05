@@ -216,6 +216,9 @@ function extractSalary(html: string): string | null {
   // Bare-number USD range without a "$": "150,000 USD – 200,000 USD".
   const usdRange = text.match(/([\d,]{5,}(?:\.\d+)?)\s*USD\s*(?:[–—-]+|to)\s*\$?\s*([\d,]{5,}(?:\.\d+)?)\s*USD/i);
   if (usdRange) return `$${usdRange[1].replace(/\.00\b/, "")} – $${usdRange[2].replace(/\.00\b/, "")}`;
+  // "Minimum Salary: $X  Maximum Salary: $Y" / "Minimum Pay: …" — two labelled bounds, no dash (Workday).
+  const minMax = text.match(new RegExp(`min(?:imum)?\\s+(?:salary|pay)\\s*:?\\s*(${money})[\\s\\S]{0,40}?max(?:imum)?\\s+(?:salary|pay)\\s*:?\\s*(${money})`, "i"));
+  if (minMax) return `${norm(minMax[1])} – ${norm(minMax[2])}`;
   // Genuinely single figure (no range present in the posting).
   const single = text.match(/\$\s*\d{2,3},\d{3}/);
   return single ? norm(single[0]) : null;

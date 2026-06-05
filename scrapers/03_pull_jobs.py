@@ -189,6 +189,13 @@ _DOLLAR_SHARED = re.compile(
     r'(?=\s*(?:per annum|annually|/yr|/year|a year|\s*$))',
     re.I,
 )
+# Two separately-labelled bounds: "Minimum Salary: $X  Maximum Salary: $Y" / "Minimum Pay: …"
+# (common on Workday). No dash between the numbers, so every range pattern above misses it.
+_MIN_MAX = re.compile(
+    r'min(?:imum)?\s+(?:salary|pay)\s*:?\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\b'
+    r'.{0,40}?max(?:imum)?\s+(?:salary|pay)\s*:?\s*\$?\s*(\d[\d,]*(?:\.\d+)?)',
+    re.I | re.S,
+)
 _HOURLY_HINT = re.compile(r'(/\s*(?:hr|hour)|per\s+hour|hourly|an\s+hour)', re.I)
 
 
@@ -247,6 +254,11 @@ def parse_salary(html: str) -> dict | None:
             lo, hi = _sal_num(m.group(1)), _sal_num(m.group(2))
             if lo and hi and lo > 1000:
                 return {"display": _fmt(lo, hi, "annual"), "min_num": lo, "max_num": hi, "period": "annual"}
+        m = _MIN_MAX.search(ctx)
+        if m:
+            lo, hi = _sal_num(m.group(1)), _sal_num(m.group(2))
+            if lo and hi and lo > 1000:
+                return {"display": _fmt(lo, hi, "annual"), "min_num": lo, "max_num": hi, "period": "annual"}
         m = _UPTO.search(ctx)
         if m:
             hi = _sal_num(m.group(1))
@@ -264,6 +276,31 @@ def extract_salary(html: str) -> str | None:
     """Back-compat wrapper — returns just the display string."""
     s = parse_salary(html)
     return s["display"] if s else None
+
+
+def _struct_salary(min_val, max_val, *, hourly: bool = False, currency: str | None = "USD") -> str | None:
+    """Display string from an ATS's STRUCTURED pay fields — Lever `salaryRange`, Ashby
+    `compensation.summaryComponents`, SmartRecruiters `Salary Min/Max` custom fields. Most
+    employers put the number here, not in the description prose, so text-scraping alone missed
+    them (SmartRecruiters/Lever/Ashby were at 5%/0.5%/19% salary coverage vs Greenhouse 75%).
+
+    Returns "$X – $Y" (annual) or "… /hr" (hourly), or None. Non-USD is dropped — a "$" prefix
+    on a EUR/GBP figure would mislead. The format matches parse_salary()'s grammar on purpose:
+    the central upsert reparses this string to derive salary_min_num/max_num/period."""
+    if currency and str(currency).upper() not in ("USD", ""):
+        return None
+
+    def _to_int(v):
+        try:
+            n = int(float(str(v).replace(",", "").replace("$", "").strip()))
+            return n if n > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    lo, hi = _to_int(min_val), _to_int(max_val)
+    if lo is None and hi is None:
+        return None
+    return _fmt(lo, hi, "hourly" if hourly else "annual")
 
 
 def check_sponsorship(text: str) -> str | None:
@@ -315,6 +352,53 @@ def parse_workday_posted_on(s: str | None) -> str | None:
 
 # ── ATS fetchers ─────────────────────────────────────────────────────────────
 
+# ── Custom-site salary augmentation ───────────────────────────────────────────
+# A few Greenhouse employers render pay ONLY on their own careers page and omit it from the
+# Greenhouse feed (verified: Stripe — 224 LCAs/2025, was 7% covered). For those, fetch the
+# rendered page and scrape the range. Gated to a verified host allow-list so it never touches
+# the generic Greenhouse path. See memory bug_ats_structured_salary_fields.
+_BROWSER_UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"}
+_STRIPE_PAY_RE = re.compile(
+    r'base salary range[^$]{0,40}\$\s*([\d,]+)\s*(?:[-–—]|to)\s*\$\s*([\d,]+)', re.I)
+
+
+def _stripe_page_salary(url: str) -> str | None:
+    try:
+        r = requests.get(url, headers=_BROWSER_UA, timeout=20)  # large SSR page; generous timeout
+        m = _STRIPE_PAY_RE.search(r.text)
+        if m:
+            return _struct_salary(m.group(1), m.group(2))
+    except Exception:
+        pass
+    return None
+
+
+# host substring -> page-salary extractor. Add a host ONLY after verifying it exposes pay.
+_CUSTOM_SALARY_HOSTS = {"stripe.com": _stripe_page_salary}
+
+
+def _augment_custom_salary(jobs: list[dict]) -> None:
+    """Fill salary_range for jobs whose employer renders pay only on a custom careers page.
+    Mutates `jobs` in place; concurrent + best-effort (a page failure never blocks the pull).
+    No-op (returns immediately) for employers not on the host allow-list."""
+    targets = [j for j in jobs if not j.get("salary_range")
+               and any(h in (j.get("url") or "") for h in _CUSTOM_SALARY_HOSTS)]
+    if not targets:
+        return
+
+    def _fill(j: dict) -> None:
+        for host, fn in _CUSTOM_SALARY_HOSTS.items():
+            if host in j.get("url", ""):
+                s = fn(j["url"])
+                if s:
+                    j["salary_range"] = s
+                return
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(_fill, targets))
+
+
 def fetch_greenhouse(slug: str) -> list[dict]:
     url = f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true"
     r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
@@ -344,6 +428,7 @@ def fetch_greenhouse(slug: str) -> list[dict]:
             "description_text": strip_html(content_html),
             "salary_range": salary,
         })
+    _augment_custom_salary(jobs)  # backfill salary from custom careers pages (e.g. Stripe)
     return jobs
 
 
@@ -359,6 +444,14 @@ def fetch_lever(slug: str) -> list[dict]:
         created_ms = j.get("createdAt", 0)
         posted_at = datetime.fromtimestamp(created_ms / 1000, tz=timezone.utc).isoformat() if created_ms else None
         desc_html = j.get("descriptionBody", "")
+        # Lever exposes a structured salaryRange ({min,max,currency,interval}); prefer it,
+        # then fall back to text-scraping the salaryDescription / body.
+        sr = j.get("salaryRange") or {}
+        salary = _struct_salary(
+            sr.get("min"), sr.get("max"),
+            hourly="hour" in (sr.get("interval") or "").lower(),
+            currency=sr.get("currency"),
+        ) or extract_salary(j.get("salaryDescription") or desc_html)
         jobs.append({
             "ats_job_id": j.get("id", ""),
             "title": j.get("text", ""),
@@ -366,13 +459,14 @@ def fetch_lever(slug: str) -> list[dict]:
             "url": j.get("hostedUrl", ""),
             "posted_at": posted_at,
             "description_text": strip_html(desc_html),
-            "salary_range": extract_salary(desc_html),
+            "salary_range": salary,
         })
     return jobs
 
 
 def fetch_ashby(slug: str) -> list[dict]:
-    url = f"https://api.ashbyhq.com/posting-api/job-board/{slug}"
+    # includeCompensation=true surfaces the structured compensation block (salary range).
+    url = f"https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true"
     r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
     r.raise_for_status()
     jobs = []
@@ -381,6 +475,17 @@ def fetch_ashby(slug: str) -> list[dict]:
         if is_non_us_location(loc):
             continue
         desc_html = j.get("descriptionHtml", "")
+        # compensation.summaryComponents lists pay parts; use the Salary one (skip
+        # EquityCashValue, whose values are null). Fall back to text-scraping the description.
+        salary = None
+        for c in ((j.get("compensation") or {}).get("summaryComponents") or []):
+            if c.get("compensationType") == "Salary" and (c.get("minValue") or c.get("maxValue")):
+                salary = _struct_salary(
+                    c.get("minValue"), c.get("maxValue"),
+                    hourly="hour" in (c.get("interval") or "").lower(),
+                    currency=c.get("currencyCode"),
+                )
+                break
         jobs.append({
             "ats_job_id": j.get("id", ""),
             "title": j.get("title", ""),
@@ -388,7 +493,7 @@ def fetch_ashby(slug: str) -> list[dict]:
             "url": j.get("jobUrl", ""),
             "posted_at": parse_iso(j.get("publishedAt")) or parse_iso(j.get("updatedAt")),
             "description_text": strip_html(desc_html),
-            "salary_range": extract_salary(desc_html),
+            "salary_range": salary or extract_salary(desc_html),
         })
     return jobs
 
@@ -582,6 +687,13 @@ def fetch_smartrecruiters(slug: str) -> list[dict]:
                 continue
             company_id = (j.get("company") or {}).get("identifier", slug)
             job_id = j.get("id", "")
+            # Salary lives in the posting's customFields ('Salary Min'/'Salary Max'), not the
+            # description (which this list endpoint omits anyway). Capture it here at pull time.
+            cf = {c.get("fieldLabel"): c.get("valueLabel") for c in (j.get("customField") or [])}
+            salary = _struct_salary(
+                cf.get("Salary Min"), cf.get("Salary Max"),
+                hourly="hour" in (cf.get("Salary/Hourly Pay Indicator") or "").lower(),
+            )
             jobs.append({
                 "ats_job_id": job_id,
                 "title": j.get("name", ""),
@@ -589,6 +701,7 @@ def fetch_smartrecruiters(slug: str) -> list[dict]:
                 "url": f"https://jobs.smartrecruiters.com/{company_id}/{job_id}",
                 "posted_at": parse_iso(j.get("releasedDate")) or parse_iso(j.get("createdOn")),
                 "description_text": "",
+                "salary_range": salary,
             })
         if len(batch) < limit:
             break

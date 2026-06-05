@@ -127,8 +127,11 @@ export async function queryJobs(params: {
   if (department && department !== "all") {
     // Normalize to canonical stored department(s) so a non-canonical label
     // (e.g. "Marketing" → "Marketing/Growth") can never silently match zero rows.
+    // Fall back to the literal value for a live facet bucket outside the canonical 15
+    // (e.g. an LLM-coined "Healthcare"): department_facets() surfaces it in the dropdown,
+    // so it must filter on itself rather than be dropped (which would return everything).
     const depts = toCanonicalDepartments(department);
-    if (depts.length) dbq = dbq.in("department", depts);
+    dbq = dbq.in("department", depts.length ? depts : [department]);
   }
   if (level && level !== "all")           dbq = dbq.eq("job_level", level);
 

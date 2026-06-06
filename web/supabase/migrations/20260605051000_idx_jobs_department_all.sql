@@ -1,0 +1,14 @@
+-- Non-partial index on jobs.department so the /jobs + /me/job-matches filter stays fast for
+-- RARE department values (notably the new SoT buckets like Healthcare/Manufacturing).
+--
+-- The existing idx_jobs_department is PARTIAL (WHERE is_active) — great for search_jobs_kai and
+-- anything that filters is_active. But query-jobs.ts (the /jobs grid) intentionally includes
+-- inactive jobs and sorts them last (ORDER BY is_active DESC, lca_count_2025 DESC), so it has NO
+-- is_active predicate and the partial index is unusable. Result: department=X fell back to a
+-- Seq Scan over all ~180k jobs (7.7s, statement-timeout 500s) — fine for common buckets that the
+-- planner found quickly, fatal for a rare one like Healthcare (123 rows). lca_count_2025 lives on
+-- the joined employers table, so no single jobs index can serve the ORDER BY; the win is fetching
+-- the few department matches via index, then join+sort that small set. Measured: 7735ms -> 58ms.
+--
+-- Kept alongside (not replacing) the partial index so Kai's is_active-filtered plans are untouched.
+create index if not exists idx_jobs_department_all on public.jobs (department);

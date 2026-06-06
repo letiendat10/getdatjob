@@ -40,6 +40,16 @@ jobs:
         # (sequential), not a separate flaky cron. LLM is skipped if ANTHROPIC_API_KEY is unset.
         run: python scrapers/map_source_dept.py
 
+      - name: Map titles -> SOC occupation (verified tag)
+        env:
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # After the pull + dept mapping: classify any NEW job titles to a DOL SOC occupation
+        # (keyword rule first, Claude for the long tail), cache in title_soc_map, then re-stamp
+        # job_signals.soc_code and upgrade friendly -> verified where the employer sponsored that
+        # occupation (public.restamp_soc). Sequential after 03 — reliable, mirrors the dept mapper.
+        run: python scrapers/map_title_soc.py
+
       # 03_pull_jobs.py now ENRICHES as it pulls: a concurrent pool fills description_text +
       # salary + exact posted_at and finalizes the confidence tier for each new list-only-ATS
       # job (Workday/SmartRecruiters/iCIMS) within minutes of pulling it — reusing enrich_one().

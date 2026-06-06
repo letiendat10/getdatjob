@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+export type JobExample = { url: string; title: string };
+
 export type DeptRow = {
   source_norm: string;
   unified_department: string;
@@ -9,6 +11,7 @@ export type DeptRow = {
   sample_raw: string | null;
   n_jobs: number;
   updated_at: string;
+  examples?: JobExample[];
 };
 
 type Filter = "all" | "llm" | "rule" | "human";
@@ -119,6 +122,24 @@ export function DepartmentsClient({ initial, loadError }: { initial: DeptRow[]; 
                 <td style={{ padding: "8px 6px" }}>
                   <div>{r.sample_raw ?? "—"}</div>
                   <div style={{ color: "#a1a1aa", fontSize: 11 }}>{r.source_norm}</div>
+                  {r.examples && r.examples.length > 0 && (
+                    <div style={{ fontSize: 11, marginTop: 2 }}>
+                      {r.examples.map((ex, i) => (
+                        <span key={ex.url}>
+                          {i > 0 && ", "}
+                          <a
+                            href={ex.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={ex.title}
+                            style={{ color: "#2563eb", textDecoration: "underline" }}
+                          >
+                            job {i + 1}
+                          </a>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </td>
                 <td style={{ padding: "8px 6px", color: "#52525b" }}>{r.n_jobs.toLocaleString()}</td>
                 <td style={{ padding: "8px 6px" }}>

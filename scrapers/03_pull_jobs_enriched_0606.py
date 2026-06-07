@@ -28,10 +28,11 @@ so a card is accurate and filterable the moment it appears, and stale/junk is ne
 
 Scope        : EVERY mapped employer with employers.lca_count_2025 > --min-lca (default 50).
 Window       : 14 days.
-Workday       : full job-family sweep (source_department feeds the dept SoT) AND the 0605
-               early-stop list scan that parses `postedOn` — so stale Workday jobs are dropped
-               BEFORE the per-job detail fetch, while dept is still captured. Best of both.
-source_dept  : captured for every ATS (list payload, or the Workday family sweep).
+Workday       : early-stop list scan that parses `postedOn` — stale jobs are dropped BEFORE the
+               per-job detail fetch. The job-family sweep is NOT run: it pages the whole board
+               per family (~20-40 min on a mega-board like Cognizant) and blocked the pull, so
+               Workday source_department is left blank and dept is classified from the title.
+source_dept  : captured for every ATS from the list payload (blank for Workday → title-classified).
 
 It REUSES the proven fetchers + helpers from 03_pull_jobs.py and the DETAIL fetchers from
 04_enrich_descriptions.py (loaded via importlib — their filenames start with a digit), plus
@@ -183,7 +184,7 @@ def _parse_dt(iso: str | None):
     """Parse an ISO date to a TZ-AWARE datetime (UTC). Some ATS detail fetchers return a
     timezone-naive ISO string (no Z/offset); left naive, comparing it against the UTC-aware
     `cutoff` raised 'can't compare offset-naive and offset-aware datetimes'. Coerce naive → UTC
-    so every gate/freshness comparison (list_gate, fetch_workday_hybrid, enrich_row_inplace) is
+    so every gate/freshness comparison (list_gate, fetch_workday_recent, enrich_row_inplace) is
     safe."""
     if not iso:
         return None
@@ -224,17 +225,20 @@ def content_gate(desc: str | None) -> str | None:
     return None
 
 
-# ── Workday: early-stop list scan (0605) + full family sweep (03) ───────────────────
+# ── Workday: early-stop list scan (0605); dept from title, family sweep dropped ──────
 
-def fetch_workday_hybrid(slug: str) -> list[dict]:
-    """Best-of-both Workday fetch:
-      * EARLY-STOP list scan parsing `postedOn` into posted_at — stale Workday jobs are dropped
-        by the freshness gate BEFORE the per-job detail fetch (0605's speed win), and the board
-        shows a date immediately;
-      * FULL job-family facet sweep to tag each kept job's source_department (03's dept SoT win
-        — the detail API exposes no job family, only the list facets do).
-    Tenants that expose no postedOn can't be date-gated here, so a page cap bounds them and their
-    jobs defer to the content gate at enrich time. Same row shape as pj.fetch_workday."""
+def fetch_workday_recent(slug: str) -> list[dict]:
+    """Workday list fetch tuned for the focused pull: EARLY-STOP scan parsing `postedOn` into
+    posted_at, so stale Workday jobs are dropped by the freshness gate BEFORE the per-job detail
+    fetch, and the board shows a date immediately.
+
+    source_department is left BLANK. Workday exposes job family only via a per-family facet sweep
+    over the WHOLE board (the list/detail payloads carry none); on a mega-board like Cognizant
+    (~10k+ postings) that sweep takes 20-40 min AND runs before any write, which stalled the pull.
+    Department is instead classified from the title (classify_department) and folded into the
+    unified taxonomy by map_source_dept post-pull. Tenants exposing no postedOn can't be
+    date-gated here, so a page cap bounds them and their jobs defer to the content gate at enrich
+    time. Same row shape as pj.fetch_workday."""
     host, jobsite = slug.split("/", 1)
     tenant = host.split(".")[0]
     base_url = f"https://{host}.myworkdayjobs.com"
@@ -243,7 +247,6 @@ def fetch_workday_hybrid(slug: str) -> list[dict]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS)
 
     jobs, offset, limit, total = [], 0, 20, None
-    first_data = None                      # holds the facet list (only the first page carries it)
     seen_fresh, stale_streak = False, 0
     for _ in range(WD_MAX_PAGES):
         r = requests.post(
@@ -253,8 +256,6 @@ def fetch_workday_hybrid(slug: str) -> list[dict]:
         )
         r.raise_for_status()
         data = r.json()
-        if first_data is None:
-            first_data = data
         if total is None:
             total = data.get("total", 0)
         postings = data.get("jobPostings", [])
@@ -276,7 +277,7 @@ def fetch_workday_hybrid(slug: str) -> list[dict]:
                 "location": loc,
                 "url": f"{base_url}/{jobsite}{path}",
                 "posted_at": posted,
-                "source_dept": "",         # filled by the family sweep below
+                "source_dept": "",         # Workday dept omitted (sweep too slow) → title-classified
                 "description_text": "",
             })
         if page_fresh:
@@ -293,21 +294,11 @@ def fetch_workday_hybrid(slug: str) -> list[dict]:
         if offset < (total or 0):
             print(f"  [wd-cap] {slug}: stopped at {WD_MAX_PAGES}-page cap, {offset}/{total} scanned",
                   flush=True)
-
-    # Full job-family sweep → source_department for every kept job (the facet sweep covers the
-    # whole board, so it carries entries for our fresh head). Best-effort: any failure leaves
-    # source_dept blank (map_source_dept still folds title-classified depts post-pull).
-    try:
-        fam_by_path = pj._workday_family_map(api_url, headers, first_data)
-        for jb in jobs:
-            jb["source_dept"] = fam_by_path.get(jb["ats_job_id"], "")
-    except Exception as e:
-        print(f"  WARN workday family sweep {slug} — {e}", flush=True)
     return jobs
 
 
-# Override the Workday fetcher with the hybrid one (this script only — pj.FETCHERS untouched).
-FETCHERS["workday"] = fetch_workday_hybrid
+# Override the Workday fetcher with the focused early-stop one (this script only — pj untouched).
+FETCHERS["workday"] = fetch_workday_recent
 
 
 # ── Phase 1: focus-set driver ──────────────────────────────────────────────────────
@@ -576,15 +567,17 @@ def main():
                     job_rows = [r for r in job_rows if id(r) not in drop]
         total_kept += len(job_rows)
 
-        # Score tiers against the now-present descriptions, stage rows in the basket, and write
-        # in batches of WRITE_BATCH (one trip, not one per job).
+        # Score tiers against the now-present descriptions, stage rows in the basket, and write.
         for r in job_rows:
             tier, flag, tc, lca_count = score_job(
                 r["title"], r.get("description_text") or "", lca_titles, lca_counts)
             tier_stats[tier] += 1
             basket_sigs[(ats, r["ats_job_id"])] = (tier, flag, tc, lca_count)
             basket.append(_clean_row(r))
-        flush_basket()
+        # Flush after EVERY employer (force), not only when the basket crosses WRITE_BATCH: jobs
+        # land as each employer completes (visible progress) and a mid-run timeout can't lose a
+        # large pooled basket. A big employer still chunks into WRITE_BATCH-sized writes inside.
+        flush_basket(force=True)
 
         # Stale-mark: jobs no longer on the ATS → inactive (focus-set only, batched).
         try:

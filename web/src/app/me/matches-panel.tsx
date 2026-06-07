@@ -494,7 +494,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
 // ── MatchesPanel ──────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 30;
-const VISIBLE_FREE = 20;
+const VISIBLE_FREE = 7;
 
 export function MatchesPanel({ preferences, isUnlocked }: {
   preferences: MatchesPanelPrefs;

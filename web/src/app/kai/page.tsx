@@ -15,7 +15,7 @@ import { levelFromTitle, levelLabel } from "@/lib/taxonomy";
 const PAYWALL_MODE = process.env.NEXT_PUBLIC_PAYWALL_PAGE === "paywall";
 
 // Free tier: matches shown per day before the paywall. Keep the gate and its copy in sync.
-const FREE_DAILY_MATCHES = 20;
+const FREE_DAILY_MATCHES = 7;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

@@ -4,6 +4,7 @@ import TestimonialsCarousel from "./TestimonialsCarousel";
 import HeroCardStack from "./HeroCardStack";
 import s from "../landing.module.css";
 import { getStats, formatStat, type VisaStat } from "@/lib/stats";
+import { getAccessHref } from "@/lib/get-access-href";
 
 // ── Laurel wreath SVG ─────────────────────────────────────────────────────────
 // Full laurel from the brand stat-block asset — wreathes each stat on both sides.
@@ -86,7 +87,6 @@ function LogoSet({ row }: { row: 1 | 2 }) {
 interface LandingPageProps {
   headline: ReactNode;
   body: string;
-  ctaHref?: string;
   primaryCtaHref?: string;
 }
 
@@ -97,7 +97,9 @@ const FALLBACK_VISA: Record<string, VisaStat> = {
   opt: { jobs: 121000, employers: 290 },
 };
 
-export default async function LandingPage({ headline, body, ctaHref = "/jobs", primaryCtaHref = "/auth/signin" }: LandingPageProps) {
+export default async function LandingPage({ headline, body, primaryCtaHref = "/auth/signin" }: LandingPageProps) {
+  // Auth-aware "Get access" CTA (nav + footer): signed-in → /me/chat, signed-out → /auth/signin.
+  const getAccess = await getAccessHref();
   let totalJobs = 121000;
   let employerCount = 290;
   let byVisa: Record<string, VisaStat> = FALLBACK_VISA;
@@ -113,7 +115,7 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
       <header className={s.nav}>
         <div className={`${s.wrap} ${s["nav-inner"]}`}>
           <div className={s.brand}>getdatjob</div>
-          <Link href={ctaHref} className={`${s.btn} ${s["btn-dark"]}`}>
+          <Link href={getAccess} className={`${s.btn} ${s["btn-dark"]}`}>
             Get access
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <line x1="5" y1="12" x2="19" y2="12" /><polyline points="13 6 19 12 13 18" />
@@ -443,7 +445,7 @@ export default async function LandingPage({ headline, body, ctaHref = "/jobs", p
           <div className={`${s.fcol} ${s["fcol-brand"]}`}>
             <h4 className={s["brand-title"]}>getdatjob</h4>
             <p className={s["fcol-tagline"]}>Built for visa holders,<br />by a working visa holder</p>
-            <Link href={ctaHref} className={s["brand-cta"]}>
+            <Link href={getAccess} className={s["brand-cta"]}>
               Get access
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12" /><polyline points="13 6 19 12 13 18" />

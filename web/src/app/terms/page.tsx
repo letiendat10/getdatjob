@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getAccessHref } from "@/lib/get-access-href";
 
 export const metadata: Metadata = {
   title: "Terms of Service — getdatjob",
@@ -8,7 +9,9 @@ export const metadata: Metadata = {
 
 const LAST_UPDATED = "May 25, 2026";
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  // Auth-aware "Get access" CTA (nav): signed-in → /me/chat, signed-out → /auth/signin.
+  const getAccess = await getAccessHref();
   return (
     <div
       style={{
@@ -54,7 +57,7 @@ export default function TermsPage() {
             getdatjob
           </Link>
           <Link
-            href="/jobs"
+            href={getAccess}
             style={{
               display: "inline-flex",
               alignItems: "center",

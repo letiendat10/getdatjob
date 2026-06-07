@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PricingClient from "./PricingClient";
 import s from "../landing.module.css";
+import { getAccessHref } from "@/lib/get-access-href";
 
 export const metadata: Metadata = {
   title: "Pricing — getdatjob",
@@ -31,7 +32,9 @@ const srOnly: React.CSSProperties = {
   border: 0,
 };
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  // Auth-aware "Get access" CTA (footer): signed-in → /me/chat, signed-out → /auth/signin.
+  const getAccess = await getAccessHref();
   return (
     <div className={s.page}>
 
@@ -73,7 +76,7 @@ export default function PricingPage() {
             <p className={s["fcol-tagline"]}>
               Built for visa holders,<br />by a working visa holder
             </p>
-            <Link href="/jobs" className={s["brand-cta"]}>
+            <Link href={getAccess} className={s["brand-cta"]}>
               Get access
               <svg
                 viewBox="0 0 24 24"

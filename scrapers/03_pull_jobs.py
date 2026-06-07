@@ -868,6 +868,16 @@ FETCHERS = {
     "jibe": fetch_jibe,
 }
 
+# oracle_hcm list fetcher lives in its own module (host/site resolution is quirky).
+# 04_enrich_descriptions.py already registers its detail fetcher; adding the list
+# fetcher here puts Oracle employers (Ford, BNY Mellon, Mount Sinai, …) into the
+# daily scheduled pull. Guarded like 04 so an import hiccup can't break the pull.
+try:
+    import oracle_hcm as _oracle_hcm
+    FETCHERS["oracle_hcm"] = _oracle_hcm.fetch_list
+except Exception as _e:  # pragma: no cover
+    print(f"WARN: oracle_hcm fetcher unavailable ({_e}) — Oracle employers skipped", flush=True)
+
 
 # ── LCA title matching ────────────────────────────────────────────────────────
 
@@ -1039,26 +1049,30 @@ if __name__ == "__main__":
         # Upsert in chunks of 100. Small batches keep each statement under Supabase's
         # statement timeout — 500-row batches of Amazon rows (large description_text +
         # on-conflict index maintenance) were timing out.
-        for i in range(0, len(job_rows), 100):
-            # Drop empty description_text / null salary_range from the payload so the
-            # enrichment pass (04_enrich_descriptions.py) — which backfills these for
-            # list-only ATSes like Workday — isn't clobbered on every daily run.
-            # Rows in a chunk are homogeneous (one ATS), so PostgREST's column set
-            # stays consistent across the batch.
-            # Drop empty enrichment fields so the enrichment pass (04_enrich_descriptions.py),
-            # which backfills these for list-only ATSes (Workday/SmartRecruiters/iCIMS),
-            # isn't clobbered with NULLs on every daily run.
-            chunk = [
-                {k: v for k, v in r.items()
-                 if v or k not in ("description_text", "salary_range",
-                                   "salary_min_num", "salary_max_num", "salary_period",
-                                   "posted_at", "department", "source_department")}
-                for r in job_rows[i:i+100]
-            ]
-            try:
-                sb.table("jobs").upsert(chunk, on_conflict="ats_source,ats_job_id").execute()
-            except Exception as e:
-                print(f"  ERROR upsert {ats}:{slug} chunk {i//100 + 1} — {e}", flush=True)
+        # Drop empty enrichment fields so the enrichment pass (04_enrich_descriptions.py),
+        # which backfills these for list-only ATSes (Workday/SmartRecruiters/iCIMS),
+        # isn't clobbered with NULLs on every daily run.
+        cleaned = [
+            {k: v for k, v in r.items()
+             if v or k not in ("description_text", "salary_range",
+                               "salary_min_num", "salary_max_num", "salary_period",
+                               "posted_at", "department", "source_department")}
+            for r in job_rows
+        ]
+        # PostgREST rejects arrays whose rows don't share identical keys — and the
+        # key-dropping above makes keys vary per row, which used to silently degrade
+        # these chunks into failed/serial writes. Group rows by key-set and send each
+        # group as its own batch.
+        key_groups: dict[tuple, list[dict]] = {}
+        for r in cleaned:
+            key_groups.setdefault(tuple(sorted(r)), []).append(r)
+        for grp in key_groups.values():
+            for i in range(0, len(grp), 100):
+                chunk = grp[i:i+100]
+                try:
+                    sb.table("jobs").upsert(chunk, on_conflict="ats_source,ats_job_id").execute()
+                except Exception as e:
+                    print(f"  ERROR upsert {ats}:{slug} ({len(chunk)} rows) — {e}", flush=True)
 
         # Mark jobs removed from ATS as inactive
         try:

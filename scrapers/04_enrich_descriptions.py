@@ -108,6 +108,18 @@ DETAIL = {
     "icims": detail_icims,
 }
 
+# oracle_hcm rides the same enrich path; its list + detail fetchers live in oracle_hcm.py
+# (shared with 03_pull_jobs_0605_inlineenriched.py). Additive + inert for the PRODUCTION pull,
+# which has no oracle_hcm LIST fetcher and so never stores an oracle_hcm job to enrich. Guarded
+# so an oracle import hiccup can never break the production enrich path.
+try:
+    from oracle_hcm import fetch_detail as detail_oracle_hcm
+    DETAIL["oracle_hcm"] = detail_oracle_hcm
+    if "oracle_hcm" not in ENRICHABLE:
+        ENRICHABLE = ENRICHABLE + ("oracle_hcm",)
+except Exception as _oracle_import_err:  # pragma: no cover
+    print(f"[04] oracle_hcm detail fetcher unavailable: {_oracle_import_err}", flush=True)
+
 
 # ── slug cache (employer_id, ats) → slug ──────────────────────────────────────
 _slug_cache: dict[tuple, str | None] = {}
@@ -248,7 +260,10 @@ def enrich_one(job: dict, *, dry_run: bool = False) -> dict:
             rescored = rescore_after_enrich(job["id"], job.get("employer_id"), desc_text)
         except Exception as e:
             print(f"  [rescore-skip] job {job['id']} — {e}", flush=True)
-    return {"status": "enriched", "with_salary": bool(sal), "rescored": rescored}
+    # posted_at is surfaced so the focused pull can deactivate a list-only job whose true
+    # (just-fetched) date proves older than its freshness window. Additive — the production
+    # caller ignores the extra key.
+    return {"status": "enriched", "with_salary": bool(sal), "rescored": rescored, "posted_at": posted}
 
 
 def main():

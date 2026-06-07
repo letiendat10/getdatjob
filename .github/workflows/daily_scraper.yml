@@ -1,14 +1,23 @@
 name: Daily Job Scraper
 
+# Runs the best-of-both puller (scrapers/03_pull_jobs_enriched_0606.py): gate-BEFORE-store +
+# enrich-BEFORE-write over every employer with lca_count_2025 > 50, 14-day window, 4x/day.
+# This SUPERSEDES the previous entrypoint 03_pull_jobs.py — that file now lives on only as the
+# shared fetcher/helper library imported by 0606 (its __main__ pull is no longer scheduled).
+# 03_pull_jobs_0605_inlineenriched.py has been retired/removed.
+
 on:
   schedule:
-    - cron: "0 2 * * *"   # 7 PM PT  — Evening check
+    - cron: "20 3 * * *"    # ~8 PM PT
+    - cron: "20 9 * * *"    # ~2 AM PT
+    - cron: "20 15 * * *"   # ~8 AM PT
+    - cron: "20 21 * * *"   # ~2 PM PT
   workflow_dispatch:        # allow manual runs from GitHub UI
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 60      # pull + concurrent inline enrichment (public repo = free minutes)
+    timeout-minutes: 300      # pull + inline enrichment over the full lca>50 set (public repo = free minutes)
 
     steps:
       - uses: actions/checkout@v4
@@ -21,42 +30,32 @@ jobs:
       - name: Install dependencies
         run: pip install -r scrapers/requirements.txt
 
-      - name: Pull jobs from all ATS
+      - name: Pull jobs (enriched, gated, lca>50)
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         # tee to a log so the failure report below can surface the real error on the run's
         # Summary page (pipefail makes the step still fail on a non-zero python exit).
         run: |
           set -o pipefail
-          python scrapers/03_pull_jobs.py 2>&1 | tee /tmp/pull.log
+          python scrapers/03_pull_jobs_enriched_0606.py 2>&1 | tee /tmp/pull.log
 
       - name: Map source departments -> unified
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        # After the pull, fold any NEW raw ATS department values (jobs.source_department) into
-        # the unified taxonomy — keyword rule first, LLM for the long tail — cache them in
-        # dept_mapping, and re-stamp jobs.department. Same job, right after 03: reliable
-        # (sequential), not a separate flaky cron. LLM is skipped if ANTHROPIC_API_KEY is unset.
+        # Fold any NEW raw ATS department values (jobs.source_department) into the unified
+        # taxonomy — keyword rule first, LLM for the long tail — cache in dept_mapping, and
+        # re-stamp jobs.department. Sequential after the pull (reliable, not a flaky cron).
         run: python scrapers/map_source_dept.py
 
       - name: Map titles -> SOC occupation (verified tag)
         env:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        # After the pull + dept mapping: classify any NEW job titles to a DOL SOC occupation
-        # (keyword rule first, Claude for the long tail), cache in title_soc_map, then re-stamp
-        # job_signals.soc_code and upgrade friendly -> verified where the employer sponsored that
-        # occupation (public.restamp_soc). Sequential after 03 — reliable, mirrors the dept mapper.
+        # Classify any NEW job titles to a DOL SOC occupation (keyword rule first, Claude for
+        # the long tail), cache in title_soc_map, then re-stamp job_signals.soc_code and upgrade
+        # friendly -> verified where the employer sponsored that occupation (public.restamp_soc).
         run: python scrapers/map_title_soc.py
-
-      # 03_pull_jobs.py now ENRICHES as it pulls: a concurrent pool fills description_text +
-      # salary + exact posted_at and finalizes the confidence tier for each new list-only-ATS
-      # job (Workday/SmartRecruiters/iCIMS) within minutes of pulling it — reusing enrich_one().
-      # Enrichment rides the pull because the pull is the one process that reliably runs AND
-      # the only source of new jobs (they arrive in these 3 daily batches, not continuously),
-      # so the GitHub-cron always-on worker was both unreliable and unnecessary (now retired).
-      # enrich.yml remains the daily backstop for the few detail-fetch failures.
 
       # Surface WHY a run failed on the Summary page instead of a bare "exit code 1".
       - name: Failure report
@@ -65,7 +64,7 @@ jobs:
           {
             echo "## ❌ Daily Job Scraper failed"
             echo ""
-            echo "Step **Pull jobs from all ATS** (\`scrapers/03_pull_jobs.py\`) exited non-zero."
+            echo "Step **Pull jobs (enriched, gated, lca>50)** (\`scrapers/03_pull_jobs_enriched_0606.py\`) exited non-zero."
             echo ""
             echo "### Last 40 log lines"
             echo '```'

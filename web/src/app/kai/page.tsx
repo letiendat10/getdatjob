@@ -9,6 +9,7 @@ import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 import PaywallScreen from "@/app/components/PaywallScreen";
 import { levelFromTitle, levelLabel } from "@/lib/taxonomy";
+import { useChatScroll } from "@/lib/useChatScroll";
 
 // Feature flag: "paywall" → Stripe gate after batch1 (FREE_DAILY_MATCHES shown)
 //               anything else → Venmo support screen after batch2 (3+3 jobs shown)
@@ -805,11 +806,24 @@ export default function KaiPage() {
     filterTokens: string[];
   } | null>(null);
 
-  const scrollToBottom = useCallback(() => {
-    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
-  }, []);
+  const { onScroll, followIfPinned, pinToTop, jumpToBottom, showJump } = useChatScroll(threadRef);
 
-  useEffect(() => { scrollToBottom(); }, [messages, scanPhase, step, scrollToBottom]);
+  // Drive scrolling off message changes: pin a newly-sent USER message near the
+  // top (so Kai's reply streams in below it), otherwise follow the bottom only
+  // when the user was already there. Replaces the old slam-to-bottom effect.
+  const lastUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    let lastUserId: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") { lastUserId = messages[i].id; break; }
+    }
+    if (lastUserId && lastUserId !== lastUserIdRef.current) {
+      lastUserIdRef.current = lastUserId;
+      pinToTop(lastUserId);
+      return;
+    }
+    followIfPinned();
+  }, [messages, scanPhase, step, pinToTop, followIfPinned]);
 
   // Keep messagesRef current so the sync effect can read latest without re-running on every update
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -1596,7 +1610,7 @@ export default function KaiPage() {
               if (event.type === "text") {
                 accContent += event.text;
                 setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, content: m.content + event.text } : m));
-                scrollToBottom();
+                followIfPinned();
               } else if (event.type === "tool_start") {
                 accContent = accContent ? accContent.trimEnd() + "\n\n" : "";
                 setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, content: m.content ? m.content.trimEnd() + "\n\n" : "", isThinking: true, isStreaming: false } : m));
@@ -1628,7 +1642,7 @@ export default function KaiPage() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages, isChatStreaming, scrollToBottom, user, step]
+    [messages, isChatStreaming, followIfPinned, user, step]
   );
 
   const handleChatKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1660,7 +1674,7 @@ export default function KaiPage() {
       </nav>
 
       {/* Chat thread */}
-      <div className={s.thread} ref={threadRef}>
+      <div className={s.thread} ref={threadRef} onScroll={onScroll}>
         <div className={s["thread-inner"]}>
           {timeGreeting && (
             <div className={s["page-greeting"]}>
@@ -1686,7 +1700,7 @@ export default function KaiPage() {
               );
             }
             return (
-              <div key={msg.id}>
+              <div key={msg.id} data-mid={msg.id} className={s["msg-anchor"]}>
                 <div className={`${s["msg-row"]} ${msg.role === "user" ? s["msg-row-user"] : ""}`}>
                   {msg.role === "assistant" && <div className={s["kai-avatar"]}>K</div>}
                   {msg.role === "user" && (
@@ -1772,26 +1786,28 @@ export default function KaiPage() {
 
           {/* Inline quick-reply chips */}
           {quickReplies.length > 0 && (() => {
-            const rows: QR[][] = [];
-            quickReplies.forEach((qr) => {
-              if (qr.row !== undefined) {
-                const existing = rows.find(r => r[0].row === qr.row);
-                if (existing) { existing.push(qr); return; }
-              }
-              rows.push([qr]);
-            });
+            // A multi-option group (e.g. departments) is flagged with `row` — let those
+            // chips flow next to one another and wrap by screen width instead of forcing
+            // fixed rows. Single-option groups keep the vertical decision-tree look.
+            const isWrap = quickReplies.some((qr) => qr.row !== undefined);
+            if (isWrap) {
+              return (
+                <div className={s["inline-replies"]}>
+                  <div className={s["inline-wrap"]}>
+                    {quickReplies.map((qr) => (
+                      <button key={qr.value} className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>{qr.label}</button>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
             return (
               <div className={s["inline-replies"]}>
                 <div className={s["inline-stem"]} />
                 <div className={s["inline-tree"]}>
-                  {rows.map((rowChips, i) => (
-                    <div key={rowChips[0].value} className={i === rows.length - 1 ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}` : s["inline-tree-item"]}>
-                      {rowChips.map((qr, ci) => (
-                        <div key={qr.value} style={{ display: "contents" }}>
-                          {ci > 0 && <span className={s["inline-chip-connector"]} aria-hidden="true" />}
-                          <button className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>{qr.label}</button>
-                        </div>
-                      ))}
+                  {quickReplies.map((qr, i) => (
+                    <div key={qr.value} className={i === quickReplies.length - 1 ? `${s["inline-tree-item"]} ${s["inline-tree-item-last"]}` : s["inline-tree-item"]}>
+                      <button className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>{qr.label}</button>
                     </div>
                   ))}
                 </div>
@@ -1805,6 +1821,20 @@ export default function KaiPage() {
                 <button key={c} className={s.chip} onClick={() => sendChatMessage(c)}>{c}</button>
               ))}
             </div>
+          )}
+
+          {showJump && (
+            <button
+              type="button"
+              className={s["jump-pill"]}
+              onClick={() => jumpToBottom()}
+              aria-label="Jump to newest messages"
+            >
+              New messages
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" />
+              </svg>
+            </button>
           )}
         </div>
       </div>

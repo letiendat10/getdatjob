@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { MatchesPanel } from "./matches-panel";
 import { JobChips } from "@/app/components/JobChips";
+import { useChatScroll } from "@/lib/useChatScroll";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 // Shared preference-editor option lists — single source of truth (lib/filters.ts).
 import {
@@ -433,11 +434,23 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const scrollToBottom = useCallback(() => {
-    if (threadRef.current) {
-      threadRef.current.scrollTop = threadRef.current.scrollHeight;
+  const { onScroll, followIfPinned, pinToTop, jumpToBottom, showJump } = useChatScroll(threadRef);
+
+  // Pin a newly-sent USER message near the top (Kai's reply streams in below);
+  // otherwise follow the bottom only when the user was already there.
+  const lastUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    let lastUserId: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") { lastUserId = messages[i].id; break; }
     }
-  }, []);
+    if (lastUserId && lastUserId !== lastUserIdRef.current) {
+      lastUserIdRef.current = lastUserId;
+      pinToTop(lastUserId);
+      return;
+    }
+    followIfPinned();
+  }, [messages, pinToTop, followIfPinned]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -516,7 +529,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
                       : m
                   )
                 );
-                scrollToBottom();
+                followIfPinned();
               } else if (event.type === "tool_start") {
                 accContent = accContent ? accContent.trimEnd() + "\n\n" : "";
                 setMessages((prev) =>
@@ -574,7 +587,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
         setIsStreaming(false);
       }
     },
-    [messages, isStreaming, scrollToBottom, profile.full_name, profile.id]
+    [messages, isStreaming, followIfPinned, profile.full_name, profile.id]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -586,7 +599,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
 
   return (
     <div className={s["chat-wrap"]}>
-      <div className={s.thread} ref={threadRef}>
+      <div className={s.thread} ref={threadRef} onScroll={onScroll}>
         <div className={s["thread-inner"]}>
           {timeGreeting && (
             <div className={s["page-greeting"]}>
@@ -621,7 +634,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
                 }
 
                 return (
-                  <div key={msg.id}>
+                  <div key={msg.id} data-mid={msg.id} className={s["msg-anchor"]}>
                     <div className={`${s["msg-row"]} ${msg.role === "user" ? s["msg-row-user"] : ""}`}>
                       {msg.role === "assistant" && <div className={s["kai-avatar"]}>K</div>}
                       <div className={`${s.bubble} ${msg.role === "user" ? s["bubble-user"] : s["bubble-kai"]}`}>
@@ -676,6 +689,20 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
                 </div>
               )}
             </>
+          )}
+
+          {showJump && (
+            <button
+              type="button"
+              className={s["jump-pill"]}
+              onClick={() => jumpToBottom()}
+              aria-label="Jump to newest messages"
+            >
+              New messages
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" />
+              </svg>
+            </button>
           )}
         </div>
       </div>

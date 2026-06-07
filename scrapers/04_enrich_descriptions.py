@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import re
 import sys
@@ -54,6 +55,9 @@ parse_workday_posted_on = pj.parse_workday_posted_on
 score_job = pj.score_job
 from functools import lru_cache
 from title_utils import build_lca_index
+# Canonical classifiers (classify.py is importable normally — no leading digit). Used to
+# re-derive job_level/department/is_remote from the CLEAN iCIMS title (see detail_icims).
+from classify import classify_level, classify_department, detect_remote
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; getdatjob-bot/1.0)"}
 TIMEOUT = 20
@@ -90,16 +94,61 @@ def detail_smartrecruiters(slug: str, ats_job_id: str) -> tuple[str, str | None]
     return "\n\n".join(parts), None
 
 
-def detail_icims(slug: str, ats_job_id: str) -> tuple[str, str | None]:
-    # Best-effort: the public job page (in_iframe=1) carries the description body.
+def _icims_jsonld(soup: BeautifulSoup) -> dict | None:
+    """First ld+json JobPosting object on an iCIMS detail page — clean structured data."""
+    for tag in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(tag.get_text())
+        except Exception:
+            continue
+        for cand in (data if isinstance(data, list) else [data]):
+            if isinstance(cand, dict) and cand.get("@type") == "JobPosting":
+                return cand
+    return None
+
+
+def _icims_location(jp: dict) -> str:
+    """JobPosting.jobLocation → "City, ST" (drops iCIMS "UNAVAILABLE" placeholder fields)."""
+    loc = jp.get("jobLocation")
+    if isinstance(loc, list):
+        loc = loc[0] if loc else None
+    addr = (loc or {}).get("address", {}) if isinstance(loc, dict) else {}
+    parts = [addr.get("addressLocality"), addr.get("addressRegion")]
+    return ", ".join(p for p in parts if p and p != "UNAVAILABLE")
+
+
+def detail_icims_fields(slug: str, ats_job_id: str) -> dict:
+    """iCIMS detail page → clean structured fields from the JSON-LD JobPosting.
+
+    Returns {title, location, posted, description_html}. The public search/LIST page only
+    exposes field LABELS ("Title"/"Location") glued onto values, so the list-scraped title and
+    location are unreliable ("TitleSenior Software Engineer", "Location"); the JSON-LD is the
+    authoritative source. Falls back to the .iCIMS_JobContent node (description HTML only) when
+    no JSON-LD is present.
+    """
     url = f"https://{slug}.icims.com/jobs/{ats_job_id}/job?in_iframe=1"
     r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
+    jp = _icims_jsonld(soup)
+    if jp:
+        return {
+            "title": (jp.get("title") or "").strip() or None,
+            "location": _icims_location(jp) or None,
+            "posted": jp.get("datePosted") or None,
+            "description_html": jp.get("description") or "",
+        }
     node = soup.select_one(
         ".iCIMS_JobContent, .iCIMS_InfoMsg_Job, #jobDescription, [class*='JobDescription']"
     )
-    return (str(node) if node else ""), None
+    return {"title": None, "location": None, "posted": None,
+            "description_html": str(node) if node else ""}
+
+
+def detail_icims(slug: str, ats_job_id: str) -> tuple[str, str | None]:
+    # Clean HTML description + true posted date from the detail-page JSON-LD JobPosting.
+    f = detail_icims_fields(slug, ats_job_id)
+    return f["description_html"], f["posted"]
 
 
 DETAIL = {
@@ -210,13 +259,21 @@ def enrich_one(job: dict, *, dry_run: bool = False) -> dict:
         if not dry_run:
             stamp_attempt(job["id"])  # cool down so it doesn't block the queue
         return {"status": "no_slug"}
+    icims = ats == "icims"
+    icims_fields: dict | None = None
     try:
-        html, posted = DETAIL[ats](slug, job["ats_job_id"])
+        if icims:
+            # iCIMS: pull clean title/location/posted/description from the JSON-LD JobPosting.
+            icims_fields = detail_icims_fields(slug, job["ats_job_id"])
+            html, posted = icims_fields["description_html"], icims_fields["posted"]
+        else:
+            html, posted = DETAIL[ats](slug, job["ats_job_id"])
     except Exception as e:
         if not dry_run:
             stamp_attempt(job["id"])
         return {"status": "error", "error": str(e)}
 
+    # Plain text drives gating, salary parsing and scoring; it is NOT what we store for iCIMS.
     desc_text = strip_html(html)[:8000]
     if not desc_text:
         if not dry_run:
@@ -225,7 +282,9 @@ def enrich_one(job: dict, *, dry_run: bool = False) -> dict:
 
     # parse_salary derives display + numeric bounds + annual/hourly period.
     sal = parse_salary(html) or parse_salary(desc_text)
-    update = {"description_text": desc_text}
+    # iCIMS stores the clean JSON-LD HTML so every UI surface renders it formatted (each
+    # already renders description_text as HTML when it carries tags); other ATSes stay plain.
+    update = {"description_text": (html[:24000] if icims and html else desc_text)}
     if posted:  # exact Workday startDate — the daily pull leaves posted_at NULL for it
         update["posted_at"] = posted
     if sal:
@@ -233,6 +292,19 @@ def enrich_one(job: dict, *, dry_run: bool = False) -> dict:
         update["salary_min_num"] = sal["min_num"]
         update["salary_max_num"] = sal["max_num"]
         update["salary_period"] = sal["period"]
+    if icims and icims_fields:
+        # The list scrape captured iCIMS field LABELS ("Title…"/"Location"). Overwrite with the
+        # authoritative JSON-LD title/location and re-derive level/department/remote from them.
+        title = icims_fields.get("title")
+        if title:
+            update["title"] = title
+            update["job_level"] = classify_level(title)
+            dept = classify_department(title, job.get("source_department"))
+            if dept:
+                update["department"] = dept
+        if icims_fields.get("location"):
+            update["location"] = icims_fields["location"]
+        update["is_remote"] = detect_remote(title or "", icims_fields.get("location") or "")
 
     if not dry_run:
         try:

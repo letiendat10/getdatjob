@@ -10,7 +10,17 @@ import {
 } from "lucide-react";
 import type { JobRow } from "@/lib/query-jobs";
 import { getTnCategory } from "@/lib/tn-eligible";
-import { DEPARTMENTS, departmentLabel, toCanonicalDepartments } from "@/lib/taxonomy";
+import { DEPARTMENTS, departmentLabel, toCanonicalDepartments, toCanonicalLevel } from "@/lib/taxonomy";
+// Shared filter option lists — single source of truth (see lib/filters.ts + lib/taxonomy.ts).
+import {
+  LOCATION_FILTER_OPTIONS as LOCATION_OPTIONS,
+  POSTED_FILTER_OPTIONS as POSTED_DATE_OPTIONS,
+  SALARY_FILTER_OPTIONS as SALARY_OPTIONS,
+  VISA_FILTER_OPTIONS as VISA_OPTIONS,
+  LEVEL_FILTER_OPTIONS as LEVEL_OPTIONS,
+  DEPARTMENT_FILTER_OPTIONS as DEPARTMENT_OPTIONS_FALLBACK,
+  SIGNAL_OPTIONS, SORT_OPTIONS, VIEW_OPTIONS,
+} from "@/lib/filters";
 import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 import s from "./me.module.css";
@@ -180,16 +190,6 @@ function extractExperience(html: string): string | null {
   const simple = text.match(/(\d+)\s*years?\s*(?:of\s*)?(?:experience|exp)/i);
   return simple ? `${simple[1]}+ years` : null;
 }
-function inferLevel(title: string): string | null {
-  const t = title.toLowerCase();
-  if (/\b(intern|internship)\b/.test(t)) return "Intern";
-  if (/\b(junior|jr\.?|entry[- ]level|associate(?! director| product))\b/.test(t)) return "Junior";
-  if (/\b(principal|staff engineer|distinguished|fellow)\b/.test(t)) return "Principal / Staff";
-  if (/\b(senior|sr\.?)\b/.test(t)) return "Senior";
-  if (/\b(lead|manager|director|head of|vp\b|vice president)\b/.test(t)) return "Lead / Manager";
-  return "Mid-level";
-}
-
 function toJobWithNorm(raw: JobRow): JobWithNorm {
   return { ...raw, _normLoc: normalizeLocation(raw.location ?? ""), _normCompany: normalizeCompanyName(raw.company ?? "") };
 }
@@ -231,15 +231,9 @@ function prefToLocation(l: string | null): string {
 }
 
 function prefToLevel(l: string | null): string {
-  if (!l) return "all";
-  const p = l.toLowerCase();
-  if (p.includes("intern")) return "Intern";
-  if (p.includes("junior") || p.includes("jr") || p.includes("entry")) return "Junior";
-  if (p.includes("principal") || p.includes("staff")) return "Principal / Staff";
-  if (p.includes("senior") || p.includes("sr ") || p.includes(" sr")) return "Senior";
-  if (p.includes("lead") || p.includes("manager") || p.includes("director") || p.includes("people manager")) return "Lead / Manager";
-  if (p.includes("mid")) return "Mid-level";
-  return "all";
+  // Map a stored preference job_level (canonical, or any legacy value) to the canonical filter
+  // value the server understands. toCanonicalLevel handles both vocabularies; null → "all".
+  return toCanonicalLevel(l) ?? "all";
 }
 
 function prefToSalary(f: number | null): string {
@@ -265,73 +259,11 @@ function prefToPosted(d: number | null): string {
   return "90d";
 }
 
-function parseMinSalary(salary_range: string | null): number | null {
-  if (!salary_range) return null;
-  const m = salary_range.match(/\$\s*([\d,]+(?:\.\d+)?)(K?)/i);
-  if (!m) return null;
-  let n = parseFloat(m[1].replace(/,/g, ""));
-  if (isNaN(n)) return null;
-  if (m[2].toUpperCase() === "K") n *= 1000;
-  return n;
-}
-
 // ── Filter config ─────────────────────────────────────────────────────────────
-
-const LOCATION_OPTIONS = [
-  { label: "All locations", value: "all" }, { label: "Remote", value: "Remote" },
-  { label: "San Francisco Bay Area", value: "San Francisco Bay Area" },
-  { label: "New York City", value: "New York City" }, { label: "Seattle, WA", value: "Seattle, WA" },
-  { label: "Chicago, IL", value: "Chicago, IL" }, { label: "Los Angeles, CA", value: "Los Angeles, CA" },
-  { label: "Austin, TX", value: "Austin, TX" }, { label: "Boston, MA", value: "Boston, MA" },
-  { label: "Denver, CO", value: "Denver, CO" }, { label: "Washington, DC", value: "Washington, DC" },
-  { label: "Atlanta, GA", value: "Atlanta, GA" }, { label: "Miami, FL", value: "Miami, FL" },
-  { label: "Nashville, TN", value: "Nashville, TN" }, { label: "Portland, OR", value: "Portland, OR" },
-  { label: "Salt Lake City, UT", value: "Salt Lake City, UT" }, { label: "Phoenix, AZ", value: "Phoenix, AZ" },
-  { label: "San Diego, CA", value: "San Diego, CA" }, { label: "Virginia", value: "Virginia" },
-  { label: "Pennsylvania", value: "Pennsylvania" },
-];
-const SIGNAL_OPTIONS = [
-  { label: "All signals", value: "all" },
-  { label: "Verified LCA Filings With Same Job Title", value: "verified" },
-  { label: "H-1B Friendly Employer", value: "friendly" },
-];
-const POSTED_DATE_OPTIONS = [
-  { label: "Any time", value: "all" }, { label: "Past 24 hours", value: "1d" },
-  { label: "Past 2 days", value: "2d" }, { label: "Past 3 days", value: "3d" },
-  { label: "Past week", value: "7d" }, { label: "Past month", value: "30d" },
-  { label: "Past 3 months", value: "90d" },
-];
-const SORT_OPTIONS = [
-  { label: "Most recent", value: "recent" }, { label: "Most LCAs", value: "lcas" },
-  { label: "Relevance", value: "relevance" },
-];
-// Fallback only — shown while the live vocabulary loads (or if /api/jobs/meta fails) so the
-// dropdown is never empty. The live options come from department_facets, so new unified
-// buckets appear automatically. Values equal stored jobs.department ("Marketing/Growth").
-const DEPARTMENT_OPTIONS_FALLBACK = [
-  { label: "All departments", value: "all" },
-  ...DEPARTMENTS.map((d) => ({ label: departmentLabel(d), value: d })),
-];
-const LEVEL_OPTIONS = [
-  { label: "All levels", value: "all" }, { label: "Intern", value: "Intern" },
-  { label: "Junior", value: "Junior" }, { label: "Mid-level", value: "Mid-level" },
-  { label: "Senior", value: "Senior" }, { label: "Principal / Staff", value: "Principal / Staff" },
-  { label: "Lead / Manager", value: "Lead / Manager" },
-];
-const VIEW_OPTIONS = [
-  { label: "All jobs", value: "all" }, { label: "Viewed", value: "viewed" },
-  { label: "Favorite", value: "favorite" }, { label: "New to you", value: "new" },
-];
-const VISA_OPTIONS = [
-  { label: "All visas", value: "all" }, { label: "H-1B", value: "H1B" },
-  { label: "E-3", value: "E3" }, { label: "TN", value: "TN" },
-];
-const SALARY_OPTIONS = [
-  { label: "Any compensation", value: "all" },
-  { label: "$100K+", value: "100000" },
-  { label: "$150K+", value: "150000" },
-  { label: "$200K+", value: "200000" },
-];
+// All option lists now come from the shared SSOT (imported at the top of this file):
+// LOCATION_OPTIONS, SIGNAL_OPTIONS, POSTED_DATE_OPTIONS, SORT_OPTIONS, SALARY_OPTIONS,
+// VISA_OPTIONS, LEVEL_OPTIONS, VIEW_OPTIONS, DEPARTMENT_OPTIONS_FALLBACK (fallback until live
+// department_facets load). DEPARTMENT_OPTIONS_FALLBACK matches /jobs exactly.
 
 const LOGO_DEV_TOKEN = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN ?? "";
 
@@ -471,7 +403,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
   const extractedSalary = useMemo(() => extractSalary(descHtml), [descHtml]);
   const salary = salaryOverride ?? job.salary_range ?? extractedSalary;
   const experience = useMemo(() => extractExperience(descHtml), [descHtml]);
-  const level = inferLevel(job.title);
+  const level = job.job_level;  // canonical stored value (same source as /jobs) — fixes VP vs Lead/Manager
   const department = job.department;
   const tnCategory = getTnCategory(job.title);
 
@@ -659,7 +591,7 @@ export function MatchesPanel({ preferences, isUnlocked }: {
   ]);
 
   const doFetch = useCallback(
-    async (params: { q: string; location: string; company: string; posted: string; sort: string; signal: string; visa: string; department: string; level: string }, append = false, pageNum = 0) => {
+    async (params: { q: string; location: string; company: string; posted: string; sort: string; signal: string; visa: string; department: string; level: string; salary: string }, append = false, pageNum = 0) => {
       const myId = ++fetchIdRef.current;
       if (!append) {
         fetchAbortRef.current?.abort();
@@ -673,7 +605,7 @@ export function MatchesPanel({ preferences, isUnlocked }: {
         q: params.q, location: params.location, company: params.company,
         posted: params.posted, sort: params.sort, page: String(pageNum),
         signal: params.signal, visa: params.visa,
-        department: params.department, level: params.level,
+        department: params.department, level: params.level, salary: params.salary,
       });
       try {
         const sig = append ? undefined : fetchAbortRef.current?.signal;
@@ -699,21 +631,21 @@ export function MatchesPanel({ preferences, isUnlocked }: {
 
   // Fetch on filter change
   useEffect(() => {
-    const params = { q: query, location, company, posted: postedDate, sort: sortBy, signal, visa, department, level };
+    const params = { q: query, location, company, posted: postedDate, sort: sortBy, signal, visa, department, level, salary };
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       doFetch(params, false, 0);
     }, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, location, company, postedDate, sortBy, signal, visa, department, level]);
+  }, [query, location, company, postedDate, sortBy, signal, visa, department, level, salary]);
 
   // Infinite scroll — only active if user is unlocked
   const loadMore = useCallback(() => {
     if (!isUnlocked) return;
     if (loadingMore || jobs.length >= total) return;
-    doFetch({ q: query, location, company, posted: postedDate, sort: sortBy, signal, visa, department, level }, true, page + 1);
-  }, [isUnlocked, loadingMore, jobs.length, total, query, location, company, postedDate, sortBy, signal, visa, department, level, page, doFetch]);
+    doFetch({ q: query, location, company, posted: postedDate, sort: sortBy, signal, visa, department, level, salary }, true, page + 1);
+  }, [isUnlocked, loadingMore, jobs.length, total, query, location, company, postedDate, sortBy, signal, visa, department, level, salary, page, doFetch]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -916,17 +848,12 @@ export function MatchesPanel({ preferences, isUnlocked }: {
     visa !== prefVisa || department !== prefDept || level !== prefLevel ||
     salary !== prefSalary || viewFilter !== "all" || query !== "";
 
-  const salaryFloorNum = salary === "all" ? 0 : parseInt(salary, 10);
-
+  // Level + salary are server-side now (canonical job_level eq + min-salary gate in
+  // lib/query-jobs.ts); only the view-state filters remain client-side.
   const clientFiltered = jobs.filter((j) => {
-    if (level === "Mid-level" && inferLevel(j.title) !== "Mid-level") return false;
     if (viewFilter === "viewed" && !viewedJobs.has(j.id)) return false;
     if (viewFilter === "favorite" && !savedJobs.has(j.id)) return false;
     if (viewFilter === "new" && viewedJobs.has(j.id)) return false;
-    if (salaryFloorNum > 0) {
-      const min = parseMinSalary(j.salary_range);
-      if (min == null || min < salaryFloorNum) return false;
-    }
     return true;
   });
 

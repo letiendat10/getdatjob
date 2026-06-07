@@ -12,6 +12,16 @@ import type { JobRow } from "@/lib/query-jobs";
 import { getTnCategory } from "@/lib/tn-eligible";
 import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
+// Shared filter option lists — single source of truth (see lib/filters.ts + lib/taxonomy.ts).
+import {
+  LOCATION_FILTER_OPTIONS as LOCATION_OPTIONS,
+  POSTED_FILTER_OPTIONS as POSTED_DATE_OPTIONS,
+  SALARY_FILTER_OPTIONS as SALARY_OPTIONS,
+  VISA_FILTER_OPTIONS as VISA_OPTIONS,
+  LEVEL_FILTER_OPTIONS as LEVEL_OPTIONS,
+  DEPARTMENT_FILTER_OPTIONS as DEPARTMENT_OPTIONS_FALLBACK,
+  SIGNAL_OPTIONS, SORT_OPTIONS, VIEW_OPTIONS,
+} from "@/lib/filters";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -236,96 +246,10 @@ function extractExperience(html: string): string | null {
 // (classify.py — single source of truth). The old title-inference helpers were removed.
 
 // ── Filter config ────────────────────────────────────────────────────────────
-
-const LOCATION_OPTIONS = [
-  { label: "All locations", value: "all" },
-  { label: "Remote", value: "Remote" },
-  { label: "San Francisco Bay Area", value: "San Francisco Bay Area" },
-  { label: "New York City", value: "New York City" },
-  { label: "Seattle, WA", value: "Seattle, WA" },
-  { label: "Chicago, IL", value: "Chicago, IL" },
-  { label: "Los Angeles, CA", value: "Los Angeles, CA" },
-  { label: "Austin, TX", value: "Austin, TX" },
-  { label: "Boston, MA", value: "Boston, MA" },
-  { label: "Denver, CO", value: "Denver, CO" },
-  { label: "Washington, DC", value: "Washington, DC" },
-  { label: "Atlanta, GA", value: "Atlanta, GA" },
-  { label: "Miami, FL", value: "Miami, FL" },
-  { label: "Nashville, TN", value: "Nashville, TN" },
-  { label: "Portland, OR", value: "Portland, OR" },
-  { label: "Salt Lake City, UT", value: "Salt Lake City, UT" },
-  { label: "Phoenix, AZ", value: "Phoenix, AZ" },
-  { label: "San Diego, CA", value: "San Diego, CA" },
-  { label: "Virginia", value: "Virginia" },
-  { label: "Pennsylvania", value: "Pennsylvania" },
-];
-
-const SIGNAL_OPTIONS = [
-  { label: "All signals", value: "all" },
-  { label: "Verified LCA Filings With Same Job Title", value: "verified" },
-  { label: "H-1B Friendly Employer", value: "friendly" },
-];
-
-const POSTED_DATE_OPTIONS = [
-  { label: "Any time", value: "all" },
-  { label: "Past 24 hours", value: "1d" },
-  { label: "Past 2 days", value: "2d" },
-  { label: "Past 3 days", value: "3d" },
-  { label: "Past week", value: "7d" },
-  { label: "Past month", value: "30d" },
-  { label: "Past 3 months", value: "90d" },
-];
-
-const SORT_OPTIONS = [
-  { label: "Most recent", value: "recent" },
-  { label: "Most LCAs", value: "lcas" },
-  { label: "Relevance", value: "relevance" },
-];
-
-// Fallback only — shown until the live vocabulary (department_facets via /api/jobs/meta)
-// loads, so the dropdown is never empty. Live options replace this and pick up new buckets.
-const DEPARTMENT_OPTIONS_FALLBACK = [
-  { label: "All departments", value: "all" },
-  { label: "AI / ML", value: "AI / ML" },
-  { label: "Data", value: "Data" },
-  { label: "Engineering", value: "Engineering" },
-  { label: "Security", value: "Security" },
-  { label: "Product", value: "Product" },
-  { label: "Design", value: "Design" },
-  { label: "Platform / DevOps", value: "Platform / DevOps" },
-  { label: "Sales", value: "Sales" },
-  { label: "Marketing/Growth", value: "Marketing/Growth" },
-  { label: "Finance", value: "Finance" },
-  { label: "Operations", value: "Operations" },
-  { label: "Legal", value: "Legal" },
-  { label: "HR / People", value: "HR / People" },
-  { label: "Customer Success", value: "Customer Success" },
-  { label: "Facilities", value: "Facilities" },
-];
-
-// Values match the stored jobs.job_level vocabulary (classify.py) exactly.
-const LEVEL_OPTIONS = [
-  { label: "All levels", value: "all" },
-  { label: "Entry / Junior", value: "Entry/Junior" },
-  { label: "Senior", value: "Senior" },
-  { label: "Lead / Manager", value: "Lead/Manager" },
-  { label: "Director", value: "Director" },
-  { label: "VP", value: "VP" },
-];
-
-const VIEW_OPTIONS = [
-  { label: "All jobs", value: "all" },
-  { label: "Viewed", value: "viewed" },
-  { label: "Favorite", value: "favorite" },
-  { label: "New to you", value: "new" },
-];
-
-const VISA_OPTIONS = [
-  { label: "All visas", value: "all" },
-  { label: "H-1B", value: "H1B" },
-  { label: "E-3", value: "E3" },
-  { label: "TN", value: "TN" },
-];
+// All option lists now come from the shared SSOT (imported at the top of this file):
+// LOCATION_OPTIONS, SIGNAL_OPTIONS, POSTED_DATE_OPTIONS, SORT_OPTIONS, SALARY_OPTIONS,
+// VISA_OPTIONS, LEVEL_OPTIONS, VIEW_OPTIONS, DEPARTMENT_OPTIONS_FALLBACK.
+// DEPARTMENT_OPTIONS_FALLBACK is the fallback until live department_facets (/api/jobs/meta) load.
 
 // ── Filter Icons (dot-grid style, 24×24 viewbox, currentColor) ──────────────
 
@@ -410,6 +334,16 @@ function FilterIconExperience() {
       <circle cx="12" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
       <circle cx="16" cy="5"   r="1.1" fill="currentColor" stroke="none" />
       <path d="M3.5 20.5h17" />
+    </g>
+  );
+}
+
+function FilterIconCompensation() {
+  return (
+    <g fill="none" stroke="currentColor" strokeWidth={S} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M14.5 9.3c-.6-.8-1.6-1.3-2.7-1.3-1.5 0-2.8.9-2.8 2.1 0 1.2 1.3 1.7 2.8 2.1 1.5.4 2.8.9 2.8 2.1 0 1.2-1.3 2.1-2.8 2.1-1.1 0-2.1-.5-2.7-1.3" />
+      <path d="M12 6.5v1M12 16.5v1" />
     </g>
   );
 }
@@ -696,6 +630,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   const [visa, setVisa] = useState("H1B");
   const [department, setDepartment] = useState("all");
   const [level, setLevel] = useState("all");
+  const [salary, setSalary] = useState("all");
   const [viewFilter, setViewFilter] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
   const [openChip, setOpenChip] = useState<string | null>(null);
@@ -807,7 +742,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
 
   // Main fetch: fires when filters change (page resets to 0)
   const doFetch = useCallback(
-    async (params: { q: string; location: string; company: string; posted: string; sort: string; signal: string; visa: string; department: string; level: string }, append = false, pageNum = 0) => {
+    async (params: { q: string; location: string; company: string; posted: string; sort: string; signal: string; visa: string; department: string; level: string; salary: string }, append = false, pageNum = 0) => {
       const myId = ++fetchIdRef.current;
 
       if (!append) {
@@ -832,6 +767,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
         visa:       params.visa,
         department: params.department,
         level:      params.level,
+        salary:     params.salary,
       });
 
       const useInit = useInitEndpointRef.current && !append;
@@ -864,7 +800,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
 
   // Fetch on filter change — all filters debounced 350ms to batch rapid changes
   useEffect(() => {
-    const params = { q: query, location, company, posted: postedDate, sort: sortBy, signal, visa, department, level };
+    const params = { q: query, location, company, posted: postedDate, sort: sortBy, signal, visa, department, level, salary };
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       if (skipInitialFetchRef.current) {
@@ -876,14 +812,14 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
     }, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, location, company, postedDate, sortBy, signal, visa, department, level]);
+  }, [query, location, company, postedDate, sortBy, signal, visa, department, level, salary]);
 
   // Infinite scroll: load next page
   const loadMore = useCallback(() => {
     const nextPage = page + 1;
     if (loadingMore || jobs.length >= total) return;
-    doFetch({ q: query, location, company, posted: postedDate, sort: sortBy, signal, visa, department, level }, true, nextPage);
-  }, [page, loadingMore, jobs.length, total, query, location, company, postedDate, sortBy, signal, visa, department, level, doFetch]);
+    doFetch({ q: query, location, company, posted: postedDate, sort: sortBy, signal, visa, department, level, salary }, true, nextPage);
+  }, [page, loadingMore, jobs.length, total, query, location, company, postedDate, sortBy, signal, visa, department, level, salary, doFetch]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -1082,7 +1018,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
     () => (selectedJobId !== null ? (jobs.find((j) => j.id === selectedJobId) ?? null) : null),
     [selectedJobId, jobs]
   );
-  const hasActiveFilters = company !== "" || location !== "all" || signal !== "all" || postedDate !== "7d" || visa !== "H1B" || department !== "all" || level !== "all" || viewFilter !== "all";
+  const hasActiveFilters = company !== "" || location !== "all" || signal !== "all" || postedDate !== "7d" || visa !== "H1B" || department !== "all" || level !== "all" || salary !== "all" || viewFilter !== "all";
 
   if (loading) {
     return (
@@ -1240,6 +1176,16 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
             icon={FilterIconExperience}
           />
           <FilterChip
+            label="Compensation"
+            value={salary}
+            defaultValue="all"
+            options={SALARY_OPTIONS}
+            onChange={setSalary}
+            isOpen={openChip === "salary"}
+            onToggle={() => setOpenChip(openChip === "salary" ? null : "salary")}
+            icon={FilterIconCompensation}
+          />
+          <FilterChip
             label="All jobs"
             value={viewFilter}
             defaultValue="all"
@@ -1251,7 +1197,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
           />
           {hasActiveFilters && (
             <button
-              onClick={() => { setCompany(""); setLocation("all"); setSignal("all"); setPostedDate("7d"); setVisa("H1B"); setDepartment("all"); setLevel("all"); setViewFilter("all"); }}
+              onClick={() => { setCompany(""); setLocation("all"); setSignal("all"); setPostedDate("7d"); setVisa("H1B"); setDepartment("all"); setLevel("all"); setSalary("all"); setViewFilter("all"); }}
               className="flex-shrink-0 text-xs text-zinc-500 hover:text-zinc-900 px-2 py-1 transition-colors"
             >
               Clear all

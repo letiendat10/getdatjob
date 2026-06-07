@@ -7,7 +7,15 @@ import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { MatchesPanel } from "./matches-panel";
 import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
-import { DEPARTMENTS, departmentLabel } from "@/lib/taxonomy";
+// Shared preference-editor option lists — single source of truth (lib/filters.ts).
+import {
+  VISA_PREF_OPTIONS as VISA_OPTIONS,
+  LEVEL_PREF_OPTIONS as LEVEL_OPTIONS,
+  SALARY_PREF_OPTIONS as SALARY_OPTIONS,
+  POSTED_PREF_OPTIONS as POSTED_OPTIONS,
+  LOCATION_PREF_OPTIONS as LOCATION_PROFILE_OPTIONS,
+  DEPARTMENT_PREF_OPTIONS as DEPT_OPTIONS,
+} from "@/lib/filters";
 import s from "./me.module.css";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -705,52 +713,11 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
 // MatchesTab is replaced by MatchesPanel (imported from ./matches-panel)
 
 // ── Account Tab constants ─────────────────────────────────────────────────────
+// Option lists (VISA_OPTIONS, DEPT_OPTIONS, LEVEL_OPTIONS, SALARY_OPTIONS, POSTED_OPTIONS,
+// LOCATION_PROFILE_OPTIONS) now come from the shared SSOT, imported at the top of this file.
+// LEVEL_OPTIONS is the canonical jobs.job_level vocabulary (6 values) — the preference column
+// shares it after the profiles_job_level migration.
 
-const VISA_OPTIONS = [
-  { label: "H-1B", value: "H-1B" },
-  { label: "E-3 / TN", value: "E-3/TN" },
-  { label: "OPT", value: "OPT" },
-  { label: "O-1 / Other", value: "Other" },
-];
-// Canonical values from the taxonomy SSOT (e.g. "Marketing/Growth", not "Marketing")
-// so the stored job_function round-trips through toCanonicalDepartments everywhere.
-const DEPT_OPTIONS = DEPARTMENTS.map((d) => ({ label: departmentLabel(d), value: d }));
-const LEVEL_OPTIONS = ["Junior", "Lead", "Senior", "Principal/Staff", "People Manager"];
-const SALARY_OPTIONS = [
-  { label: "Any", value: "" },
-  { label: "$100K+", value: "100000" },
-  { label: "$150K+", value: "150000" },
-  { label: "$200K+", value: "200000" },
-];
-const POSTED_OPTIONS = [
-  { label: "Any time", value: "" },
-  { label: "Last 24h", value: "1" },
-  { label: "Last 3 days", value: "3" },
-  { label: "Last week", value: "7" },
-  { label: "Last month", value: "30" },
-];
-const LOCATION_PROFILE_OPTIONS = [
-  { label: "Any location", value: "" },
-  { label: "Remote", value: "Remote" },
-  { label: "San Francisco Bay Area", value: "San Francisco Bay Area" },
-  { label: "New York City", value: "New York City" },
-  { label: "Seattle, WA", value: "Seattle, WA" },
-  { label: "Chicago, IL", value: "Chicago, IL" },
-  { label: "Los Angeles, CA", value: "Los Angeles, CA" },
-  { label: "Austin, TX", value: "Austin, TX" },
-  { label: "Boston, MA", value: "Boston, MA" },
-  { label: "Denver, CO", value: "Denver, CO" },
-  { label: "Washington, DC", value: "Washington, DC" },
-  { label: "Atlanta, GA", value: "Atlanta, GA" },
-  { label: "Miami, FL", value: "Miami, FL" },
-  { label: "Nashville, TN", value: "Nashville, TN" },
-  { label: "Portland, OR", value: "Portland, OR" },
-  { label: "Salt Lake City, UT", value: "Salt Lake City, UT" },
-  { label: "Phoenix, AZ", value: "Phoenix, AZ" },
-  { label: "San Diego, CA", value: "San Diego, CA" },
-  { label: "Virginia", value: "Virginia" },
-  { label: "Pennsylvania", value: "Pennsylvania" },
-];
 const RAINBOW = "linear-gradient(90deg,#ff6b6b,#ffd93d,#6bcb77,#4d96ff,#a855f7)";
 const TIER_LABELS: Record<string, string> = { free: "Free", passed: "Passed", preferred: "Preferred" };
 const TIER_FEATURES: Record<string, string[]> = {
@@ -937,7 +904,7 @@ function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut, onPrefs
                 <label className={s["pref-label"]}>Level</label>
                 <select className={s["pref-select"]} value={prefs.job_level} onChange={e => updatePref("job_level", e.target.value)}>
                   <option value="">Select</option>
-                  {LEVEL_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  {LEVEL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div className={s["pref-field"]}>

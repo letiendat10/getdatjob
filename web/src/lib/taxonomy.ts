@@ -209,6 +209,9 @@ export function toCanonicalDepartments(input?: string | null): CanonicalDepartme
 }
 
 // ── Level aliases (normalized key → canonical value) ──────────────────────────
+// Includes the LEGACY preference vocabularies that predate canonicalization, so old stored
+// enriched.profiles.job_level values ("Lead", "People Manager", "Senior IC", "Manager/Lead")
+// still read correctly while data is migrated to the canonical set.
 const LEVEL_ALIASES: Record<string, CanonicalLevel> = {
   "entry/junior": "Entry/Junior",
   entry: "Entry/Junior",
@@ -219,12 +222,15 @@ const LEVEL_ALIASES: Record<string, CanonicalLevel> = {
   senior: "Senior",
   sr: "Senior",
   senior_ic: "Senior",
+  "senior ic": "Senior",
   "principal/staff": "Principal / Staff",
   principal: "Principal / Staff",
   staff: "Principal / Staff",
   "lead/manager": "Lead/Manager",
+  "manager/lead": "Lead/Manager",
   lead: "Lead/Manager",
   manager: "Lead/Manager",
+  "people manager": "Lead/Manager",
   director: "Director",
   vp: "VP",
   "vice president": "VP",
@@ -232,10 +238,81 @@ const LEVEL_ALIASES: Record<string, CanonicalLevel> = {
 };
 
 /**
- * Translate a user-facing level label or onboarding token (senior_ic/manager/either)
- * into the canonical job_level value. Returns `null` for "any level" (e.g. "either").
+ * Translate a user-facing level label or onboarding token (senior_ic/manager/either) — or a
+ * legacy stored preference value — into the canonical job_level value. Returns `null` for
+ * "any level" (e.g. "either").
  */
 export function toCanonicalLevel(input?: string | null): CanonicalLevel | null {
   if (!input) return null;
   return LEVEL_ALIASES[norm(input)] ?? null;
 }
+
+// ── Display labels for the 6 canonical levels ─────────────────────────────────
+export const LEVEL_LABELS: Record<CanonicalLevel, string> = {
+  "Entry/Junior": "Entry / Junior",
+  Senior: "Senior",
+  "Principal / Staff": "Principal / Staff",
+  "Lead/Manager": "Lead / Manager",
+  Director: "Director",
+  VP: "VP",
+};
+
+export function levelLabel(l: CanonicalLevel): string {
+  return LEVEL_LABELS[l] ?? l;
+}
+
+// ── Title → canonical level ───────────────────────────────────────────────────
+// TypeScript port of classify.py:classify_level (the Python classifier writes jobs.job_level;
+// this mirrors it so client surfaces derive the SAME level from a raw title/headline). Keep in
+// sync with classify.py. Highest match wins; checked top → bottom. Returns null for plain
+// mid-level ICs ("Software Engineer") == "any level".
+const _RX_VP = /\b(svp|evp|vp|vice\s+president|chief|ceo|cto|cfo|coo|cmo|cpo|cro|cio|cdo)\b/i;
+const _RX_DIRECTOR = /\bdirector\b|\bhead\s+of\b/i;
+const _RX_PRINCIPAL = /\b(principal|staff|distinguished|fellow)\b/i;
+const _RX_MANAGER =
+  /\b(manager|mgr|supervisor)\b|\b(team|tech|technical|engineering|eng|group|squad|project|delivery|program|product|design|data|qa|it|dev)\s+lead\b|^lead\s+(?!gen)/i;
+const _RX_SENIOR = /\b(senior|sr\.?)\b/i;
+const _RX_ENTRY =
+  /\b(intern|internship|junior|jr\.?|associate|entry[- ]?level|new\s*grad|graduate|apprentice|trainee|co[- ]?op|early\s+career)\b/i;
+const _RX_LEVEL_NUM = /\b(?:level|l|e)[-\s]?([3-9]|1[0-9])\b|\b(?:ic|sw|swe)[-\s]?([3-9])\b|(?<!\d)\b(\d)\s*$/i;
+
+function _levelFromNum(m: RegExpMatchArray): CanonicalLevel {
+  const n = parseInt(m.slice(1).find((g) => g != null) ?? "0", 10);
+  if (n <= 3) return "Entry/Junior";
+  if (n <= 5) return "Senior";
+  return "Principal / Staff";
+}
+
+/**
+ * Derive the canonical job_level from a raw job title or LinkedIn headline. Single source for
+ * every client/enrichment surface that needs title→level (replaces the old per-file inferLevel/
+ * deriveJobLevel copies). Returns null for untagged mid-level IC roles.
+ */
+export function levelFromTitle(title?: string | null): CanonicalLevel | null {
+  const t = title ?? "";
+  if (_RX_VP.test(t)) return "VP";
+  if (_RX_DIRECTOR.test(t)) return "Director";
+  if (_RX_PRINCIPAL.test(t)) return "Principal / Staff";
+  if (_RX_MANAGER.test(t)) return "Lead/Manager";
+  if (_RX_SENIOR.test(t)) return "Senior";
+  if (_RX_ENTRY.test(t)) return "Entry/Junior";
+  const m = t.match(_RX_LEVEL_NUM);
+  if (m) return _levelFromNum(m);
+  return null;
+}
+
+// ── Shared filter option lists (department + level) ───────────────────────────
+// The single source for the /jobs + /me/job-matches filter bars and the /me profile editor.
+// Values are the EXACT stored jobs.job_level / jobs.department strings (so server-side
+// `eq()` matches); labels are display-only.
+export type FilterOption = { label: string; value: string };
+
+export const LEVEL_FILTER_OPTIONS: FilterOption[] = [
+  { label: "All levels", value: "all" },
+  ...LEVELS.map((l) => ({ label: levelLabel(l), value: l })),
+];
+
+export const DEPARTMENT_FILTER_OPTIONS: FilterOption[] = [
+  { label: "All departments", value: "all" },
+  ...DEPARTMENTS.map((d) => ({ label: departmentLabel(d), value: d })),
+];

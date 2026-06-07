@@ -4,6 +4,7 @@
 
 import { NextRequest } from "next/server";
 import { createSupabaseAdmin } from "@/lib/supabase-admin";
+import { levelFromTitle } from "@/lib/taxonomy";
 
 export const runtime = "nodejs";
 
@@ -43,21 +44,17 @@ const FUNCTION_MAP: [string, string][] = [
   ["talent",             "Operations"],  ["hr",               "Operations"],
 ];
 
-const MANAGER_KEYWORDS = [
-  "head of", "chief", "ceo", "cto", "coo", "cfo", "cpo", "cmo",
-  "vp ", "vice president", "director", "manager", "principal",
-  "partner", "owner", "founder", "president", "lead ",
-];
-
 function deriveJobFunction(title: string): string {
   const t = title.toLowerCase();
   for (const [kw, fn] of FUNCTION_MAP) { if (t.includes(kw)) return fn; }
   return "Other";
 }
 
-function deriveJobLevel(title: string): "Senior IC" | "Manager/Lead" {
-  const t = title.toLowerCase();
-  return MANAGER_KEYWORDS.some(k => t.includes(k)) ? "Manager/Lead" : "Senior IC";
+// Canonical job_level (single source: taxonomy.levelFromTitle / classify.py). Replaces the old
+// "Senior IC" / "Manager/Lead" values, which violated profiles_job_level_check and were silently
+// dropped on write. Plain ICs default to "Senior" (historical catch-all for headline derivation).
+function deriveJobLevel(title: string): string {
+  return levelFromTitle(title) ?? "Senior";
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────

@@ -181,6 +181,15 @@ _UNIT = r'(?:\s*(?:/\s*(?:yr|year|hr|hour)|per\s+(?:year|hour|annum)|a\s+year|an
 _RANGE = re.compile(rf'({_AMT}){_UNIT}\s*(?:[-–—]+|to)\s*({_AMT})', re.I)
 # Amazon-style "142,800.00 – 193,200.00 USD" (no $ prefix, USD trails the range).
 _USD_RANGE = re.compile(r'(\d[\d,]{4,}(?:\.\d+)?)\s*(?:[-–—]+|to)\s*(\d[\d,]{4,}(?:\.\d+)?)\s*USD', re.I)
+# NYC Pay-Transparency phrasing: "USD $100,000.00 to USD $120,000.00" — a currency word LEADS
+# each $bound, so _RANGE (which needs $ right after the separator) misses it. Require the
+# leading currency word so this only fires on the case _RANGE can't handle (plain "$X to $Y"
+# is already matched by _RANGE first), never double-matching.
+_USD_PREFIX_RANGE = re.compile(
+    rf'(?:USD|US\$|US\s*Dollars?)\s*({_AMT})\s*(?:[-–—]+|to)\s*'
+    rf'(?:USD|US\$|US\s*Dollars?)?\s*({_AMT})',
+    re.I,
+)
 _UPTO = re.compile(rf'up\s+to\s+({_AMT})', re.I)
 _PLUS = re.compile(rf'({_AMT})\s*\+', re.I)
 # "$187,741.00-270,500.00 per annum" — dollar sign only on first number (PayPal / some Workday)
@@ -244,6 +253,11 @@ def parse_salary(html: str) -> dict | None:
                 span = ctx[max(0, m.start() - 15):m.end() + 15]
                 period = "hourly" if (_HOURLY_HINT.search(span) or max(lo, hi) < 1000) else "annual"
                 return {"display": _fmt(lo, hi, period), "min_num": lo, "max_num": hi, "period": period}
+        m = _USD_PREFIX_RANGE.search(ctx)
+        if m:
+            lo, hi = _sal_num(m.group(1)), _sal_num(m.group(2))
+            if lo and hi and lo > 1000:  # "USD $100,000 to USD $120,000" — annual pay-transparency
+                return {"display": _fmt(lo, hi, "annual"), "min_num": lo, "max_num": hi, "period": "annual"}
         m = _USD_RANGE.search(ctx)
         if m:
             lo, hi = _sal_num(m.group(1)), _sal_num(m.group(2))

@@ -180,10 +180,18 @@ def is_non_sponsorable_title(title: str) -> bool:
 
 
 def _parse_dt(iso: str | None):
+    """Parse an ISO date to a TZ-AWARE datetime (UTC). Some ATS detail fetchers return a
+    timezone-naive ISO string (no Z/offset); left naive, comparing it against the UTC-aware
+    `cutoff` raised 'can't compare offset-naive and offset-aware datetimes'. Coerce naive → UTC
+    so every gate/freshness comparison (list_gate, fetch_workday_hybrid, enrich_row_inplace) is
+    safe."""
     if not iso:
         return None
     try:
-        return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except Exception:
         return None
 

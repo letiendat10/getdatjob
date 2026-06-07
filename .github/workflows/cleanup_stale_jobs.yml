@@ -1,0 +1,58 @@
+name: Daily — deactivate stale jobs
+
+# Soft-deletes job postings older than 14 days so users never waste time on stale
+# listings. Rule: is_active = false where COALESCE(posted_at, scraped_at) is older
+# than 14 days (posted_at preferred; scraped_at as fallback when posted_at is NULL;
+# rows with neither are left untouched). Rows are never DELETEd — job_signals and
+# saved_jobs stay intact, and re-scrapes can't re-insert stale jobs as "new".
+#
+# 07:00 UTC = midnight Pacific (PDT, UTC-7). GitHub cron is UTC and does NOT observe
+# DST, so this lands at 11 PM PST in winter — bump to "0 8 * * *" if exact-midnight
+# matters. Runs one hour after the 11 PM PT scrape (daily_scraper at 06:00 UTC), so
+# each night's fresh scrape is evaluated immediately.
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}       # manual trigger (fallback / testing)
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure psql is available
+        run: which psql || (sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client)
+
+      - name: Deactivate jobs older than 14 days (soft delete)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          test -n "$SUPABASE_DB_URL" || { echo "SUPABASE_DB_URL secret is empty"; exit 1; }
+
+          DEACTIVATED="$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -c "
+            WITH updated AS (
+              UPDATE public.jobs
+              SET is_active = false
+              WHERE is_active = true
+                AND COALESCE(posted_at, scraped_at) < now() - interval '14 days'
+              RETURNING 1
+            )
+            SELECT count(*) FROM updated;")"
+
+          STATS="$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -F'|' -c "
+            SELECT count(*) FILTER (WHERE is_active = true),
+                   count(*) FILTER (WHERE is_active = false),
+                   count(*)
+            FROM public.jobs;")"
+          IFS='|' read -r ACTIVE INACTIVE TOTAL <<< "$STATS"
+
+          echo "Deactivated this run: $DEACTIVATED"
+          echo "Active: $ACTIVE | Inactive: $INACTIVE | Total: $TOTAL"
+
+          {
+            echo "### Stale-job cleanup ($(date -u +%F))"
+            echo ""
+            echo "| Deactivated this run | Active | Inactive | Total |"
+            echo "|---:|---:|---:|---:|"
+            echo "| $DEACTIVATED | $ACTIVE | $INACTIVE | $TOTAL |"
+          } >> "$GITHUB_STEP_SUMMARY"

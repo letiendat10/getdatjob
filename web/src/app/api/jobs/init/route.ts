@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     visa:       sp.get("visa")       ?? "H1B",
     department: sp.get("department") ?? "all",
     level:      sp.get("level")      ?? "all",
+    salary:     sp.get("salary")     ?? "all",
   };
 
   try {

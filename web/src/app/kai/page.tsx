@@ -8,6 +8,7 @@ import { Bookmark, MapPin, ExternalLink, X, Share2 } from "lucide-react";
 import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 import PaywallScreen from "@/app/components/PaywallScreen";
+import { levelFromTitle, levelLabel } from "@/lib/taxonomy";
 
 // Feature flag: "paywall" → Stripe gate after batch1 (FREE_DAILY_MATCHES shown)
 //               anything else → Venmo support screen after batch2 (3+3 jobs shown)
@@ -321,15 +322,12 @@ function inferJobFunction(headline: string | null): string | null {
   return null;
 }
 
+// Cosmetic onboarding guess at the user's level from their headline (drives the Q5 message +
+// quick-reply labels only — the STORED value comes from levelMap below). Uses the canonical
+// taxonomy helper so it matches /jobs and the search; plain ICs default to "Senior".
 function inferLevel(title: string): string | null {
   if (!title) return null;
-  const t = title.toLowerCase();
-  if (/\b(intern|internship)\b/.test(t)) return "Intern";
-  if (/\b(junior|jr\.?|entry[- ]level|associate(?! director| product))\b/.test(t)) return "Junior";
-  if (/\b(principal|staff engineer|distinguished|fellow)\b/.test(t)) return "Principal / Staff";
-  if (/\b(senior|sr\.?)\b/.test(t)) return "Senior";
-  if (/\b(lead|manager|director|head of|vp\b|vice president)\b/.test(t)) return "Lead / Manager";
-  return "Senior";
+  return levelLabel(levelFromTitle(title) ?? "Senior");
 }
 
 interface Greeting {
@@ -1249,7 +1247,7 @@ export default function KaiPage() {
       // Fire-and-forget: persist intake preferences
       createSupabaseBrowser().auth.getUser().then(({ data }) => {
         if (!data.user) return;
-        const levelMap: Record<string, string | null> = { senior_ic: "Senior", manager: "People Manager", either: null };
+        const levelMap: Record<string, string | null> = { senior_ic: "Senior", manager: "Lead/Manager", either: null };
         const visaMap: Record<string, string> = { "H-1B": "H-1B", "OPT": "OPT", "E-3": "E-3/TN" };
         const prefLocStr = updatedIntake.locationMode === "remote" ? "Remote" : updatedIntake.locationMode === "anywhere" ? null : updatedIntake.location;
         createSupabaseBrowser().schema("enriched").from("profiles").upsert({

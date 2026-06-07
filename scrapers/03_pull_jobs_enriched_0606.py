@@ -395,8 +395,16 @@ def main():
         content gate (stale true date | not full-time | non-English) — the caller drops it, so
         nothing unenriched, stale, part-time, or non-English ever lands in the database."""
         row["enrich_attempted_at"] = datetime.now(timezone.utc).isoformat()
+        icims = row["ats_source"] == "icims"
+        icims_fields = None
         try:
-            html, posted = DETAIL[row["ats_source"]](slug, row["ats_job_id"])
+            if icims:
+                # iCIMS: the JSON-LD JobPosting is the authoritative source for title/location/
+                # posted/description — the LIST page only exposes field LABELS glued to values.
+                icims_fields = enr.detail_icims_fields(slug, row["ats_job_id"])
+                html, posted = icims_fields["description_html"], icims_fields["posted"]
+            else:
+                html, posted = DETAIL[row["ats_source"]](slug, row["ats_job_id"])
         except Exception:
             with lock:
                 estats["error"] += 1
@@ -408,6 +416,7 @@ def main():
                 with lock:
                     estats["stale_dropped"] += 1
                 return False
+        # Plain text drives gating/salary/scoring; for iCIMS it is NOT what we store.
         desc_text = strip_html(html)[:8000]
         if not desc_text:
             with lock:
@@ -422,7 +431,24 @@ def main():
             with lock:
                 estats["lang_dropped"] += 1
             return False
-        row["description_text"] = desc_text
+        if icims and icims_fields:
+            # Store the clean JSON-LD HTML (every UI surface renders description_text as HTML
+            # when it carries tags) and overwrite the list-scraped "Title…"/"Location" junk,
+            # re-deriving level/department/remote from the authoritative title.
+            row["description_text"] = html[:24000] if html else desc_text
+            title = icims_fields.get("title")
+            if title:
+                row["title"] = title
+                row["job_level"] = classify_level(title)
+                dept = classify_department(title, row.get("source_department"))
+                if dept:
+                    row["department"] = dept
+            if icims_fields.get("location"):
+                row["location"] = icims_fields["location"]
+            row["is_remote"] = detect_remote(
+                title or row["title"], icims_fields.get("location") or row["location"])
+        else:
+            row["description_text"] = desc_text
         sal = parse_salary(html) or parse_salary(desc_text)
         if sal:
             row["salary_range"] = sal["display"]

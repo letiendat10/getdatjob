@@ -71,13 +71,14 @@ export async function queryJobs(params: {
   posted: string; sort: string; page: number;
   signal: string; visa: string;
   department: string; level: string;         // P3
+  salary?: string;                            // min annual floor ("100000" | "150000" | "200000")
 }): Promise<{ jobs: JobRow[]; total: number; page: number }> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  const { q, location, company, posted, sort, page, signal, visa, department, level } = params;
+  const { q, location, company, posted, sort, page, signal, visa, department, level, salary } = params;
   const from = page * PAGE_SIZE;
   const to   = from + PAGE_SIZE - 1;
 
@@ -134,6 +135,16 @@ export async function queryJobs(params: {
     dbq = dbq.in("department", depts.length ? depts : [department]);
   }
   if (level && level !== "all")           dbq = dbq.eq("job_level", level);
+
+  // Compensation floor on the parsed numeric min. Keep unknown-salary jobs visible (most
+  // Workday/list-only postings have no parsed salary) per the salary-card rule, so the filter
+  // narrows by known pay without hiding everything we haven't parsed yet.
+  if (salary && salary !== "all") {
+    const floor = parseInt(salary, 10);
+    if (!Number.isNaN(floor)) {
+      dbq = dbq.or(`salary_min_num.gte.${floor},salary_min_num.is.null`);
+    }
+  }
 
   dbq = dbq.order("is_active", { ascending: false });
   if (sort === "recent") {

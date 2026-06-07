@@ -10,6 +10,8 @@
 //
 // Env: ORTHOGONAL_API_KEY (https://orthogonal.com — pooled-credential gateway)
 
+import { levelFromTitle, type CanonicalLevel } from "./taxonomy";
+
 const ORTH_RUN_URL = "https://api.orthogonal.com/v1/run";
 
 export type OrthogonalProfile = {
@@ -108,28 +110,18 @@ const FUNCTION_MAP: [string, string][] = [
   ["talent",            "Operations"],  ["hr",               "Operations"],
 ];
 
-// DB constraint `profiles_job_level_check` requires one of:
-// Junior | Lead | Senior | Principal | Staff | People Manager
-const MANAGER_KEYWORDS = [
-  "head of", "chief ", "ceo", "cto", "coo", "cfo", "cpo", "cmo",
-  "vp ", "vice president", "director", "manager",
-  "founder", "president",
-];
-
 export function deriveJobFunction(headline: string): string {
   const h = headline.toLowerCase();
   for (const [kw, fn] of FUNCTION_MAP) if (h.includes(kw)) return fn;
   return "Other";
 }
 
-export type JobLevel = "Junior" | "Lead" | "Senior" | "Principal" | "Staff" | "People Manager";
+// Canonical job_level for a LinkedIn headline — single source via taxonomy.levelFromTitle
+// (mirrors classify.py). enriched.profiles.job_level now shares the canonical jobs.job_level
+// vocabulary. Plain ICs with no level signal default to "Senior" (the historical catch-all,
+// since these are working professionals being enriched from a headline).
+export type JobLevel = CanonicalLevel;
 
 export function deriveJobLevel(headline: string): JobLevel {
-  const h = headline.toLowerCase();
-  if (h.includes("staff ") || h.includes("staff,")) return "Staff";
-  if (h.includes("principal")) return "Principal";
-  if (/\b(junior|entry[- ]level|associate)\b/.test(h)) return "Junior";
-  if (MANAGER_KEYWORDS.some(k => h.includes(k))) return "People Manager";
-  if (/\blead\b/.test(h) && !h.includes("lead generation")) return "Lead";
-  return "Senior";
+  return levelFromTitle(headline) ?? "Senior";
 }

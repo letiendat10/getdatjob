@@ -49,6 +49,7 @@ import argparse
 import importlib.util
 import os
 import re
+import signal
 import sys
 import threading
 import time
@@ -102,6 +103,44 @@ ENRICH_WORKERS = int(os.environ.get("ENRICH_WORKERS", "8"))
 WRITE_BATCH = int(os.environ.get("WRITE_BATCH", "200"))
 # Workday focused-fetch page cap (×20 jobs/page) — bounds boards that expose no postedOn.
 WD_MAX_PAGES = int(os.environ.get("WD_MAX_PAGES", "60"))
+
+# ── Per-employer wall-clock cap + global run deadline ──────────────────────────────────
+# One stuck employer (a DNS hang in an enrich worker, a slow-loris read that keeps resetting the
+# 10s socket timeout, a pathological board) must never freeze the whole run the way it did
+# 2026-06-07 (frozen 4h on an enrich pool, 0 writes, killed by GitHub's 300-min timeout). SIGALRM
+# gives each network-heavy phase (list fetch, inline enrich) a hard ceiling; on expiry we abandon
+# that phase, keep whatever already landed, and move to the next employer. EMPLOYER_BUDGET_S is a
+# CEILING, not a reservation — an employer that finishes in 4s moves on at 4s; the budget only
+# bites the slow/stuck ones, turning an *infinite* hang into a bounded skip. 180s clears real
+# giants (Target 442 jobs, AbbVie 389) that enrich a detail page per job, with headroom.
+EMPLOYER_BUDGET_S = int(os.environ.get("EMPLOYER_BUDGET_S", "180"))
+# Stop STARTING new employers past this wall-clock so the run always finishes its meta refresh and
+# the workflow's downstream map steps inside GitHub's 300-min job timeout (a hard kill = skipped
+# bookkeeping + stale counts). Default 240 min leaves ~60 min for map_source_dept + map_title_soc.
+RUN_DEADLINE_S = int(os.environ.get("RUN_DEADLINE_S", str(240 * 60)))
+
+
+class EmployerTimeout(BaseException):
+    """Raised by the SIGALRM handler when an employer blows EMPLOYER_BUDGET_S. Derives from
+    BaseException (like KeyboardInterrupt) so the per-employer body's `except Exception` handlers
+    can't swallow it — it propagates only to the dedicated `except EmployerTimeout` guards."""
+
+
+def _employer_alarm(signum, frame):
+    raise EmployerTimeout()
+
+
+# SIGALRM is Unix-only. The handler MUST be installed before any signal.alarm() call — the default
+# SIGALRM action terminates the process, so an un-handled alarm would kill the run outright.
+_ALARM_ENABLED = hasattr(signal, "SIGALRM")
+if _ALARM_ENABLED:
+    signal.signal(signal.SIGALRM, _employer_alarm)
+
+
+def _alarm(seconds: int) -> None:
+    """Arm (seconds>0) or clear (0) the per-employer alarm; no-op where SIGALRM is unavailable."""
+    if _ALARM_ENABLED:
+        signal.alarm(seconds)
 
 
 # ── Gate: language (description must be English) ───────────────────────────────────
@@ -503,18 +542,31 @@ def main():
     total_kept = 0
     no_fetcher = 0
 
-    for mapping in rows:
+    run_start = time.monotonic()
+    for idx, mapping in enumerate(rows):
+        if time.monotonic() - run_start > RUN_DEADLINE_S:
+            print(f"  RUN DEADLINE {RUN_DEADLINE_S}s reached after {idx}/{len(rows)} employers — "
+                  f"stopping pull, proceeding to meta refresh + downstream steps", flush=True)
+            break
         emp_id, ats, slug = mapping["employer_id"], mapping["ats_type"], mapping["slug"]
         fetcher = FETCHERS.get(ats)
         if not fetcher:
             no_fetcher += 1
             continue
 
+        _alarm(EMPLOYER_BUDGET_S)
         try:
             raw_jobs = fetcher(slug)
+        except EmployerTimeout:
+            _alarm(0)
+            print(f"  TIMEOUT {ats}:{slug} list-fetch >{EMPLOYER_BUDGET_S}s — skipping employer",
+                  flush=True)
+            continue
         except Exception as e:
+            _alarm(0)
             print(f"  ERROR {ats}:{slug} — {e}", flush=True)
             continue
+        _alarm(0)
 
         try:
             lca_titles, lca_counts = build_lca_index(sb, emp_id)
@@ -586,7 +638,19 @@ def main():
         if ats in ENRICHABLE:
             need = [r for r in job_rows if not r.get("description_text")]
             if need:
-                keep_flags = list(pool.map(lambda r: enrich_row_inplace(r, slug), need))
+                _alarm(EMPLOYER_BUDGET_S)
+                try:
+                    keep_flags = list(pool.map(lambda r: enrich_row_inplace(r, slug), need))
+                except EmployerTimeout:
+                    # Ceiling hit mid-enrich: keep every row (drop nothing), write what we have.
+                    # Rows whose detail fetch never finished go in un-enriched; 04's backfill /
+                    # the next pull completes them. A stuck pool worker is abandoned (see os._exit
+                    # at shutdown — its leaked thread must not block the run from finishing).
+                    keep_flags = [True] * len(need)
+                    print(f"  TIMEOUT {ats}:{slug} enrich >{EMPLOYER_BUDGET_S}s — writing "
+                          f"{len(job_rows)} rows (some un-enriched, 04 finishes them)", flush=True)
+                finally:
+                    _alarm(0)
                 drop = {id(r) for r, ok in zip(need, keep_flags) if not ok}
                 if drop:
                     dropped_ids = [r["ats_job_id"] for r in need if id(r) in drop]
@@ -630,7 +694,10 @@ def main():
         print(f"  {ats}:{slug} → {len(job_rows)} jobs {label}", flush=True)
         time.sleep(0.5)
 
-    pool.shutdown(wait=True)
+    # wait=False: a worker abandoned by an enrich timeout may still be stuck in a socket/DNS read.
+    # We must NOT block on it here — the run's writes are already committed per-employer. The
+    # entrypoint's os._exit(0) tears the process down without joining any leaked thread.
+    pool.shutdown(wait=False)
     flush_basket(force=True)  # write whatever is left in the basket
     if not args.dry_run:
         _refresh_job_stats()
@@ -703,3 +770,10 @@ def _digest(args, n_emp, total_kept, employers_with_jobs, no_fetcher, gate_stats
 
 if __name__ == "__main__":
     main()
+    # A worker thread abandoned by an enrich timeout (stuck in a socket/DNS read Python can't
+    # kill) would otherwise block ThreadPoolExecutor's atexit join and hang the process forever —
+    # exactly the failure this whole change exists to prevent, just relocated to exit. The work is
+    # done and committed, so flush stdout and tear the process down hard with a success code.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)

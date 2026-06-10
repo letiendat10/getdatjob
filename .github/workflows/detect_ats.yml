@@ -1,0 +1,62 @@
+name: Hourly ATS Detection
+
+# Runs scrapers/02_detect_ats.py to guess + verify ATS slugs for the highest-LCA
+# UNDETECTED employers (those with no employer_ats row yet) and write confirmed mappings
+# to employer_ats. Each new non-manual_review match immediately triggers a job pull
+# (scrapers/03_pull_jobs.py) inside the same run — detect -> map -> pull in one pass.
+#
+# --limit 12 keeps each run short (a few minutes; the Workday probe dominates per-miss
+# time), so hourly ≈ 288 detection attempts/day against the top of the undetected backlog.
+# Detection previously ran ONLY locally on demand (last 2026-06-06) and was logged nowhere;
+# this workflow replaces that manual step.
+
+on:
+  schedule:
+    - cron: "0 * * * *"      # top of every hour (UTC); GitHub runs schedules on the default branch only
+  workflow_dispatch:         # allow manual runs from the GitHub UI
+
+# Never let a slow run overlap the next hour's run — queue the new one instead of stacking.
+concurrency:
+  group: detect-ats
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50       # safety net; a 12-employer run normally finishes in minutes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r scrapers/requirements.txt
+
+      - name: Detect ATS + pull jobs for new finds (top 12 undetected by LCA)
+        env:
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # tee to a log so the failure report can surface the real error on the run's
+        # Summary page (pipefail keeps the step failing on a non-zero python exit).
+        run: |
+          set -o pipefail
+          python scrapers/02_detect_ats.py --limit 12 2>&1 | tee /tmp/detect.log
+
+      # Surface WHY a run failed on the Summary page instead of a bare "exit code 1".
+      - name: Failure report
+        if: failure()
+        run: |
+          {
+            echo "## ❌ Hourly ATS Detection failed"
+            echo ""
+            echo "Step **Detect ATS + pull jobs** (\`scrapers/02_detect_ats.py --limit 12\`) exited non-zero."
+            echo ""
+            echo "### Last 40 log lines"
+            echo '```'
+            tail -n 40 /tmp/detect.log 2>/dev/null || echo "(no log captured — failure was before the detect step, e.g. dependency install)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

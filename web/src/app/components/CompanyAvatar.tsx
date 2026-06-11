@@ -1,52 +1,25 @@
 "use client";
 
 /**
- * CompanyAvatar — canonical company logo/initials component for all job cards.
+ * CompanyAvatar — the SINGLE source of truth for company logos on every surface
+ * (/jobs, /kai, /me, hero). Builds the logo.dev URL from the employer's
+ * `company_domain_url` (passed as `domain`); falls back to initials when there is
+ * no domain.
  *
- * Single source of truth for:
- *   - Domain overrides (Block, Cisco, Citi)
- *   - Logo overrides (SoFi CloudFront SVG)
- *   - Embedded TLD detection ("Amazon.com Services" → "amazon.com")
- *   - logo.dev integration
- *   - Fallback initials
+ * Domain correctness lives in `employers.company_domain_url` (the DB), NOT here.
+ * Do NOT add per-company domain/logo override maps to this file or any caller —
+ * fix the domain at the source instead.
  */
 
 import { useState } from "react";
 
 const LOGO_DEV_TOKEN = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN ?? "";
 
-const DOMAIN_OVERRIDES: Record<string, string> = {
-  block: "block.xyz",
-  ciscosystems: "cisco.com",
-  citibankna: "citi.com",
-};
-
-/** Direct logo URL overrides for companies where logo.dev returns a wrong/missing logo. */
-const SOFI_LOGO = "https://d32ijn7u0aqfv4.cloudfront.net/git/svgs/sofi-logo.svg";
-const LOGO_OVERRIDES: Record<string, string> = {
-  "sofi.com": SOFI_LOGO,
-};
-/** Same logo overrides, keyed by cleaned name stem — fires even when no domain is
- *  passed and the name (e.g. "Social Finance, LLC") wouldn't infer the brand domain. */
-const NAME_LOGO_OVERRIDES: Record<string, string> = {
-  sofi: SOFI_LOGO,
-  socialfinance: SOFI_LOGO,
-};
-
-function nameStem(name: string): string {
-  return name
-    .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|corporation|corp\.?|limited|ltd\.?|co\.|pbc|n\.a\.?|\bopco\b)\.?\s*$/i, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
-
-function companyDomain(name: string): string {
-  // If the company name has an embedded TLD (e.g. "Amazon.com Services", "Cars.com"), use it directly.
-  const embedded = name.match(/\b([a-zA-Z0-9-]+\.(com|org|net|io|co))\b/i);
-  if (embedded) return embedded[1].toLowerCase();
-  const stem = nameStem(name);
-  return DOMAIN_OVERRIDES[stem] ?? stem + ".com";
+/** logo.dev URL for a brand domain, or null when we have no domain / token. */
+export function logoUrl(domain?: string | null, px = 64): string | null {
+  const d = domain?.trim().toLowerCase();
+  if (!d || !LOGO_DEV_TOKEN) return null;
+  return `https://img.logo.dev/${d}?token=${LOGO_DEV_TOKEN}&size=${px}&format=png&fallback=monogram`;
 }
 
 export function CompanyAvatar({
@@ -67,11 +40,7 @@ export function CompanyAvatar({
   const textClass = size === "lg" ? "text-base" : "text-xs";
   const px = size === "lg" ? 128 : 64;
 
-  const resolvedDomain = domain || companyDomain(name);
-  const logoOverride = LOGO_OVERRIDES[resolvedDomain] ?? NAME_LOGO_OVERRIDES[nameStem(name)];
-  const src = logoOverride ?? (LOGO_DEV_TOKEN
-    ? `https://img.logo.dev/${resolvedDomain}?token=${LOGO_DEV_TOKEN}&size=${px}&format=png&fallback=monogram`
-    : null);
+  const src = logoUrl(domain, px);
 
   if (src && !imgError) {
     return (

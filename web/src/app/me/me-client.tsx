@@ -96,9 +96,6 @@ type Tab = "chat" | "matches" | "account";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const LOGO_DEV_TOKEN = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN ?? "";
-const DOMAIN_OVERRIDES: Record<string, string> = { block: "block.xyz" };
-
 function normalizeCompanyName(name: string): string {
   const cleaned = name
     .replace(/,?\s+(incorporated|inc\.?|l\.?l\.?c\.?|corporation|corp\.?|limited|ltd\.?|co\.|l\.p\.?|\blp\b|pbc|p\.c\.|pllc)\.?\s*$/i, "")
@@ -111,11 +108,6 @@ function normalizeCompanyName(name: string): string {
       .join(" ");
   }
   return cleaned;
-}
-
-function companyDomain(name: string): string {
-  const stem = normalizeCompanyName(name).toLowerCase().replace(/[^a-z0-9]/g, "");
-  return DOMAIN_OVERRIDES[stem] ?? stem + ".com";
 }
 
 function formatLcaDate(dateStr: string | null): string | null {

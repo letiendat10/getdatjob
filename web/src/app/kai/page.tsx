@@ -806,24 +806,13 @@ export default function KaiPage() {
     filterTokens: string[];
   } | null>(null);
 
-  const { onScroll, followIfPinned, pinToTop, jumpToBottom, showJump } = useChatScroll(threadRef);
-
-  // Drive scrolling off message changes: pin a newly-sent USER message near the
-  // top (so Kai's reply streams in below it), otherwise follow the bottom only
-  // when the user was already there. Replaces the old slam-to-bottom effect.
-  const lastUserIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    let lastUserId: string | null = null;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "user") { lastUserId = messages[i].id; break; }
-    }
-    if (lastUserId && lastUserId !== lastUserIdRef.current) {
-      lastUserIdRef.current = lastUserId;
-      pinToTop(lastUserId);
-      return;
-    }
-    followIfPinned();
-  }, [messages, scanPhase, step, pinToTop, followIfPinned]);
+  // The hook owns all scroll decisions (follow light content, anchor heavy
+  // content, reveal the user's own message). The scan checklist and step blocks
+  // render outside `messages`, so their state rides along as followKey.
+  const { onScroll, jumpToLatest, showJump } = useChatScroll(threadRef, messages, {
+    followKey: `${scanPhase}|${step}`,
+    heavyBlock: PAYWALL_MODE ? { id: "paywall", active: step === "paywall" } : null,
+  });
 
   // Keep messagesRef current so the sync effect can read latest without re-running on every update
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -1610,7 +1599,6 @@ export default function KaiPage() {
               if (event.type === "text") {
                 accContent += event.text;
                 setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, content: m.content + event.text } : m));
-                followIfPinned();
               } else if (event.type === "tool_start") {
                 accContent = accContent ? accContent.trimEnd() + "\n\n" : "";
                 setMessages((prev) => prev.map((m) => m.id === thinkingId ? { ...m, content: m.content ? m.content.trimEnd() + "\n\n" : "", isThinking: true, isStreaming: false } : m));
@@ -1642,7 +1630,7 @@ export default function KaiPage() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages, isChatStreaming, followIfPinned, user, step]
+    [messages, isChatStreaming, user, step]
   );
 
   const handleChatKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1765,9 +1753,9 @@ export default function KaiPage() {
             </div>
           )}
 
-          {/* Paywall mode: inline PaywallScreen */}
+          {/* Paywall mode: inline PaywallScreen — data-mid lets the scroll hook anchor its top */}
           {PAYWALL_MODE && step === "paywall" && (
-            <div style={{ paddingLeft: 50, paddingBottom: 24 }}>
+            <div data-mid="paywall" className={s["msg-anchor"]} style={{ paddingLeft: 50, paddingBottom: 24 }}>
               <PaywallScreen
                 jobCount={total3dCount}
                 windowDays={windowDays}
@@ -1827,7 +1815,7 @@ export default function KaiPage() {
             <button
               type="button"
               className={s["jump-pill"]}
-              onClick={() => jumpToBottom()}
+              onClick={() => jumpToLatest()}
               aria-label="Jump to newest messages"
             >
               New messages

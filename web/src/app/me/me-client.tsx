@@ -434,23 +434,10 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { onScroll, followIfPinned, pinToTop, jumpToBottom, showJump } = useChatScroll(threadRef);
-
-  // Pin a newly-sent USER message near the top (Kai's reply streams in below);
-  // otherwise follow the bottom only when the user was already there.
-  const lastUserIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    let lastUserId: string | null = null;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "user") { lastUserId = messages[i].id; break; }
-    }
-    if (lastUserId && lastUserId !== lastUserIdRef.current) {
-      lastUserIdRef.current = lastUserId;
-      pinToTop(lastUserId);
-      return;
-    }
-    followIfPinned();
-  }, [messages, pinToTop, followIfPinned]);
+  // The hook owns all scroll decisions (follow light content, anchor heavy
+  // content, reveal the user's own message). The bulk branch inside it keeps
+  // the history fetch above from anchoring to stale job cards.
+  const { onScroll, jumpToLatest, showJump } = useChatScroll(threadRef, messages);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -529,7 +516,6 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
                       : m
                   )
                 );
-                followIfPinned();
               } else if (event.type === "tool_start") {
                 accContent = accContent ? accContent.trimEnd() + "\n\n" : "";
                 setMessages((prev) =>
@@ -587,7 +573,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
         setIsStreaming(false);
       }
     },
-    [messages, isStreaming, followIfPinned, profile.full_name, profile.id]
+    [messages, isStreaming, profile.full_name, profile.id]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -695,7 +681,7 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
             <button
               type="button"
               className={s["jump-pill"]}
-              onClick={() => jumpToBottom()}
+              onClick={() => jumpToLatest()}
               aria-label="Jump to newest messages"
             >
               New messages

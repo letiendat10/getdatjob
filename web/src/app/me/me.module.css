@@ -231,8 +231,8 @@
 }
 
 /* Message rows */
-/* Wraps each message; scroll-margin-top leaves a gap when a just-sent user
-   message is pinned to the top of the thread. */
+/* Wraps each message; scroll-margin-top leaves a gap below the nav when heavy
+   content (job cards) is anchored to the top of the thread. */
 .msg-anchor {
   scroll-margin-top: 16px;
 }

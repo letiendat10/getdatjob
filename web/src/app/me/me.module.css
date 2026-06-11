@@ -231,8 +231,8 @@
 }
 
 /* Message rows */
-/* Wraps each message; scroll-margin-top leaves a gap when a just-sent user
-   message is pinned to the top of the thread. */
+/* Wraps each message; scroll-margin-top leaves a gap below the nav when heavy
+   content (job cards) is anchored to the top of the thread. */
 .msg-anchor {
   scroll-margin-top: 16px;
 }
@@ -247,11 +247,22 @@
 
 /* "New messages ↓" pill — sticky to the bottom of the thread viewport, shown
    only when the user has scrolled up and new content arrived below them. */
-.jump-pill {
+/* Zero-height always-rendered dock — showing/hiding the pill must not change
+   the thread's scrollHeight (see kai.module.css for the full rationale). */
+.jump-pill-dock {
   position: sticky;
   bottom: 14px;
-  align-self: center;
   z-index: 6;
+  height: 0;
+  margin-top: -16px; /* cancel .thread-inner's flex gap */
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  overflow: visible;
+  pointer-events: none;
+}
+.jump-pill {
+  pointer-events: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;

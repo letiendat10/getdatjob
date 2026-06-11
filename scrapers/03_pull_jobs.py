@@ -338,6 +338,22 @@ def parse_iso(s: str | None) -> str | None:
         return None
 
 
+def parse_date_loose(s: str | None) -> str | None:
+    """ISO first, then US long dates ("June  9, 2026" — Amazon pads single-digit days
+    with a double space). Relative strings ("38 minutes", "about 2 hours") → None,
+    never a fake date."""
+    if not s:
+        return None
+    iso = parse_iso(s)
+    if iso:
+        return iso
+    try:
+        clean = re.sub(r"\s+", " ", s.strip())
+        return datetime.strptime(clean, "%B %d, %Y").replace(tzinfo=timezone.utc).isoformat()
+    except ValueError:
+        return None
+
+
 _WD_DAYS = re.compile(r"posted\s+(\d+)\+?\s+days?\s+ago", re.I)
 
 
@@ -721,7 +737,9 @@ def fetch_amazon(_slug: str) -> list[dict]:
                 "title": j.get("title", ""),
                 "location": j.get("location", ""),
                 "url": f"{base}{path}" if path else "",
-                "posted_at": parse_iso(j.get("posted_date")) or parse_iso(j.get("updated_time")),
+                # posted_date is "June 9, 2026"-style; updated_time is relative ("38 minutes",
+                # "3 days") and means last-touched, not posted — never use it as a date.
+                "posted_at": parse_date_loose(j.get("posted_date")),
                 "source_dept": j.get("job_category") or j.get("business_category", ""),
                 "description_text": desc_text,
                 "salary_range": extract_salary(desc_text),
@@ -858,7 +876,7 @@ def fetch_jibe(slug: str) -> list[dict]:
                 "title": title,
                 "location": location,
                 "url": job_url,
-                "posted_at": parse_iso(posted) if posted else None,
+                "posted_at": parse_date_loose(posted),
                 "description_text": desc[:8000],
                 "salary_range": extract_salary(desc_html),
             })

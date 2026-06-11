@@ -40,6 +40,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--window", type=int, default=7, help="effective_posted_at window (days)")
     ap.add_argument("--floor-desc", type=float, default=12.0, help="min acceptable desc %%")
+    ap.add_argument("--floor-posted", type=float, default=90.0,
+                    help="min acceptable per-ATS real posted_at %%")
     args = ap.parse_args()
 
     # Snapshot today (upserts card_health_snapshot) and get the metrics back.
@@ -78,6 +80,18 @@ def main() -> None:
     if (m.get("desc_pct") or 0) < args.floor_desc:
         warnings.append(f"desc% {m.get('desc_pct')} below floor {args.floor_desc}")
 
+    # 4. Per-ATS real posted_at coverage. A silent date-parse regression hides behind the
+    # scraped_at display fallback (cards show first-seen and look fine) — amazon ran at 0%
+    # for days this way. Gate every ATS with meaningful in-window volume.
+    posted_exempt = {"bamboohr"}  # no date field at the source at all
+    for ats, s in sorted((m.get("by_ats") or {}).items()):
+        n, posted = s.get("n") or 0, s.get("posted_pct")
+        if ats in posted_exempt or n < 25 or posted is None:
+            continue
+        if posted < args.floor_posted:
+            failures.append(
+                f"{ats} real posted_at coverage {posted}% < {args.floor_posted}% (n={n})")
+
     # ── summary ──
     print(f"\nCard health — {date.today().isoformat()} "
           f"(window {args.window}d, {m.get('total')} jobs)")
@@ -89,6 +103,10 @@ def main() -> None:
     print("  integrity: " + "  ".join(f"{k}={m.get(k)}" for k in INVARIANTS))
     wd = m.get("by_ats", {}).get("workday") or {}
     print(f"  workday:   n={wd.get('n')}  desc={wd.get('desc_pct')}%  (enrichment canary)")
+    posted_line = "  ".join(
+        f"{a}={s.get('posted_pct')}%" for a, s in sorted((m.get("by_ats") or {}).items())
+        if (s.get("n") or 0) >= 25)
+    print(f"  posted by ats: {posted_line}")
 
     # ── CSV (best-effort; the DB snapshot + exit code are the real outputs) ──
     try:

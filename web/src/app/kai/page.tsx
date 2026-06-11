@@ -809,8 +809,12 @@ export default function KaiPage() {
   // The hook owns all scroll decisions (follow light content, anchor heavy
   // content, reveal the user's own message). The scan checklist and step blocks
   // render outside `messages`, so their state rides along as followKey.
+  // Onboarding follows unconditionally — light bubbles must never leave a pill;
+  // free chat (step "done") is position-aware so long streamed answers don't
+  // yank the user while they read back.
   const { onScroll, jumpToLatest, showJump } = useChatScroll(threadRef, messages, {
     followKey: `${scanPhase}|${step}`,
+    followMode: step === "done" ? "pinned" : "always",
     heavyBlock: PAYWALL_MODE ? { id: "paywall", active: step === "paywall" } : null,
   });
 

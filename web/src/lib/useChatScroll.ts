@@ -27,14 +27,19 @@ export interface HeavyBlock {
  * `messages` (plus optional extras) and render the pill.
  *
  * Hybrid model:
- * - LIGHT content (text bubbles, scan checklist, streamed tokens): stick to the
- *   bottom while the user is already there; never move them once they've
- *   scrolled up (the pill appears instead).
+ * - LIGHT content (text bubbles, scan checklist, streamed tokens):
+ *   followMode "always" (onboarding): every light arrival scrolls to the
+ *   bottom — the flow is scripted and the user just acted, so the pill should
+ *   never appear for plain bubbles.
+ *   followMode "pinned" (free chat): stick to the bottom only while the user
+ *   is already there; never move them once they've scrolled up (pill instead).
  * - HEAVY content (a message carrying job cards, or an active heavy block like
  *   the paywall): scroll ONCE so the top of the block lands at the top of the
- *   viewport, then stop following — the user reads down at their own pace. If
- *   they had scrolled away, don't move them; the pill's first tap then lands at
- *   the TOP of the heavy block (a second tap goes to the bottom).
+ *   viewport, then HOLD — light follow is suspended (even in "always" mode) so
+ *   nothing yanks the user off the cards until they reach the bottom themselves
+ *   or tap the pill. If they had scrolled away when it landed, don't move them;
+ *   the pill's first tap then lands at the TOP of the heavy block (a second tap
+ *   goes to the bottom).
  * - The user's OWN message always scrolls into view — sending re-pins.
  *
  * Pinnedness is sampled from scroll events, not from post-append geometry, so
@@ -46,11 +51,23 @@ export interface HeavyBlock {
 export function useChatScroll(
   threadRef: RefObject<HTMLDivElement | null>,
   messages: readonly ScrollMessage[],
-  opts?: { followKey?: unknown; heavyBlock?: HeavyBlock | null },
+  opts?: {
+    followKey?: unknown;
+    heavyBlock?: HeavyBlock | null;
+    followMode?: "pinned" | "always";
+  },
 ) {
   const [showJump, setShowJump] = useState(false);
 
   const pinnedRef = useRef(true);
+  // True from a heavy anchor until the user reaches the bottom themselves —
+  // suspends light follow so nothing yanks them off the cards/paywall.
+  const anchorHoldRef = useRef(false);
+  const modeRef = useRef<"pinned" | "always">("pinned");
+  useEffect(() => {
+    modeRef.current = opts?.followMode ?? "pinned";
+  });
+
   const seenIdsRef = useRef<Set<string>>(new Set());
   const heavyDoneRef = useRef<Set<string>>(new Set());
   const heavyBlockDoneRef = useRef<string | null>(null);
@@ -67,20 +84,25 @@ export function useChatScroll(
     if (!el) return;
     const below = el.scrollHeight - el.scrollTop - el.clientHeight;
     pinnedRef.current = below <= AT_BOTTOM_PX;
-    if (pinnedRef.current) jumpTargetRef.current = null;
+    if (pinnedRef.current) {
+      jumpTargetRef.current = null;
+      anchorHoldRef.current = false; // reached the bottom = hold released
+    }
     setShowJump(below > AT_BOTTOM_PX);
   }, [threadRef]);
 
   const onScroll = useCallback(() => { syncFromGeometry(); }, [syncFromGeometry]);
 
-  // LIGHT content: keep the bottom in view, but only if the user was already
-  // there. Runs synchronously from the post-commit effect, so the DOM is
-  // current; any user scroll-up dispatched its scroll event (and unpinned us)
-  // before this commit.
+  // LIGHT content. "always" mode scrolls to the bottom unconditionally (unless
+  // a heavy anchor holds the view); "pinned" mode only when the user was
+  // already at the bottom. Runs synchronously from the post-commit effect, so
+  // the DOM is current; any user scroll-up dispatched its scroll event (and
+  // unpinned us) before this commit.
   const follow = useCallback(() => {
     const el = threadRef.current;
     if (!el) return;
-    if (!pinnedRef.current) { syncFromGeometry(); return; }
+    if (anchorHoldRef.current) { syncFromGeometry(); return; }
+    if (!pinnedRef.current && modeRef.current !== "always") { syncFromGeometry(); return; }
     el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
     syncFromGeometry();
   }, [threadRef, syncFromGeometry]);
@@ -92,6 +114,7 @@ export function useChatScroll(
     if (!el) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
     pinnedRef.current = true;
+    anchorHoldRef.current = false;
     jumpTargetRef.current = null;
     setShowJump(false);
   }, [threadRef]);
@@ -113,6 +136,7 @@ export function useChatScroll(
   }, [threadRef, syncFromGeometry]);
 
   const notifyHeavy = useCallback((id: string) => {
+    anchorHoldRef.current = true; // syncFromGeometry releases it if the block fits
     if (pinnedRef.current) {
       jumpTargetRef.current = null;
       anchorTo(id);
@@ -194,6 +218,22 @@ export function useChatScroll(
     // signals should retrigger the effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, followKey, heavyBlock?.active]);
+
+  // Content can change height OUTSIDE a React commit (late-loading images,
+  // fonts, entrance animations). Re-stick / re-sync the pill when that happens
+  // so the view never silently ends up mid-thread with stale pill state.
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (!anchorHoldRef.current && (modeRef.current === "always" || pinnedRef.current)) {
+        el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
+      }
+      syncFromGeometry();
+    });
+    ro.observe(el.firstElementChild ?? el);
+    return () => ro.disconnect();
+  }, [threadRef, syncFromGeometry]);
 
   return { onScroll, jumpToLatest, showJump };
 }

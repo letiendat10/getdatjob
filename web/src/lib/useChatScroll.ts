@@ -34,12 +34,13 @@ export interface HeavyBlock {
  *   followMode "pinned" (free chat): stick to the bottom only while the user
  *   is already there; never move them once they've scrolled up (pill instead).
  * - HEAVY content (a message carrying job cards, or an active heavy block like
- *   the paywall): scroll ONCE so the top of the block lands at the top of the
- *   viewport, then HOLD — light follow is suspended (even in "always" mode) so
- *   nothing yanks the user off the cards until they reach the bottom themselves
- *   or tap the pill. If they had scrolled away when it landed, don't move them;
- *   the pill's first tap then lands at the TOP of the heavy block (a second tap
- *   goes to the bottom).
+ *   the paywall): NEVER moves the view — the user keeps their place in the
+ *   conversation and the pill invites them down (first tap lands at the START
+ *   of the new block, second at the bottom). Light follow is suspended (even
+ *   in "always" mode) until the user reaches the bottom themselves, so nothing
+ *   yanks them past unread cards. If the user's own message landed in the same
+ *   commit (e.g. a chip tap that opens the paywall), that message is pinned to
+ *   the top of the viewport so their action stays visible.
  * - The user's OWN message always scrolls into view — sending re-pins.
  *
  * Pinnedness is sampled from scroll events, not from post-append geometry, so
@@ -135,27 +136,34 @@ export function useChatScroll(
     syncFromGeometry();
   }, [threadRef, syncFromGeometry]);
 
-  const notifyHeavy = useCallback((id: string) => {
-    anchorHoldRef.current = true; // syncFromGeometry releases it if the block fits
-    if (pinnedRef.current) {
-      jumpTargetRef.current = null;
-      anchorTo(id);
-    } else {
-      jumpTargetRef.current = id;
-      setShowJump(true);
-    }
-  }, [anchorTo]);
+  // HEAVY content: never move the view — the user keeps their place and the
+  // pill invites them down. `revealFromId` (the user's own message when it
+  // landed in the same commit) is pinned to the viewport top first so their
+  // action stays visible. syncFromGeometry shows the pill only if the new
+  // content actually extends below the fold (and releases the hold if not).
+  const notifyHeavy = useCallback((id: string, revealFromId?: string | null) => {
+    anchorHoldRef.current = true;
+    jumpTargetRef.current = id;
+    if (revealFromId) anchorTo(revealFromId);
+    else syncFromGeometry();
+  }, [anchorTo, syncFromGeometry]);
 
-  // Pill onClick: first stop is the top of any unseen heavy block, then bottom.
+  // Pill onClick: first stop is the start of any unseen heavy block (only if
+  // the user hasn't already scrolled to/past it), then the bottom.
   const jumpToLatest = useCallback(() => {
-    const target = jumpTargetRef.current;
-    if (target) {
+    const el = threadRef.current;
+    const targetId = jumpTargetRef.current;
+    if (el && targetId) {
       jumpTargetRef.current = null;
-      anchorTo(target);
-      return;
+      const target = el.querySelector(`[data-mid="${targetId}"]`);
+      if (target && target.getBoundingClientRect().top - el.getBoundingClientRect().top > 8) {
+        target.scrollIntoView({ block: "start", behavior: "instant" });
+        syncFromGeometry();
+        return;
+      }
     }
     revealLatest();
-  }, [anchorTo, revealLatest]);
+  }, [threadRef, syncFromGeometry, revealLatest]);
 
   const heavyBlock = opts?.heavyBlock ?? null;
   const followKey = opts?.followKey;
@@ -201,14 +209,20 @@ export function useChatScroll(
     if (newHeavyMsg && last) heavyDoneRef.current.add(last.id);
     if (blockActivated && heavyBlock) heavyBlockDoneRef.current = heavyBlock.id;
 
-    if (blockActivated && heavyBlock) {
-      // Outranks bulk: a session restored AT the paywall anchors its top
-      // instead of dumping the user at the pricing block's bottom.
-      notifyHeavy(heavyBlock.id);
-    } else if (bulk) {
-      revealLatest();
+    if (bulk) {
+      if (blockActivated && heavyBlock) {
+        // Fresh load resting at the paywall: open AT it — there is no prior
+        // reading position to preserve on a reload.
+        anchorHoldRef.current = true;
+        jumpTargetRef.current = null;
+        anchorTo(heavyBlock.id);
+      } else {
+        revealLatest();
+      }
+    } else if (blockActivated && heavyBlock) {
+      notifyHeavy(heavyBlock.id, newUser ? lastUserId : null);
     } else if (newHeavyMsg && last) {
-      notifyHeavy(last.id);
+      notifyHeavy(last.id, newUser ? lastUserId : null);
     } else if (newUser) {
       revealLatest();
     } else {

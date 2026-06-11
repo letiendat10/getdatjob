@@ -9,6 +9,7 @@ import pandas as pd
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY, LCA_FILE
 from title_utils import clean_title
+from domain_resolve import resolve_company_domain
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -49,29 +50,8 @@ def load_lca(path: str) -> pd.DataFrame:
     print(f"  {len(df):,} certified filings loaded")
     return df
 
-# Domains we must NOT treat as the employer's own (free providers + immigration
-# law firms that file LCAs on behalf of employers).
-_GENERIC_EMAIL_DOMAINS = {
-    "gmail.com", "outlook.com", "yahoo.com", "hotmail.com", "icloud.com", "aol.com",
-    "protonmail.com", "me.com", "live.com", "msn.com",
-}
-_LAWFIRM_DOMAINS = {
-    "fragomen.com", "bal.com", "ogletree.com", "seyfarth.com", "jacksonlewis.com",
-    "foley.com", "flwlaw.com", "immigrationlaw.com", "klaskolaw.com", "maggio-kattar.com",
-}
-# Employers whose email domain differs from their web/brand (logo) domain.
-_BRAND_DOMAIN_FIX = {"sofi.org": "sofi.com"}
-
-
-def domain_from_poc(email: object) -> str | None:
-    """Company web/brand domain from an LCA POC email, or None when it's a generic
-    provider or a known immigration-law-firm domain."""
-    if not isinstance(email, str) or "@" not in email:
-        return None
-    dom = email.lower().strip().split("@", 1)[1]
-    if not dom or dom in _GENERIC_EMAIL_DOMAINS or dom in _LAWFIRM_DOMAINS:
-        return None
-    return _BRAND_DOMAIN_FIX.get(dom, dom)
+# Brand-domain resolution (law-firm/vendor detection + curated fixes) lives in
+# domain_resolve.resolve_company_domain — the single source shared with 00_quarterly_intake.
 
 
 def upsert_employers(df: pd.DataFrame) -> dict[str, int]:
@@ -146,7 +126,15 @@ def upsert_employers(df: pd.DataFrame) -> dict[str, int]:
         .drop_duplicates("name_clean")
         [["name_clean", "poc_first_name", "poc_last_name", "poc_job_title", "poc_email"]]
     )
-    poc_latest["company_domain_url"] = poc_latest["poc_email"].apply(domain_from_poc)
+    _resolved = poc_latest.apply(
+        lambda r: resolve_company_domain(r["poc_email"], r["name_clean"]), axis=1
+    )
+    poc_latest["company_domain_url"] = _resolved.map(lambda t: t[0])
+    _flagged = poc_latest.loc[_resolved.map(lambda t: t[1]), ["name_clean", "poc_email", "company_domain_url"]]
+    if len(_flagged):
+        print(f"\n⚠ {len(_flagged)} POC domains look like a law firm / vendor — review company_domain_url (yes/no):")
+        for _, _fr in _flagged.iterrows():
+            print(f"    {_fr['name_clean']}  poc={_fr['poc_email']}  → proposed {_fr['company_domain_url']}")
     counts = (
         counts
         .merge(employer_city_df, on="name_clean", how="left")

@@ -114,18 +114,6 @@ function normalizeCompanyName(name: string): string {
   return cleaned;
 }
 
-const DOMAIN_OVERRIDES: Record<string, string> = { block: "block.xyz", ciscosystems: "cisco.com", citibankna: "citi.com" };
-const LOGO_OVERRIDES: Record<string, string> = {
-  "sofi.com": "https://d32ijn7u0aqfv4.cloudfront.net/git/svgs/sofi-logo.svg",
-};
-
-function companyDomain(name: string): string {
-  const embedded = name.match(/\b([a-zA-Z0-9-]+\.(com|org|net|io|co))\b/i);
-  if (embedded) return embedded[1].toLowerCase();
-  const stem = normalizeCompanyName(name).toLowerCase().replace(/[^a-z0-9]/g, "");
-  return DOMAIN_OVERRIDES[stem] ?? stem + ".com";
-}
-
 function formatPoc(firstName: string | null, lastName: string | null, email: string | null): string | null {
   if (!email) return null;
   const first = firstName ? firstName.split(/[\s/,]+/)[0].trim() : null;
@@ -264,8 +252,6 @@ function prefToPosted(d: number | null): string {
 // LOCATION_OPTIONS, SIGNAL_OPTIONS, POSTED_DATE_OPTIONS, SORT_OPTIONS, SALARY_OPTIONS,
 // VISA_OPTIONS, LEVEL_OPTIONS, VIEW_OPTIONS, DEPARTMENT_OPTIONS_FALLBACK (fallback until live
 // department_facets load). DEPARTMENT_OPTIONS_FALLBACK matches /jobs exactly.
-
-const LOGO_DEV_TOKEN = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN ?? "";
 
 // ── Filter SVG Icons ──────────────────────────────────────────────────────────
 

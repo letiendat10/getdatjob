@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import s from './HeroCardStack.module.css';
+import { logoUrl } from './CompanyAvatar';
 
 const ArrowIcon = () => (
   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -168,7 +169,7 @@ function CardInner({ data, nowrap }: { data: CardData; nowrap?: boolean }) {
           <div className={s.coLogo}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={`https://img.logo.dev/${data.domain}?token=pk_YdvbuXypSrijGM3tlqKDqA&size=64&format=png`}
+              src={logoUrl(data.domain, 64) ?? undefined}
               alt={data.company}
               width={32}
               height={32}

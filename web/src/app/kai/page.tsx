@@ -113,9 +113,6 @@ type IntakeData = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const LOGO_DEV_TOKEN = process.env.NEXT_PUBLIC_LOGO_DEV_TOKEN ?? "";
-const DOMAIN_OVERRIDES: Record<string, string> = { block: "block.xyz" };
-
 const COMPANY_NAME_OVERRIDES: Record<string, string> = {
   "social finance": "SoFi",
   "at&t services": "AT&T",
@@ -172,11 +169,6 @@ function normalizeCompanyName(name: string): string {
     }).join(" ");
   }
   return cleaned;
-}
-
-function companyDomain(name: string): string {
-  const stem = normalizeCompanyName(name).toLowerCase().replace(/[^a-z0-9]/g, "");
-  return DOMAIN_OVERRIDES[stem] ?? stem + ".com";
 }
 
 function extractPostedSalary(html: string): string | null {

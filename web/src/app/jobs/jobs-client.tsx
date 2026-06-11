@@ -157,23 +157,6 @@ function normalizeCompanyName(name: string): string {
   return cleaned;
 }
 
-const DOMAIN_OVERRIDES: Record<string, string> = {
-  block: "block.xyz",
-  ciscosystems: "cisco.com",
-  citibankna: "citi.com",
-};
-function companyDomain(name: string): string {
-  // If the company name has an embedded TLD (e.g. "Amazon.com Services", "Cars.com"), use it directly.
-  const embedded = name.match(/\b([a-zA-Z0-9-]+\.(com|org|net|io|co))\b/i);
-  if (embedded) return embedded[1].toLowerCase();
-  const stem = normalizeCompanyName(name).toLowerCase().replace(/[^a-z0-9]/g, "");
-  return DOMAIN_OVERRIDES[stem] ?? stem + ".com";
-}
-
-const LOGO_OVERRIDES: Record<string, string> = {
-  "sofi.com": "https://d32ijn7u0aqfv4.cloudfront.net/git/svgs/sofi-logo.svg",
-};
-
 function formatPoc(firstName: string | null, lastName: string | null, email: string | null): string | null {
   if (!email) return null;
   const first = firstName ? firstName.split(/[\s/,]+/)[0].trim() : null;

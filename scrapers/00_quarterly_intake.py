@@ -36,6 +36,8 @@ from supabase import create_client
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+from domain_resolve import resolve_company_domain
+
 # Load ANTHROPIC_API_KEY from web/.env.local if not already in environment
 if not os.environ.get("ANTHROPIC_API_KEY"):
     _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", ".env.local")
@@ -252,10 +254,17 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
             .first()
             .reset_index()
         )
-        poc_df["company_domain_url"] = (
-            poc_df["poc_email"].str.lower().str.strip()
-            .apply(lambda e: e.split("@", 1)[1] if "@" in e else None)
+        # Resolve the brand (logo) domain from the POC email. Law-firm / vendor POC
+        # domains get a name-derived guess and are flagged for review (see domain_resolve).
+        _resolved = poc_df.apply(
+            lambda r: resolve_company_domain(r["poc_email"], r["name_clean"]), axis=1
         )
+        poc_df["company_domain_url"] = _resolved.map(lambda t: t[0])
+        _flagged = poc_df.loc[_resolved.map(lambda t: t[1]), ["name_clean", "poc_email", "company_domain_url"]]
+        if len(_flagged):
+            print(f"\n⚠ {len(_flagged)} POC domains look like a law firm / vendor — review company_domain_url (yes/no):")
+            for _, _fr in _flagged.iterrows():
+                print(f"    {_fr['name_clean']}  poc={_fr['poc_email']}  → proposed {_fr['company_domain_url']}")
         counts = (
             counts
             .merge(top_visa, on="name_clean")

@@ -222,11 +222,14 @@ export function useChatScroll(
   // Content can change height OUTSIDE a React commit (late-loading images,
   // fonts, entrance animations). Re-stick / re-sync the pill when that happens
   // so the view never silently ends up mid-thread with stale pill state.
+  // Pinned-only, NEVER a force: only commit-driven follow may pull a
+  // scrolled-up user down ("new content arrived"); a resize while the user is
+  // away from the bottom must not fight their scrolling.
   useEffect(() => {
     const el = threadRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => {
-      if (!anchorHoldRef.current && (modeRef.current === "always" || pinnedRef.current)) {
+      if (!anchorHoldRef.current && pinnedRef.current) {
         el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
       }
       syncFromGeometry();

@@ -809,12 +809,13 @@ export default function KaiPage() {
   // The hook owns all scroll decisions (follow light content, anchor heavy
   // content, reveal the user's own message). The scan checklist and step blocks
   // render outside `messages`, so their state rides along as followKey.
-  // Onboarding follows unconditionally — light bubbles must never leave a pill;
-  // free chat (step "done") is position-aware so long streamed answers don't
-  // yank the user while they read back.
+  // Onboarding follows unconditionally — light bubbles must never leave a pill.
+  // Free chat (step "done") AND the paywall are position-aware: no light
+  // bubbles arrive there, and nothing may fight the user's own scrolling while
+  // they read the pricing block or a long streamed answer.
   const { onScroll, jumpToLatest, showJump } = useChatScroll(threadRef, messages, {
     followKey: `${scanPhase}|${step}`,
-    followMode: step === "done" ? "pinned" : "always",
+    followMode: step === "done" || step === "paywall" ? "pinned" : "always",
     heavyBlock: PAYWALL_MODE ? { id: "paywall", active: step === "paywall" } : null,
   });
 
@@ -1815,19 +1816,22 @@ export default function KaiPage() {
             </div>
           )}
 
-          {showJump && (
-            <button
-              type="button"
-              className={s["jump-pill"]}
-              onClick={() => jumpToLatest()}
-              aria-label="Jump to newest messages"
-            >
-              New messages
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" />
-              </svg>
-            </button>
-          )}
+          {/* Dock always renders so the pill toggling can't resize the thread */}
+          <div className={s["jump-pill-dock"]}>
+            {showJump && (
+              <button
+                type="button"
+                className={s["jump-pill"]}
+                onClick={() => jumpToLatest()}
+                aria-label="Jump to newest messages"
+              >
+                New messages
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

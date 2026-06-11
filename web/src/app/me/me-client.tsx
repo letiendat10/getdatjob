@@ -677,19 +677,22 @@ function ChatTab({ profile, onGoToMatches }: { profile: Profile; onGoToMatches: 
             </>
           )}
 
-          {showJump && (
-            <button
-              type="button"
-              className={s["jump-pill"]}
-              onClick={() => jumpToLatest()}
-              aria-label="Jump to newest messages"
-            >
-              New messages
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" />
-              </svg>
-            </button>
-          )}
+          {/* Dock always renders so the pill toggling can't resize the thread */}
+          <div className={s["jump-pill-dock"]}>
+            {showJump && (
+              <button
+                type="button"
+                className={s["jump-pill"]}
+                onClick={() => jumpToLatest()}
+                aria-label="Jump to newest messages"
+              >
+                New messages
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M8 3v10M3.5 8.5L8 13l4.5-4.5" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

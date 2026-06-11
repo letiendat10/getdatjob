@@ -284,13 +284,25 @@
 }
 
 /* ── "New messages ↓" pill ───────────────────────────────────────────────── */
-/* Sticky to the bottom of the scroll viewport (just above the composer). Shown
-   only when the user has scrolled up and new content arrived below them. */
-.jump-pill {
+/* The dock is an always-rendered zero-height sticky line just above the
+   composer; the pill mounts inside it. Zero height (plus the negative margin
+   cancelling the column gap) means showing/hiding the pill never changes the
+   thread's scrollHeight — UI state must not perturb scroll measurements or
+   trigger the resize re-stick. */
+.jump-pill-dock {
   position: sticky;
   bottom: 14px;
-  align-self: center;
   z-index: 6;
+  height: 0;
+  margin-top: -20px; /* cancel .thread-inner's flex gap */
+  display: flex;
+  justify-content: center;
+  align-items: flex-end; /* pill's bottom sits on the dock line, extending up */
+  overflow: visible;
+  pointer-events: none;
+}
+.jump-pill {
+  pointer-events: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;

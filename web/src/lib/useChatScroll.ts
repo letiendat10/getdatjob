@@ -233,24 +233,13 @@ export function useChatScroll(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, followKey, heavyBlock?.active]);
 
-  // Content can change height OUTSIDE a React commit (late-loading images,
-  // fonts, entrance animations). Re-stick / re-sync the pill when that happens
-  // so the view never silently ends up mid-thread with stale pill state.
-  // Pinned-only, NEVER a force: only commit-driven follow may pull a
-  // scrolled-up user down ("new content arrived"); a resize while the user is
-  // away from the bottom must not fight their scrolling.
-  useEffect(() => {
-    const el = threadRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => {
-      if (!anchorHoldRef.current && pinnedRef.current) {
-        el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
-      }
-      syncFromGeometry();
-    });
-    ro.observe(el.firstElementChild ?? el);
-    return () => ro.disconnect();
-  }, [threadRef, syncFromGeometry]);
+  // Deliberately NO ResizeObserver here. RO callbacks fire in the rendering
+  // step — after layout but BEFORE React's passive effects — so on the commit
+  // that inserts job cards, an RO re-stick races ahead of notifyHeavy's hold
+  // and scrolls the user past all the cards to the bottom (and the hold then
+  // self-releases because they're "at the bottom"). Headless/hidden tabs never
+  // fire RO, which is why preview verification missed it twice. The invariant
+  // is simpler and safer without it: ONLY React commits may move the view.
 
   return { onScroll, jumpToLatest, showJump };
 }

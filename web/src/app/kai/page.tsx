@@ -1640,7 +1640,7 @@ export default function KaiPage() {
 
   // Conditions where the main chat input bar should be hidden
   const hideInputBar = step === "init" || step === "scanning" || step === "q1_layoff_date"
-    || (PAYWALL_MODE && (step === "alert_optin" || step === "paywall"));
+    || (PAYWALL_MODE && step === "paywall");
 
   return (
     <div className={s.page}>
@@ -1776,11 +1776,22 @@ export default function KaiPage() {
             // fixed rows. Single-option groups keep the vertical decision-tree look.
             const isWrap = quickReplies.some((qr) => qr.row !== undefined);
             if (isWrap) {
+              // Max 3 chips per row — denser looks bad. Each row still wraps
+              // internally on narrow screens, and every visual row gets a tick.
+              const chipRows: (typeof quickReplies)[] = [];
+              for (let i = 0; i < quickReplies.length; i += 3) chipRows.push(quickReplies.slice(i, i + 3));
               return (
                 <div className={s["inline-replies"]}>
+                  <div className={s["inline-stem"]} />
                   <div className={s["inline-wrap"]}>
-                    {quickReplies.map((qr) => (
-                      <button key={qr.value} className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>{qr.label}</button>
+                    {chipRows.map((row) => (
+                      <div key={row[0].value} className={s["wrap-row"]}>
+                        {row.map((qr) => (
+                          <div key={qr.value} className={s["wrap-chip"]}>
+                            <button className={s["inline-chip"]} onClick={() => handleTileClick(qr)}>{qr.label}</button>
+                          </div>
+                        ))}
+                      </div>
                     ))}
                   </div>
                 </div>

@@ -648,13 +648,50 @@
   border-radius: 1px 1px 0 0;
 }
 /* Multi-option groups (e.g. departments): chips flow and wrap by screen width
-   instead of being locked to fixed rows. */
+   instead of being locked to fixed rows. Connectors still appear per visual
+   row: every chip draws a left tick at z-index -1; mid-row ticks hide behind
+   the opaque previous chip, so only row-start ticks show in the gutter. */
 .inline-wrap {
+  position: relative;
+  isolation: isolate; /* local stacking context: ticks (z -1) stay above the page bg, below chips */
+  display: flex;
+  flex-direction: column; /* rows of ≤3 chips */
+  align-items: flex-start;
+  gap: 10px; /* row pitch matches tree items (5px + 5px padding) */
+  padding: 5px 0 5px 20px; /* 20px connector gutter, same as tree items */
+}
+.wrap-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding-left: 4px;
-  padding-top: 2px;
+  gap: 10px 8px;
+}
+/* │ + └ : vertical line from the stem down to the last visual row's center */
+.inline-wrap::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 24.5px; /* 5px pad + half a chip row (~39px / 2) */
+  width: 13px;
+  border-left: 1.5px solid var(--line);
+  border-bottom: 1.5px solid var(--line);
+  border-bottom-left-radius: 4px;
+}
+.wrap-chip {
+  position: relative;
+  display: flex;
+}
+/* ├ tick — must stay ≤12px wide so it never peeks into the 8px column gap */
+.wrap-chip::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  width: 12px;
+  height: 1.5px;
+  background: var(--line);
+  transform: translateY(-50%);
+  z-index: -1;
 }
 .inline-tree {
   display: flex;
@@ -671,14 +708,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0;
-}
-.inline-chip-connector {
-  display: block;
-  width: 14px;
-  height: 1.5px;
-  background: var(--line);
-  flex-shrink: 0;
-  margin: 0 2px;
 }
 /* Non-last items: full vertical line (├ shape) */
 .inline-tree-item:not(.inline-tree-item-last)::before {

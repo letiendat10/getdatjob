@@ -122,16 +122,16 @@ const DEPT_ALIASES: Record<string, CanonicalDepartment[]> = {
   "customer experience": ["Customer Success"],
   support: ["Customer Success"],
 
-  // Operations
+  // Operations — no "logistics" alias: it's a coined live bucket, and the Operations
+  // keyword fallback already catches the freeform intent for Kai.
   operations: ["Operations"],
   ops: ["Operations"],
   "supply chain": ["Operations"],
-  logistics: ["Operations"],
 
-  // Legal
+  // Legal — no "compliance" alias: "Compliance" is a coined live bucket that must pass
+  // through toStoredDepartments literally; the Legal keyword fallback covers Kai freeform.
   legal: ["Legal"],
   counsel: ["Legal"],
-  compliance: ["Legal"],
 
   // Facilities
   facilities: ["Facilities"],
@@ -150,10 +150,10 @@ const DEPT_ALIASES: Record<string, CanonicalDepartment[]> = {
   ux: ["Design"],
   ui: ["Design"],
 
-  // Sales
+  // Sales — no "business development" alias: it's a coined live bucket; the Sales keyword
+  // fallback covers Kai freeform.
   sales: ["Sales"],
   "account executive": ["Sales"],
-  "business development": ["Sales"],
 
   // Finance
   finance: ["Finance"],
@@ -176,10 +176,13 @@ const DEPT_ALIASES: Record<string, CanonicalDepartment[]> = {
 // " pm ", " ux") match at the edges, exactly like the Python classifier. This makes
 // unforeseen freeform input classify the same way the stored column was built.
 const DEPT_KEYWORDS: ReadonlyArray<readonly [CanonicalDepartment, readonly string[]]> = [
-  ["AI / ML", ["machine learning", "deep learning", "artificial intelligence", " ai ", "ai/ml", " ml ", "ml engineer", "mlops", "nlp", "llm", "research scientist", "applied scientist"]],
+  // " llm"/"llm " (not bare "llm"): "fulfi-llm-ent" used to classify warehouse roles as AI / ML.
+  ["AI / ML", ["machine learning", "deep learning", "artificial intelligence", " ai ", "ai/ml", " ml ", "ml engineer", "mlops", "nlp", " llm", "llm ", "research scientist", "applied scientist"]],
   ["Data", ["data engineer", "data scientist", "data analyst", "data science", "data architect", "analytics", "business intelligence", " bi "]],
   ["Security", ["security", "infosec", "cybersecurity", "appsec", "devsecops", "soc analyst"]],
-  ["Design", ["designer", "design", " ux", "ux ", " ui", "ui ", "user experience", "user research"]],
+  // No bare "design" (it outranks the Engineering catch-all and hijacked chip/civil
+  // engineering titles); design-dept roles must match a designer-shaped phrase.
+  ["Design", ["designer", " ux", "ux ", " ui", "ui ", "user experience", "user research", "product design", "graphic design", "visual design", "design lead", "design manager", "head of design", "design director", "design system"]],
   ["Product", ["product manager", "product owner", "product lead", "product management", "head of product", " pm "]],
   ["Finance", ["finance", "financial", "accounting", "accountant", "controller", "fp&a", "treasury", "bookkeep"]],
   ["Legal", ["legal", "counsel", "attorney", "lawyer", "paralegal", "compliance"]],
@@ -190,12 +193,16 @@ const DEPT_KEYWORDS: ReadonlyArray<readonly [CanonicalDepartment, readonly strin
   ["Platform / DevOps", ["devops", "site reliability", " sre", "platform engineer", "infrastructure", "cloud engineer", "reliability engineer"]],
   ["Facilities", ["facilities", "mailroom", "real estate", "workplace", "janitorial", "custodial", "maintenance tech"]],
   ["Operations", ["operations", " ops", "logistics", "supply chain", "fulfillment", "warehouse", "procurement"]],
-  ["Engineering", ["engineer", "developer", "swe", "software", "back end", "backend", "front end", "frontend", "full stack", "fullstack", "programmer", "architect", "sdet", "firmware", "embedded"]],
+  ["Engineering", ["engineer", "developer", "swe", "software", "back end", "backend", "front end", "frontend", "full stack", "fullstack", "programmer", "architect", "sdet", "firmware", "embedded", "asic", "physical design", "design verification", "rtl design", "analog design", "ip design"]],
 ];
 
 /**
  * Translate any user-facing department label/freeform into the canonical stored value(s).
  * Returns `[]` when there's no confident match — callers treat `[]` as "no department filter".
+ *
+ * FREEFORM ONLY (Kai chat/onboarding): the keyword fallback is generous by design and
+ * will hijack exact stored values that merely CONTAIN a keyword ("Product Management" →
+ * Product). Dropdowns and saved prefs must use toStoredDepartments instead.
  */
 export function toCanonicalDepartments(input?: string | null): CanonicalDepartment[] {
   if (!input) return [];
@@ -206,6 +213,26 @@ export function toCanonicalDepartments(input?: string | null): CanonicalDepartme
     if (kws.some((kw) => hay.includes(kw))) return [dept];
   }
   return [];
+}
+
+const CANONICAL_BY_NORM: Record<string, CanonicalDepartment> = Object.fromEntries(
+  DEPARTMENTS.map((d) => [norm(d), d]),
+) as Record<string, CanonicalDepartment>;
+
+/**
+ * Strict variant for STORED values — filter dropdowns and saved prefs, whose inputs are
+ * real jobs.department values (live department_facets) or explicit UX tokens ("Data / AI").
+ * Canonical names/labels and the alias table resolve; everything else returns `[]` so the
+ * caller filters on the literal value. No keyword fallback: a coined live bucket like
+ * "Product Management" or "Compliance" must filter on itself, or facet counts disagree
+ * with filtered results.
+ */
+export function toStoredDepartments(input?: string | null): CanonicalDepartment[] {
+  if (!input) return [];
+  const n = norm(input);
+  const exact = CANONICAL_BY_NORM[n];
+  if (exact) return [exact];
+  return DEPT_ALIASES[n] ?? [];
 }
 
 // ── Level aliases (normalized key → canonical value) ──────────────────────────

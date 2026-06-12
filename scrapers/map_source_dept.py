@@ -39,9 +39,34 @@ def norm(s):
     return s or None
 
 
+_SEG_SPLIT = re.compile(r"[,&/]|\band\b", re.I)
+
+# A raw ATS value that IS a canonical bucket name ("Design", "Engineering", "HR / People")
+# maps to itself — keyword heuristics (which dropped bare "design" for title safety) and
+# the compound guard must not get a veto. Keyed slash-collapsed to absorb "AI/ML" vs "AI / ML".
+_CANON_EXACT = {re.sub(r"\s*/\s*", "/", d.lower()): d for d in DEPARTMENTS}
+
+
 def _rule(text):
-    """Keyword-classify a raw string (department or title) to a canonical bucket, or None."""
-    return classify_department(text or "", None)
+    """Keyword-classify a raw string (department or title) to ONE canonical bucket, or None.
+
+    Compound guard: org buckets like "Operations, IT, & Support Engineering" name several
+    departments at once — first-keyword-wins picks whichever bucket outranks the rest (that
+    once stamped 2k data-center technicians "Customer Success"). When the comma/&/slash/and
+    segments classify to DIFFERENT buckets, return None and defer to the LLM/human pass.
+    """
+    n = norm(text)
+    if n and re.sub(r"\s*/\s*", "/", n) in _CANON_EXACT:
+        return _CANON_EXACT[re.sub(r"\s*/\s*", "/", n)]
+    hit = classify_department(text or "", None)
+    if not hit:
+        return None
+    segs = [s.strip() for s in _SEG_SPLIT.split(text or "") if s.strip()]
+    if len(segs) > 1:
+        seg_hits = {h for h in (classify_department(s, None) for s in segs) if h}
+        if len(seg_hits) > 1:
+            return None
+    return hit
 
 
 def resolve_department(source_dept, title, mapping):
@@ -142,11 +167,22 @@ def run_batch(sb, *, use_llm=True, queue_limit=5000, llm_chunk=60):
         for i in range(0, len(llm_pending), llm_chunk):
             chunk = llm_pending[i:i + llm_chunk]
             res = _llm_classify([q["sample_raw"] for q in chunk])
+            # The model sometimes normalizes its echo of an input key ("&" -> "and",
+            # comma/space tweaks), so exact-key lookups miss and the same values re-queue
+            # every night. Match on norm() of the returned keys too, and log what's left.
+            res_norm = {norm(k): v for k, v in res.items() if isinstance(k, str) and norm(k)}
+            matched = set()
             for q in chunk:
-                unified = (res.get(q["sample_raw"]) or "").strip()
-                if unified:
+                u = res.get(q["sample_raw"]) or res_norm.get(q["source_norm"])
+                unified = u.strip() if isinstance(u, str) else ""
+                if unified and len(unified) <= 60:
+                    matched.add(q["source_norm"])
                     rows.append({"source_norm": q["source_norm"], "unified_department": unified,
                                  "mapped_by": "llm", "sample_raw": q["sample_raw"], "n_jobs": q["n_jobs"]})
+            misses = [q["sample_raw"] for q in chunk if q["source_norm"] not in matched]
+            if res and misses:
+                print(f"  LLM chunk: {len(misses)} inputs unmatched in the reply: "
+                      f"{misses[:5]}{'…' if len(misses) > 5 else ''}", flush=True)
 
     # Insert new mappings. on_conflict is a no-op safety against in-batch dupes; the queue
     # already excludes mapped source_norms, so existing (incl. human) rows are never altered.

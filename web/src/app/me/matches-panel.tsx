@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import type { JobRow } from "@/lib/query-jobs";
 import { getTnCategory } from "@/lib/tn-eligible";
-import { DEPARTMENTS, departmentLabel, toCanonicalDepartments, toCanonicalLevel } from "@/lib/taxonomy";
+import { DEPARTMENTS, departmentLabel, toStoredDepartments, toCanonicalLevel } from "@/lib/taxonomy";
 // Shared filter option lists — single source of truth (see lib/filters.ts + lib/taxonomy.ts).
 import {
   LOCATION_FILTER_OPTIONS as LOCATION_OPTIONS,
@@ -246,8 +246,11 @@ function prefToSalary(f: number | null): string {
 function prefToDepartment(d: string | null): string {
   // Route every stored job_function (canonical, Kai tokens, or legacy) through the
   // taxonomy SSOT so the chip value always equals a real jobs.department value.
-  const canon = toCanonicalDepartments(d);
-  return canon.length ? canon[0] : "all";
+  // Strict mapping only: a coined live bucket saved as a pref ("Product Management")
+  // passes through literally — the keyword fallback would hijack it onto Product.
+  if (!d) return "all";
+  const canon = toStoredDepartments(d);
+  return canon.length ? canon[0] : d;
 }
 
 function prefToPosted(d: number | null): string {

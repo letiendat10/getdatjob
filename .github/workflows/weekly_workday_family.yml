@@ -1,0 +1,53 @@
+name: Weekly Workday Job-Family Sweep
+
+# Workday postings carry no job family in the list OR detail API — only the list FACETS
+# do, and enumerating them costs ~a second full pull per tenant. Too slow for the 4x/day
+# pull, cheap enough weekly: scrapers/workday_family_sweep.py fills jobs.source_department
+# (NULL rows only), then map_source_dept.py folds the new raw values into dept_mapping and
+# restamps jobs.department through the governed rule -> LLM -> human path.
+# Families are stable, and the sweep skips fully-covered tenants, so steady-state runs are
+# small. GH cron is best-effort (see bug_github_schedule_unreliable) — a missed week is fine.
+
+on:
+  schedule:
+    - cron: "23 10 * * 0"   # Sundays ~3 AM PT
+  workflow_dispatch:        # allow manual runs from GitHub UI
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r scrapers/requirements.txt
+
+      - name: Sweep Workday job-family facets -> jobs.source_department
+        env:
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          set -o pipefail
+          python scrapers/workday_family_sweep.py 2>&1 | tee /tmp/sweep.log
+
+      - name: Fold new raw departments + restamp (rule -> LLM -> human)
+        env:
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scrapers/map_source_dept.py
+
+      - name: Failure report
+        if: failure()
+        run: |
+          {
+            echo "### Weekly Workday family sweep failed"
+            echo '```'
+            tail -40 /tmp/sweep.log 2>/dev/null || echo "no sweep log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

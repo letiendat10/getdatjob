@@ -99,14 +99,23 @@ def classify_level(title: str | None) -> str | None:
 # the spaces they need. Ported from the /jobs DEPT_PATTERNS so column == filter.
 _DEPT_KEYWORDS: dict[str, list[str]] = {
     "AI / ML":           ["machine learning", "deep learning", "artificial intelligence",
-                          " ai ", "ai/ml", " ml ", "ml engineer", "mlops", "nlp", "llm",
+                          " ai ", "ai/ml", " ml ", "ml engineer", "mlops", "nlp",
+                          # " llm"/"llm " (not bare "llm"): "fulfi-llm-ent" used to send
+                          # warehouse jobs to AI / ML.
+                          " llm", "llm ",
                           "research scientist", "applied scientist"],
     "Data":              ["data engineer", "data scientist", "data analyst", "data science",
                           "data architect", "analytics", "business intelligence", " bi "],
     "Security":          ["security", "infosec", "cybersecurity", "appsec", "devsecops",
                           "soc analyst"],
-    "Design":            ["designer", "design", " ux", "ux ", " ui", "ui ",
-                          "user experience", "user research"],
+    # No bare "design": it outranks the Engineering catch-all, so "Physical Design
+    # Methodology Engineer" / "Engineering and Design" were stamped Design. Design-dept
+    # roles must match a designer-shaped phrase instead.
+    "Design":            ["designer", " ux", "ux ", " ui", "ui ",
+                          "user experience", "user research", "product design",
+                          "graphic design", "visual design", "design lead",
+                          "design manager", "head of design", "design director",
+                          "design system"],
     "Product":           ["product manager", "product owner", "product lead",
                           "product management", "head of product", " pm "],
     "Finance":           ["finance", "financial", "accounting", "accountant", "controller",
@@ -128,7 +137,11 @@ _DEPT_KEYWORDS: dict[str, list[str]] = {
                           "warehouse", "procurement"],
     "Engineering":       ["engineer", "developer", "swe", "software", "back end", "backend",
                           "front end", "frontend", "full stack", "fullstack", "programmer",
-                          "architect", "sdet", "firmware", "embedded"],
+                          "architect", "sdet", "firmware", "embedded",
+                          # chip-design phrases so "ASIC Physical Design Technical Lead"
+                          # lands here (bare "design" was removed from the Design bucket)
+                          "asic", "physical design", "design verification", "rtl design",
+                          "analog design", "ip design"],
 }
 _DEPT_PRIORITY = list(_DEPT_KEYWORDS)  # dict preserves insertion (= priority) order
 

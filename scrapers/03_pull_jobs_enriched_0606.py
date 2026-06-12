@@ -443,7 +443,17 @@ def main():
                 icims_fields = enr.detail_icims_fields(slug, row["ats_job_id"])
                 html, posted = icims_fields["description_html"], icims_fields["posted"]
             else:
-                html, posted = DETAIL[row["ats_source"]](slug, row["ats_job_id"])
+                det = DETAIL[row["ats_source"]](slug, row["ats_job_id"])
+                # Length-tolerant: a detail fetcher MAY return a third element with the
+                # ATS's department descriptor (oracle_hcm Category — its list API returns
+                # the names as null). Stored raw; map_source_dept folds + restamps.
+                html, posted = det[0], det[1]
+                if len(det) > 2 and det[2] and not row.get("source_department"):
+                    row["source_department"] = det[2]
+                    if not row.get("department"):
+                        dept = classify_department(row["title"], det[2])
+                        if dept:
+                            row["department"] = dept
         except Exception:
             with lock:
                 estats["error"] += 1

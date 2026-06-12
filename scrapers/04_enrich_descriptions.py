@@ -261,13 +261,20 @@ def enrich_one(job: dict, *, dry_run: bool = False) -> dict:
         return {"status": "no_slug"}
     icims = ats == "icims"
     icims_fields: dict | None = None
+    detail_src_dept: str | None = None
     try:
         if icims:
             # iCIMS: pull clean title/location/posted/description from the JSON-LD JobPosting.
             icims_fields = detail_icims_fields(slug, job["ats_job_id"])
             html, posted = icims_fields["description_html"], icims_fields["posted"]
         else:
-            html, posted = DETAIL[ats](slug, job["ats_job_id"])
+            det = DETAIL[ats](slug, job["ats_job_id"])
+            # Length-tolerant unpack: a detail fetcher MAY return a third element with the
+            # ATS's department descriptor (oracle_hcm Category — its list API returns the
+            # names as null). It lands in source_department below and flows into
+            # jobs.department via map_source_dept's governed restamp.
+            html, posted = det[0], det[1]
+            detail_src_dept = det[2] if len(det) > 2 else None
     except Exception as e:
         if not dry_run:
             stamp_attempt(job["id"])
@@ -287,6 +294,10 @@ def enrich_one(job: dict, *, dry_run: bool = False) -> dict:
     update = {"description_text": (html[:24000] if icims and html else desc_text)}
     if posted:  # exact Workday startDate — the daily pull leaves posted_at NULL for it
         update["posted_at"] = posted
+    if detail_src_dept and not job.get("source_department"):
+        # Detail-only department descriptor (oracle_hcm): store the raw value; the post-pull
+        # map step folds it into dept_mapping and restamps jobs.department.
+        update["source_department"] = detail_src_dept
     if sal:
         update["salary_range"] = sal["display"]
         update["salary_min_num"] = sal["min_num"]

@@ -7,6 +7,16 @@ const supabaseServer = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Kai freeform is deliberately generous: "product" intent surfaces the coined
+// "Product Management" bucket (Amazon TPM/program roles) alongside Product. Structured
+// dropdowns/prefs stay literal (toStoredDepartments) so facet counts match results —
+// Kai is the only surface that expands.
+const KAI_DEPT_EXPANSION: Record<string, string[]> = {
+  Product: ["Product", "Product Management"],
+};
+const expandKaiDepartments = (depts: string[]): string[] =>
+  depts.flatMap((d) => KAI_DEPT_EXPANSION[d] ?? [d]);
+
 // ── Tool definitions sent to Claude ──────────────────────────────────────────
 
 export const KAI_TOOLS: Tool[] = [
@@ -151,8 +161,9 @@ export async function handleSearchJobs(input: SearchJobsInput) {
   }
 
   // Department & level → canonical stored columns (filtered via p_departments / p_level).
-  // A single UX bucket can map to several departments (e.g. "Data / AI" → Data + AI/ML).
-  const departments = toCanonicalDepartments(input.department);
+  // A single UX bucket can map to several departments (e.g. "Data / AI" → Data + AI/ML),
+  // and Kai-only expansion adds coined siblings (Product → + "Product Management").
+  const departments = expandKaiDepartments(toCanonicalDepartments(input.department));
   const level = toCanonicalLevel(input.level);
 
   // Industry → company keyword list
@@ -261,8 +272,9 @@ export async function countMatchingJobsInWindow(params: {
     query = query.or(params.locationTokens.map((t) => `location.ilike.%${escapeIlike(t)}%`).join(","));
   }
 
-  // Department & level — match the canonical stored columns (mirrors the RPC's ANY / =).
-  const departments = toCanonicalDepartments(params.department);
+  // Department & level — match the canonical stored columns (mirrors the RPC's ANY / =),
+  // with the same Kai-only expansion as the search path so counts agree with results.
+  const departments = expandKaiDepartments(toCanonicalDepartments(params.department));
   if (departments.length) query = query.in("department", departments);
 
   const level = toCanonicalLevel(params.level);

@@ -85,6 +85,7 @@ score_job = pj.score_job
 build_lca_index = pj.build_lca_index
 classify_department = pj.classify_department
 classify_level = pj.classify_level
+strong_title_department = pj.strong_title_department
 detect_remote = pj.detect_remote
 parse_workday_posted_on = pj.parse_workday_posted_on
 strip_html = pj.strip_html
@@ -489,6 +490,7 @@ def main():
             if title:
                 row["title"] = title
                 row["job_level"] = classify_level(title)
+                row["title_dept_strong"] = strong_title_department(title)
                 dept = classify_department(title, row.get("source_department"))
                 if dept:
                     row["department"] = dept
@@ -614,6 +616,8 @@ def main():
                 "salary_max_num": sal["max_num"] if sal else None,
                 "salary_period": sal["period"] if sal else None,
                 "department": classify_department(j["title"], j.get("source_dept")),
+                # Cached strong-title discipline (restamp COALESCEs it over the source_dept mapping).
+                "title_dept_strong": strong_title_department(j["title"]),
                 # Raw ATS department (source of truth) — map_source_dept.run_batch() folds it
                 # into the unified jobs.department post-pull and re-stamps.
                 "source_department": (j.get("source_dept") or None),

@@ -57,7 +57,7 @@ from functools import lru_cache
 from title_utils import build_lca_index
 # Canonical classifiers (classify.py is importable normally — no leading digit). Used to
 # re-derive job_level/department/is_remote from the CLEAN iCIMS title (see detail_icims).
-from classify import classify_level, classify_department, detect_remote
+from classify import classify_level, classify_department, detect_remote, strong_title_department
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; getdatjob-bot/1.0)"}
 TIMEOUT = 20
@@ -310,6 +310,7 @@ def enrich_one(job: dict, *, dry_run: bool = False) -> dict:
         if title:
             update["title"] = title
             update["job_level"] = classify_level(title)
+            update["title_dept_strong"] = strong_title_department(title)
             dept = classify_department(title, job.get("source_department"))
             if dept:
                 update["department"] = dept

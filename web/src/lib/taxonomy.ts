@@ -178,7 +178,8 @@ const DEPT_ALIASES: Record<string, CanonicalDepartment[]> = {
 const DEPT_KEYWORDS: ReadonlyArray<readonly [CanonicalDepartment, readonly string[]]> = [
   // " llm"/"llm " (not bare "llm"): "fulfi-llm-ent" used to classify warehouse roles as AI / ML.
   ["AI / ML", ["machine learning", "deep learning", "artificial intelligence", " ai ", "ai/ml", " ml ", "ml engineer", "mlops", "nlp", " llm", "llm ", "research scientist", "applied scientist"]],
-  ["Data", ["data engineer", "data scientist", "data analyst", "data science", "data architect", "analytics", "business intelligence", " bi "]],
+  // "data engineer" is NOT here — it's Engineering (2026-06-18 taxonomy call); Data = analysts/scientists/BI.
+  ["Data", ["data scientist", "data analyst", "data science", "data architect", "analytics", "business intelligence", " bi "]],
   ["Security", ["security", "infosec", "cybersecurity", "appsec", "devsecops", "soc analyst"]],
   // No bare "design" (it outranks the Engineering catch-all and hijacked chip/civil
   // engineering titles); design-dept roles must match a designer-shaped phrase.
@@ -196,18 +197,76 @@ const DEPT_KEYWORDS: ReadonlyArray<readonly [CanonicalDepartment, readonly strin
   ["Engineering", ["engineer", "developer", "swe", "software", "back end", "backend", "front end", "frontend", "full stack", "fullstack", "programmer", "architect", "sdet", "firmware", "embedded", "asic", "physical design", "design verification", "rtl design", "analog design", "ip design"]],
 ];
 
+// Strong title role-phrases — TS mirror of classify.py `_STRONG_TITLE`. An unambiguous
+// discipline named in a freeform title; LONGEST match wins. Used so Kai matches the way
+// jobs.department was built (e.g. "account executive … growth" → Sales, not Marketing).
+const STRONG_TITLE: ReadonlyArray<readonly [string, CanonicalDepartment]> = [
+  ["data analyst", "Data"], ["data scientist", "Data"], ["data science", "Data"],
+  ["data analytics", "Data"], ["business intelligence", "Data"], ["bi analyst", "Data"],
+  ["quantitative analyst", "Data"],
+  ["machine learning engineer", "AI / ML"], ["ml engineer", "AI / ML"],
+  ["applied scientist", "AI / ML"], ["research scientist", "AI / ML"],
+  ["ai engineer", "AI / ML"], ["nlp engineer", "AI / ML"],
+  ["data engineer", "Engineering"], ["data engineering", "Engineering"],
+  ["software engineer", "Engineering"], ["software developer", "Engineering"],
+  ["software development engineer", "Engineering"], ["sdet", "Engineering"],
+  ["engineering manager", "Engineering"], ["full stack engineer", "Engineering"],
+  ["fullstack engineer", "Engineering"], ["backend engineer", "Engineering"],
+  ["back end engineer", "Engineering"], ["frontend engineer", "Engineering"],
+  ["front end engineer", "Engineering"], ["firmware engineer", "Engineering"],
+  ["embedded engineer", "Engineering"], ["systems engineer", "Engineering"],
+  ["qa engineer", "Engineering"], ["quality engineer", "Engineering"],
+  ["hardware engineer", "Engineering"], ["marketing engineer", "Engineering"],
+  ["site reliability engineer", "Platform / DevOps"], ["devops engineer", "Platform / DevOps"],
+  ["platform engineer", "Platform / DevOps"], ["infrastructure engineer", "Platform / DevOps"],
+  ["cloud engineer", "Platform / DevOps"], ["reliability engineer", "Platform / DevOps"],
+  ["security engineer", "Security"], ["security analyst", "Security"],
+  ["security architect", "Security"], ["security operations", "Security"],
+  ["account executive", "Sales"], ["sales associate", "Sales"],
+  ["sales representative", "Sales"], ["sales manager", "Sales"], ["sales director", "Sales"],
+  ["sales engineer", "Sales"], ["sales development representative", "Sales"],
+  ["business development representative", "Sales"],
+  ["product designer", "Design"], ["ux designer", "Design"], ["ui designer", "Design"],
+  ["graphic designer", "Design"], ["visual designer", "Design"], ["design manager", "Design"],
+  ["design director", "Design"], ["ux researcher", "Design"], ["user experience designer", "Design"],
+  ["product manager", "Product"], ["product owner", "Product"],
+  ["technical product manager", "Product"], ["group product manager", "Product"],
+  ["marketing manager", "Marketing/Growth"], ["brand manager", "Marketing/Growth"],
+  ["growth manager", "Marketing/Growth"], ["content manager", "Marketing/Growth"],
+  ["social media manager", "Marketing/Growth"], ["product marketing manager", "Marketing/Growth"],
+  ["growth marketing", "Marketing/Growth"],
+  ["financial analyst", "Finance"], ["accountant", "Finance"], ["controller", "Finance"],
+  ["accounting manager", "Finance"], ["finance manager", "Finance"],
+  ["attorney", "Legal"], ["paralegal", "Legal"], ["general counsel", "Legal"], ["legal counsel", "Legal"],
+  ["recruiter", "HR / People"], ["talent acquisition", "HR / People"],
+  ["hr business partner", "HR / People"], ["people partner", "HR / People"], ["technical recruiter", "HR / People"],
+  ["customer success manager", "Customer Success"], ["account manager", "Customer Success"],
+  ["customer success", "Customer Success"],
+  ["operations manager", "Operations"], ["supply chain manager", "Operations"], ["logistics manager", "Operations"],
+  ["facilities manager", "Facilities"],
+];
+const STRONG_SORTED = [...STRONG_TITLE].sort((a, b) => b[0].length - a[0].length);
+
+function strongTitleDepartment(input: string): CanonicalDepartment | null {
+  const hay = ` ${input.trim().toLowerCase()} `;
+  for (const [phrase, bucket] of STRONG_SORTED) if (hay.includes(phrase)) return bucket;
+  return null;
+}
+
 /**
  * Translate any user-facing department label/freeform into the canonical stored value(s).
  * Returns `[]` when there's no confident match — callers treat `[]` as "no department filter".
  *
- * FREEFORM ONLY (Kai chat/onboarding): the keyword fallback is generous by design and
- * will hijack exact stored values that merely CONTAIN a keyword ("Product Management" →
- * Product). Dropdowns and saved prefs must use toStoredDepartments instead.
+ * FREEFORM ONLY (Kai chat/onboarding): curated alias → strong title role-phrase → generic
+ * keyword fallback. The keyword fallback will hijack exact stored values that merely CONTAIN
+ * a keyword ("Product Management" → Product), so dropdowns/prefs use toStoredDepartments.
  */
 export function toCanonicalDepartments(input?: string | null): CanonicalDepartment[] {
   if (!input) return [];
   const hit = DEPT_ALIASES[norm(input)];
   if (hit) return hit;
+  const strong = strongTitleDepartment(input);
+  if (strong) return [strong];
   const hay = ` ${input.trim().toLowerCase()} `;
   for (const [dept, kws] of DEPT_KEYWORDS) {
     if (kws.some((kw) => hay.includes(kw))) return [dept];

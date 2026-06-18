@@ -46,6 +46,24 @@ _SEG_SPLIT = re.compile(r"[,&/]|\band\b", re.I)
 # the compound guard must not get a veto. Keyed slash-collapsed to absorb "AI/ML" vs "AI / ML".
 _CANON_EXACT = {re.sub(r"\s*/\s*", "/", d.lower()): d for d in DEPARTMENTS}
 
+_CAMEL = re.compile(r"[a-z][A-Z]")        # "tvScientific" — a brand/product, not a department
+_NUM_CODE = re.compile(r"^\s*\d+\s+\S")   # "635 DDfB" — an internal req code prefix
+
+
+def _is_junk_source(raw):
+    """True when a source_department is a company/product name or internal req code, not a
+    real org unit. We skip mapping these (leave them unmapped → the job falls back to title
+    classification) instead of letting the LLM hallucinate a bucket — e.g. 'tvScientific'
+    (a Pinterest business unit) was mapped to Marketing, mislabeling every SDET/SRE there.
+    A value with ANY real department keyword signal is never junk (so 'iOS Engineering',
+    'Stores' survive)."""
+    s = (raw or "").strip()
+    if not s:
+        return True
+    if classify_department(s, None):
+        return False
+    return bool(_CAMEL.search(s) or _NUM_CODE.match(s))
+
 
 def _rule(text):
     """Keyword-classify a raw string (department or title) to ONE canonical bucket, or None.
@@ -154,8 +172,11 @@ def run_batch(sb, *, use_llm=True, queue_limit=5000, llm_chunk=60):
     so human/earlier rows are never touched. Re-stamp runs in bounded batches (no 57014).
     """
     queue = sb.rpc("unmapped_source_depts", {"p_limit": queue_limit}).execute().data or []
-    rows, llm_pending = [], []
+    rows, llm_pending, junk = [], [], 0
     for q in queue:
+        if _is_junk_source(q["sample_raw"]):
+            junk += 1
+            continue  # company/product name or req code — leave unmapped, title classifies
         hit = _rule(q["sample_raw"])
         if hit:
             rows.append({"source_norm": q["source_norm"], "unified_department": hit,
@@ -190,7 +211,7 @@ def run_batch(sb, *, use_llm=True, queue_limit=5000, llm_chunk=60):
         sb.table("dept_mapping").upsert(rows[i:i + 500], on_conflict="source_norm").execute()
     n_rule = sum(1 for r in rows if r["mapped_by"] == "rule")
     print(f"map_source_dept: mapped {len(rows)} new values ({n_rule} rule, {len(rows) - n_rule} llm); "
-          f"{len(llm_pending) - (len(rows) - n_rule)} still unmapped", flush=True)
+          f"{len(llm_pending) - (len(rows) - n_rule)} still unmapped; {junk} junk skipped", flush=True)
     # Governance signal: any unified bucket the LLM coined outside the canonical seed is a
     # candidate new department — surface it for owner review in /admin/departments.
     new_buckets = sorted({r["unified_department"] for r in rows} - set(DEPARTMENTS))

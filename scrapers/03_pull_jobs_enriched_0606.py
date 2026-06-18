@@ -85,6 +85,7 @@ score_job = pj.score_job
 build_lca_index = pj.build_lca_index
 classify_department = pj.classify_department
 classify_level = pj.classify_level
+strong_title_department = pj.strong_title_department
 detect_remote = pj.detect_remote
 parse_workday_posted_on = pj.parse_workday_posted_on
 strip_html = pj.strip_html
@@ -443,7 +444,17 @@ def main():
                 icims_fields = enr.detail_icims_fields(slug, row["ats_job_id"])
                 html, posted = icims_fields["description_html"], icims_fields["posted"]
             else:
-                html, posted = DETAIL[row["ats_source"]](slug, row["ats_job_id"])
+                det = DETAIL[row["ats_source"]](slug, row["ats_job_id"])
+                # Length-tolerant: a detail fetcher MAY return a third element with the
+                # ATS's department descriptor (oracle_hcm Category — its list API returns
+                # the names as null). Stored raw; map_source_dept folds + restamps.
+                html, posted = det[0], det[1]
+                if len(det) > 2 and det[2] and not row.get("source_department"):
+                    row["source_department"] = det[2]
+                    if not row.get("department"):
+                        dept = classify_department(row["title"], det[2])
+                        if dept:
+                            row["department"] = dept
         except Exception:
             with lock:
                 estats["error"] += 1
@@ -479,6 +490,7 @@ def main():
             if title:
                 row["title"] = title
                 row["job_level"] = classify_level(title)
+                row["title_dept_strong"] = strong_title_department(title)
                 dept = classify_department(title, row.get("source_department"))
                 if dept:
                     row["department"] = dept
@@ -604,6 +616,8 @@ def main():
                 "salary_max_num": sal["max_num"] if sal else None,
                 "salary_period": sal["period"] if sal else None,
                 "department": classify_department(j["title"], j.get("source_dept")),
+                # Cached strong-title discipline (restamp COALESCEs it over the source_dept mapping).
+                "title_dept_strong": strong_title_department(j["title"]),
                 # Raw ATS department (source of truth) — map_source_dept.run_batch() folds it
                 # into the unified jobs.department post-pull and re-stamps.
                 "source_department": (j.get("source_dept") or None),

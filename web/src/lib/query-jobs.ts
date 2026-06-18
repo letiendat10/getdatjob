@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { toCanonicalDepartments } from "@/lib/taxonomy";
+import { toStoredDepartments } from "@/lib/taxonomy";
 
 export const PAGE_SIZE = 30;
 
@@ -126,12 +126,12 @@ export async function queryJobs(params: {
   // jobs.job_level), the single source of truth. Indexed by idx_jobs_department /
   // idx_jobs_job_level. Values match DEPARTMENT_OPTIONS / LEVEL_OPTIONS in jobs-client.
   if (department && department !== "all") {
-    // Normalize to canonical stored department(s) so a non-canonical label
-    // (e.g. "Marketing" → "Marketing/Growth") can never silently match zero rows.
-    // Fall back to the literal value for a live facet bucket outside the canonical 15
-    // (e.g. an LLM-coined "Healthcare"): department_facets() surfaces it in the dropdown,
-    // so it must filter on itself rather than be dropped (which would return everything).
-    const depts = toCanonicalDepartments(department);
+    // Strict stored-value mapping (canonical names/labels + explicit aliases — NO keyword
+    // fallback): dropdown values are real jobs.department values from department_facets(),
+    // and a coined bucket like "Product Management" or "Compliance" must filter on itself.
+    // toCanonicalDepartments' keyword fallback would hijack those onto Product/Legal and
+    // make facet counts disagree with results. [] → filter on the literal value.
+    const depts = toStoredDepartments(department);
     dbq = dbq.in("department", depts.length ? depts : [department]);
   }
   if (level && level !== "all")           dbq = dbq.eq("job_level", level);

@@ -99,14 +99,25 @@ def classify_level(title: str | None) -> str | None:
 # the spaces they need. Ported from the /jobs DEPT_PATTERNS so column == filter.
 _DEPT_KEYWORDS: dict[str, list[str]] = {
     "AI / ML":           ["machine learning", "deep learning", "artificial intelligence",
-                          " ai ", "ai/ml", " ml ", "ml engineer", "mlops", "nlp", "llm",
+                          " ai ", "ai/ml", " ml ", "ml engineer", "mlops", "nlp",
+                          # " llm"/"llm " (not bare "llm"): "fulfi-llm-ent" used to send
+                          # warehouse jobs to AI / ML.
+                          " llm", "llm ",
                           "research scientist", "applied scientist"],
-    "Data":              ["data engineer", "data scientist", "data analyst", "data science",
+    # NOTE: "data engineer"/"data engineering" are NOT here — they're Engineering (2026-06-18
+    # taxonomy call). Data = analysts/scientists/BI/analytics only.
+    "Data":              ["data scientist", "data analyst", "data science",
                           "data architect", "analytics", "business intelligence", " bi "],
     "Security":          ["security", "infosec", "cybersecurity", "appsec", "devsecops",
                           "soc analyst"],
-    "Design":            ["designer", "design", " ux", "ux ", " ui", "ui ",
-                          "user experience", "user research"],
+    # No bare "design": it outranks the Engineering catch-all, so "Physical Design
+    # Methodology Engineer" / "Engineering and Design" were stamped Design. Design-dept
+    # roles must match a designer-shaped phrase instead.
+    "Design":            ["designer", " ux", "ux ", " ui", "ui ",
+                          "user experience", "user research", "product design",
+                          "graphic design", "visual design", "design lead",
+                          "design manager", "head of design", "design director",
+                          "design system"],
     "Product":           ["product manager", "product owner", "product lead",
                           "product management", "head of product", " pm "],
     "Finance":           ["finance", "financial", "accounting", "accountant", "controller",
@@ -128,17 +139,110 @@ _DEPT_KEYWORDS: dict[str, list[str]] = {
                           "warehouse", "procurement"],
     "Engineering":       ["engineer", "developer", "swe", "software", "back end", "backend",
                           "front end", "frontend", "full stack", "fullstack", "programmer",
-                          "architect", "sdet", "firmware", "embedded"],
+                          "architect", "sdet", "firmware", "embedded",
+                          # chip-design phrases so "ASIC Physical Design Technical Lead"
+                          # lands here (bare "design" was removed from the Design bucket)
+                          "asic", "physical design", "design verification", "rtl design",
+                          "analog design", "ip design"],
 }
 _DEPT_PRIORITY = list(_DEPT_KEYWORDS)  # dict preserves insertion (= priority) order
 
+# ── Strong title role-phrases ─────────────────────────────────────────────────
+# An unambiguous discipline named in the TITLE. This is the department-by-discipline
+# signal: it beats both a coarse/garbage source_department (Data Analyst in an
+# "Engineering" org → Data) and weak contextual keywords elsewhere in the title
+# (Account Executive … Growth → Sales, not Marketing). Matched against the title only;
+# the LONGEST matching phrase wins (most specific). Keep in sync with taxonomy.ts.
+_STRONG_TITLE: list[tuple[str, str]] = [
+    # Data (analysts/scientists/BI — NOT data engineer, which is Engineering)
+    ("data analyst", "Data"), ("data scientist", "Data"), ("data science", "Data"),
+    ("data analytics", "Data"), ("business intelligence", "Data"), ("bi analyst", "Data"),
+    ("quantitative analyst", "Data"),
+    # AI / ML
+    ("machine learning engineer", "AI / ML"), ("ml engineer", "AI / ML"),
+    ("applied scientist", "AI / ML"), ("research scientist", "AI / ML"),
+    ("ai engineer", "AI / ML"), ("nlp engineer", "AI / ML"),
+    # Engineering (incl. data engineer/engineering per 2026-06-18 taxonomy call)
+    ("data engineer", "Engineering"), ("data engineering", "Engineering"),
+    ("software engineer", "Engineering"), ("software developer", "Engineering"),
+    ("software development engineer", "Engineering"), ("sdet", "Engineering"),
+    ("engineering manager", "Engineering"), ("full stack engineer", "Engineering"),
+    ("fullstack engineer", "Engineering"), ("backend engineer", "Engineering"),
+    ("back end engineer", "Engineering"), ("frontend engineer", "Engineering"),
+    ("front end engineer", "Engineering"), ("firmware engineer", "Engineering"),
+    ("embedded engineer", "Engineering"), ("systems engineer", "Engineering"),
+    ("qa engineer", "Engineering"), ("quality engineer", "Engineering"),
+    ("hardware engineer", "Engineering"),
+    # "marketing engineer" is an Engineering role that supports marketing (e.g. PANW's
+    # Technical Marketing Engineer sits in Engineering) — distinct from "marketing manager".
+    ("marketing engineer", "Engineering"),
+    # Platform / DevOps
+    ("site reliability engineer", "Platform / DevOps"), ("devops engineer", "Platform / DevOps"),
+    ("platform engineer", "Platform / DevOps"), ("infrastructure engineer", "Platform / DevOps"),
+    ("cloud engineer", "Platform / DevOps"), ("reliability engineer", "Platform / DevOps"),
+    # Security
+    ("security engineer", "Security"), ("security analyst", "Security"),
+    ("security architect", "Security"), ("security operations", "Security"),
+    # Sales
+    ("account executive", "Sales"), ("sales associate", "Sales"),
+    ("sales representative", "Sales"), ("sales manager", "Sales"), ("sales director", "Sales"),
+    ("sales engineer", "Sales"), ("sales development representative", "Sales"),
+    ("business development representative", "Sales"),
+    # Design
+    ("product designer", "Design"), ("ux designer", "Design"), ("ui designer", "Design"),
+    ("graphic designer", "Design"), ("visual designer", "Design"), ("design manager", "Design"),
+    ("design director", "Design"), ("ux researcher", "Design"), ("user experience designer", "Design"),
+    # Product
+    ("product manager", "Product"), ("product owner", "Product"),
+    ("technical product manager", "Product"), ("group product manager", "Product"),
+    # Marketing / Growth
+    ("marketing manager", "Marketing/Growth"), ("brand manager", "Marketing/Growth"),
+    ("growth manager", "Marketing/Growth"), ("content manager", "Marketing/Growth"),
+    ("social media manager", "Marketing/Growth"), ("product marketing manager", "Marketing/Growth"),
+    ("growth marketing", "Marketing/Growth"),
+    # Finance
+    ("financial analyst", "Finance"), ("accountant", "Finance"), ("controller", "Finance"),
+    ("accounting manager", "Finance"), ("finance manager", "Finance"),
+    # Legal
+    ("attorney", "Legal"), ("paralegal", "Legal"), ("general counsel", "Legal"),
+    ("legal counsel", "Legal"),
+    # HR / People
+    ("recruiter", "HR / People"), ("talent acquisition", "HR / People"),
+    ("hr business partner", "HR / People"), ("people partner", "HR / People"),
+    ("technical recruiter", "HR / People"),
+    # Customer Success
+    ("customer success manager", "Customer Success"), ("account manager", "Customer Success"),
+    ("customer success", "Customer Success"),
+    # Operations
+    ("operations manager", "Operations"), ("supply chain manager", "Operations"),
+    ("logistics manager", "Operations"),
+    # Facilities
+    ("facilities manager", "Facilities"),
+]
+_STRONG_SORTED = sorted(_STRONG_TITLE, key=lambda kv: -len(kv[0]))  # longest-match wins
+
+
+def strong_title_department(title: str | None) -> str | None:
+    """The unambiguous discipline named in the title (longest role-phrase match), or None.
+    Used as the top non-override signal in classify_department AND to override the
+    source_department mapping at restamp time (a specific title beats a coarse org name)."""
+    hay = f" {(title or '').lower()} "
+    for phrase, bucket in _STRONG_SORTED:
+        if phrase in hay:
+            return bucket
+    return None
+
 
 def classify_department(title: str | None, source_dept: str | None = None) -> str | None:
-    """Title (+ optional source department hint) → canonical department, or None."""
+    """Title (+ optional source department hint) → canonical department, or None.
+    Precedence: human override → strong title discipline → keyword scan (title + source)."""
     t = title or ""
     ov = _override(t, "department")
     if ov is not None:
         return ov or None
+    strong = strong_title_department(t)
+    if strong:
+        return strong
     # Strip noisy numeric prefixes from source dept (Greenhouse: "7112 Data Science").
     hint = re.sub(r"^\s*\d+\s+", "", source_dept or "")
     # Pad so boundary keywords (" ai ", " ml ", " hr ", " ops", " pm ") match at the edges.

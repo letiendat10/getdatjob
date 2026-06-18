@@ -33,6 +33,8 @@ from datetime import datetime, timezone
 import requests
 from bs4 import BeautifulSoup
 
+from classify import classify_department, classify_level
+
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; getdatjob-bot/1.0)", "Accept": "application/json"}
 TIMEOUT = 20
 
@@ -167,12 +169,36 @@ def fetch_list(slug: str) -> list[dict]:
     return jobs
 
 
-def fetch_detail(slug: str, ats_job_id: str) -> tuple[str, str | None]:
-    """(description_html, posted_at_iso_or_None) for one requisition — matches 04's DETAIL
-    contract. Best-effort: returns ("", None) on a miss so the enricher cools the job down."""
+# Tenant-defined facet values that are NOT org units: recruiting-workflow labels and
+# ladder rungs classify_level can't see ("Analyst"). Extend as new junk surfaces in
+# /admin/departments.
+_NON_DEPT = {"lateral apply", "experienced professionals", "campus",
+             "students and graduates", "analyst"}
+
+
+def _plausible_dept(v) -> str | None:
+    """A department descriptor, or None when the value is seniority/workflow junk.
+    Goldman publishes Category="Vice President" / JobFunction="Lateral Apply" — feeding
+    those into dept_mapping would pollute the governed vocabulary."""
+    s = (v or "").strip()
+    if not s or s.lower() in _NON_DEPT:
+        return None
+    if classify_level(s) and not classify_department(s):
+        return None  # reads as a corporate-ladder rung, not an org unit
+    return s
+
+
+def fetch_detail(slug: str, ats_job_id: str) -> tuple[str, str | None, str | None]:
+    """(description_html, posted_at_iso_or_None, source_dept_or_None) for one requisition.
+    Extends 04's 2-tuple DETAIL contract with an optional third element (consumers unpack
+    length-tolerantly): the LIST API returns JobFamily/Department/Organization as null for
+    most tenants (only the *Id numerics are filled), but the DETAIL payload carries the
+    human-readable Category/JobFunction — the only place Oracle exposes the department
+    signal. Best-effort: returns ("", None, None) on a miss so the enricher cools the
+    job down."""
     host, site = _resolve(slug)
     if not host:
-        return "", None
+        return "", None, None
     finder = f"ById;Id={ats_job_id}"
     if site:
         finder += f",siteNumber={site}"
@@ -186,9 +212,9 @@ def fetch_detail(slug: str, ats_job_id: str) -> tuple[str, str | None]:
         r.raise_for_status()
         items = r.json().get("items") or []
     except Exception:
-        return "", None
+        return "", None, None
     if not items:
-        return "", None
+        return "", None, None
     d = items[0]
     parts = [
         d.get(k) for k in (
@@ -198,4 +224,11 @@ def fetch_detail(slug: str, ats_job_id: str) -> tuple[str, str | None]:
     ]
     html = "\n\n".join(parts)
     posted = _iso(d.get("PostedDate") or d.get("ExternalPostedStartDate"))
-    return html, posted
+    # Org-axis fields first; Category/JobFunction are tenant-defined facets and come last
+    # (Macy's Category="Stores" is a department, Goldman's is a corporate LADDER rung).
+    source_dept = None
+    for k in ("JobFamily", "Department", "Organization", "Category", "JobFunction"):
+        source_dept = _plausible_dept(d.get(k))
+        if source_dept:
+            break
+    return html, posted, source_dept

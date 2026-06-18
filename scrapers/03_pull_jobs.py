@@ -33,7 +33,7 @@ from bs4 import BeautifulSoup
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
 from title_utils import clean_title, build_lca_index
-from classify import classify_department, classify_level, detect_remote
+from classify import classify_department, classify_level, detect_remote, strong_title_department
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -1053,6 +1053,8 @@ if __name__ == "__main__":
                 "salary_max_num": sal["max_num"] if sal else None,
                 "salary_period": sal["period"] if sal else None,
                 "department": classify_department(j["title"], j.get("source_dept")),
+                # Cached strong-title discipline (restamp COALESCEs it over the source_dept mapping).
+                "title_dept_strong": strong_title_department(j["title"]),
                 # Raw ATS department (source of truth). map_source_dept.run_batch() folds it
                 # into the unified jobs.department post-pull (rule -> LLM) and re-stamps.
                 "source_department": (j.get("source_dept") or None),

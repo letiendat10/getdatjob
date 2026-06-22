@@ -844,15 +844,17 @@ def fetch_bamboohr(slug: str) -> list[dict]:
 
 
 def fetch_jibe(slug: str) -> list[dict]:
-    """Jibe-powered careers sites. slug = base URL, e.g. https://careers.amd.com"""
+    """Jibe-powered careers sites. slug = base URL, e.g. https://careers.amd.com
+    Jibe's API uses page= (1-indexed) + limit=; offset= is silently ignored."""
     base_url = slug.rstrip("/")
     jobs = []
+    seen_ids: set[str] = set()
     limit = 100
-    offset = 0
+    page = 1
     while True:
         r = requests.get(
             f"{base_url}/api/jobs",
-            params={"limit": limit, "offset": offset},
+            params={"limit": limit, "page": page},
             headers=HEADERS, timeout=TIMEOUT,
         )
         r.raise_for_status()
@@ -860,11 +862,16 @@ def fetch_jibe(slug: str) -> list[dict]:
         batch = data.get("jobs", [])
         if not batch:
             break
+        new_in_batch = 0
         for j in batch:
             d = j.get("data", {})
             if d.get("country_code") != "US":
                 continue
-            req_id = d.get("req_id") or d.get("slug", "")
+            req_id = str(d.get("req_id") or d.get("slug", ""))
+            if req_id in seen_ids:
+                continue
+            seen_ids.add(req_id)
+            new_in_batch += 1
             title = d.get("title", "")
             location = d.get("full_location") or d.get("location_name", "")
             desc_html = d.get("description", "")
@@ -872,7 +879,7 @@ def fetch_jibe(slug: str) -> list[dict]:
             posted = d.get("posted_date")
             job_url = f"{base_url}/careers-home/jobs/{req_id}"
             jobs.append({
-                "ats_job_id": str(req_id),
+                "ats_job_id": req_id,
                 "title": title,
                 "location": location,
                 "url": job_url,
@@ -880,9 +887,9 @@ def fetch_jibe(slug: str) -> list[dict]:
                 "description_text": desc[:8000],
                 "salary_range": extract_salary(desc_html),
             })
-        if len(batch) < limit:
+        if not new_in_batch or len(batch) < limit:
             break
-        offset += limit
+        page += 1
         time.sleep(0.3)
     return jobs
 
@@ -990,6 +997,49 @@ def fetch_eightfold(slug: str) -> list[dict]:
     return jobs
 
 
+# ── Atlassian custom endpoint ─────────────────────────────────────────────────
+def fetch_atlassian(slug: str) -> list[dict]:
+    """Atlassian's in-house careers listing API — returns all jobs in one call with
+    full descriptions. The slug is unused (endpoint is company-wide); kept for interface
+    consistency. Update employer_ats.slug to any non-empty string (e.g. 'atlassian')."""
+    r = requests.get(
+        "https://www.atlassian.com/endpoint/careers/listings",
+        headers=HEADERS, timeout=30,
+    )
+    r.raise_for_status()
+    all_jobs: list[dict] = r.json()
+    jobs: list[dict] = []
+    for j in all_jobs:
+        locs = j.get("locations") or []
+        us_loc = next(
+            (l for l in locs if "United States" in l or "Americas" in l.lower()),
+            None,
+        )
+        if not us_loc:
+            continue
+        # Normalise location: strip the verbose "City - United States - Full postal addr"
+        loc_clean = us_loc.split(" - ")[0].strip()
+        # Combine the three description fragments
+        desc_html = "\n\n".join(
+            j.get(k) or "" for k in ("overview", "responsibilities", "qualifications")
+        ).strip()
+        job_id = str(j["id"])
+        apply_url = j.get("applyUrl") or j["portalJobPost"]["portalUrl"]
+        portal_post = j.get("portalJobPost", {})
+        updated = (portal_post.get("updatedDate") or "")[:10] or None
+        jobs.append({
+            "ats_job_id": job_id,
+            "title": j.get("title", ""),
+            "location": loc_clean,
+            "url": apply_url,
+            "posted_at": updated,
+            "source_dept": j.get("category") or "",
+            "description_text": strip_html(desc_html)[:8000],
+            "salary_range": None,
+        })
+    return jobs
+
+
 FETCHERS = {
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
@@ -1002,6 +1052,7 @@ FETCHERS = {
     "amazon": fetch_amazon,
     "smartrecruiters": fetch_smartrecruiters,
     "jibe": fetch_jibe,
+    "atlassian": fetch_atlassian,
 }
 
 

@@ -56,11 +56,22 @@ export function normalizeCityState(
   const usDash = raw.match(/^US-([A-Z]{2})-(.+)$/i);
   if (usDash) return `${usDash[2].trim()}, ${usDash[1].toUpperCase()}`;
 
+  //   "US - Gaithersburg - MD" → "Gaithersburg, MD"
+  const usCityState = raw.match(/^US - (.+) - ([A-Z]{2})$/);
+  if (usCityState) return `${usCityState[1].trim()}, ${usCityState[2]}`;
+
   //   "California - San Francisco" / "Washington - Bellevue" → "City, ST"
+  //   "RI - Woonsocket" / "TX - Houston" → "Woonsocket, RI" (abbrev-first format)
   const stateDash = raw.match(/^([A-Za-z ]+?) - (.+)$/);
   if (stateDash) {
-    const abbrev = STATE_ABBREVS[stateDash[1].toLowerCase().trim()];
+    const left = stateDash[1].trim();
+    const abbrev = STATE_ABBREVS[left.toLowerCase()];
     if (abbrev) return `${stateDash[2].trim()}, ${abbrev}`;
+    // Left side is already a 2-letter state abbreviation (not "US")
+    if (/^[A-Z]{2}$/.test(left) && left !== "US") {
+      const city = stateDash[2].trim().replace(/\s*\(\d{5}(-\d{4})?\)$/, "");
+      return `${city}, ${left}`;
+    }
   }
 
   // Semicolon-separated multi-city strings (e.g. "Chicago, IL; San Francisco, CA") — take first only

@@ -51,6 +51,18 @@ export function normalizeCityState(
   const amz = raw.match(/^US,\s*([A-Z]{2}),\s*(.+)$/i);
   if (amz) return `${amz[2].trim()}, ${amz[1].toUpperCase()}`;
 
+  // Dash-separated US formats:
+  //   "US-CA-Menlo Park" → "Menlo Park, CA"
+  const usDash = raw.match(/^US-([A-Z]{2})-(.+)$/i);
+  if (usDash) return `${usDash[2].trim()}, ${usDash[1].toUpperCase()}`;
+
+  //   "California - San Francisco" / "Washington - Bellevue" → "City, ST"
+  const stateDash = raw.match(/^([A-Za-z ]+?) - (.+)$/);
+  if (stateDash) {
+    const abbrev = STATE_ABBREVS[stateDash[1].toLowerCase().trim()];
+    if (abbrev) return `${stateDash[2].trim()}, ${abbrev}`;
+  }
+
   // Semicolon-separated multi-city strings (e.g. "Chicago, IL; San Francisco, CA") — take first only
   let s = raw.split(";")[0].trim();
 

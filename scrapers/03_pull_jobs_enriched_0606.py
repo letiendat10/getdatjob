@@ -241,7 +241,11 @@ def list_gate(j: dict, cutoff: datetime) -> str:
     """Cheap pre-enrich gate. Returns 'keep' or a drop reason. Runs cheapest/most-available
     first. Freshness only fires when the LIST payload already carries a date; list-only-no-date
     ATSes arrive with posted_at=None and are deferred to the content gate after enrichment."""
-    if is_non_us_location(j.get("location") or ""):
+    loc = j.get("location") or ""
+    title = j.get("title") or ""
+    if is_non_us_location(loc) or (
+        re.match(r"^\d+ [Ll]ocation", loc) and is_non_us_location(title)
+    ):
         return "non_us"
     if is_non_sponsorable_title(j.get("title") or ""):
         return "occupation"
@@ -304,7 +308,10 @@ def fetch_workday_recent(slug: str) -> list[dict]:
         page_fresh = False
         for j in postings:
             loc = j.get("locationsText", "")
-            if is_non_us_location(loc):
+            title = j.get("title", "")
+            if is_non_us_location(loc) or (
+                re.match(r"^\d+ [Ll]ocation", loc) and is_non_us_location(title)
+            ):
                 continue
             posted = parse_workday_posted_on(j.get("postedOn"))   # coarse list date or None
             pdt = _parse_dt(posted)
@@ -313,7 +320,7 @@ def fetch_workday_recent(slug: str) -> list[dict]:
             path = j.get("externalPath", "")
             jobs.append({
                 "ats_job_id": path,
-                "title": j.get("title", ""),
+                "title": title,
                 "location": loc,
                 "url": f"{base_url}/{jobsite}{path}",
                 "posted_at": posted,

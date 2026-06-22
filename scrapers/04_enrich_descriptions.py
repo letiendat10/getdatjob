@@ -151,11 +151,61 @@ def detail_icims(slug: str, ats_job_id: str) -> tuple[str, str | None]:
     return f["description_html"], f["posted"]
 
 
+# ── Eightfold (PCSX) detail ───────────────────────────────────────────────────
+_ef_detail_domain_cache: dict[str, str | None] = {}
+
+
+def _eightfold_detail_domain(slug: str) -> str | None:
+    """Discover Eightfold's required 'domain' param; cached per slug for this process."""
+    if slug in _ef_detail_domain_cache:
+        return _ef_detail_domain_cache[slug]
+    # pj is the 03_pull_jobs module loaded at module scope; reuse its domain cache if available.
+    if hasattr(pj, "_get_eightfold_domain") and hasattr(pj, "_eightfold_base"):
+        domain = pj._get_eightfold_domain(pj._eightfold_base(slug))
+    else:
+        base = f"https://{slug}" if "." in slug else f"https://{slug}.eightfold.ai"
+        _browser_ua = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+        try:
+            resp = requests.get(f"{base}/careers", headers=_browser_ua, timeout=15,
+                                allow_redirects=True)
+            m = re.search(r'domain=([a-zA-Z0-9._-]+\.[a-zA-Z]{2,6})', resp.text)
+            domain = m.group(1) if m else None
+        except Exception:
+            domain = None
+    _ef_detail_domain_cache[slug] = domain
+    return domain
+
+
+def detail_eightfold(slug: str, ats_job_id: str) -> tuple[str, str | None]:
+    """Eightfold position detail — returns (jobDescription HTML, posted_at ISO date)."""
+    domain = _eightfold_detail_domain(slug)
+    if not domain:
+        return "", None
+    base = f"https://{slug}" if "." in slug else f"https://{slug}.eightfold.ai"
+    r = requests.get(
+        f"{base}/api/pcsx/position_details",
+        params={"position_id": ats_job_id, "domain": domain, "hl": "en"},
+        headers=HEADERS, timeout=20,
+    )
+    r.raise_for_status()
+    data = r.json().get("data") or {}
+    html = data.get("jobDescription") or ""
+    posted_ts = data.get("postedTs")
+    posted = (
+        datetime.fromtimestamp(posted_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+        if posted_ts else None
+    )
+    return html, posted
+
+
 DETAIL = {
     "workday": detail_workday,
     "smartrecruiters": detail_smartrecruiters,
     "icims": detail_icims,
+    "eightfold": detail_eightfold,
 }
+ENRICHABLE = ENRICHABLE + ("eightfold",)
 
 
 # ── slug cache (employer_id, ats) → slug ──────────────────────────────────────

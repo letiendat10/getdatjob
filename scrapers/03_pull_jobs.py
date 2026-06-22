@@ -887,11 +887,115 @@ def fetch_jibe(slug: str) -> list[dict]:
     return jobs
 
 
+# ── Eightfold (PCSX) ─────────────────────────────────────────────────────────
+# Hardcoded slug→domain map so we never need to hit the career page just to find the domain.
+# Eightfold's CDN rate-limits rapid sequential career-page hits. Extend this map when adding
+# new Eightfold employers rather than relying on the discovery fallback during a pull run.
+_EF_SLUG_DOMAIN: dict[str, str] = {
+    "citi": "citi.com",
+    "nttdata": "nttdata.com",
+    "eaton": "eaton.com",
+    "arcadis": "arcadis.com",
+    "ericsson": "ericsson.com",
+    "bayer": "bayer.com",
+    "netapp": "netapp.com",
+    "hsbc": "hsbc.com",
+    "gotinder": "gotinder.com",
+    "fluor": "fluor.com",
+    "mlp": "mlp.com",
+    "juniper": "juniper.net",
+    # Custom-domain slugs: slug already IS the base domain
+    "jobs.whirlpool.com": "whirlpool.com",
+}
+
+_ef_domain_cache: dict[str, str | None] = {}
+_BROWSER_UA_EF = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+
+
+def _eightfold_base(slug: str) -> str:
+    return f"https://{slug}" if "." in slug else f"https://{slug}.eightfold.ai"
+
+
+def _get_eightfold_domain(base_url: str) -> str | None:
+    """Return the Eightfold 'domain' query param for a given base URL.
+    Checks the hardcoded map first; discovers from the career page as a fallback."""
+    if base_url in _ef_domain_cache:
+        return _ef_domain_cache[base_url]
+    # Derive slug from base_url for map lookup
+    slug = base_url.replace("https://", "").replace(".eightfold.ai", "")
+    if slug in _EF_SLUG_DOMAIN:
+        domain: str | None = _EF_SLUG_DOMAIN[slug]
+        _ef_domain_cache[base_url] = domain
+        return domain
+    # Fallback: scrape the career page (one hit per unknown slug per run)
+    try:
+        resp = requests.get(f"{base_url}/careers", headers=_BROWSER_UA_EF, timeout=15,
+                            allow_redirects=True)
+        m = re.search(r'domain=([a-zA-Z0-9._-]+\.[a-zA-Z]{2,6})', resp.text)
+        domain = m.group(1) if m else None
+    except Exception:
+        domain = None
+    _ef_domain_cache[base_url] = domain
+    return domain
+
+
+def fetch_eightfold(slug: str) -> list[dict]:
+    """Eightfold PCSX career site — paginates /api/pcsx/search filtered to United States."""
+    base = _eightfold_base(slug)
+    domain = _get_eightfold_domain(base)
+    if not domain:
+        raise ValueError(f"eightfold domain not in map and not discoverable for slug={slug!r}")
+    jobs: list[dict] = []
+    start = 0
+    total: int | None = None
+    while True:
+        r = requests.get(
+            f"{base}/api/pcsx/search",
+            params={"domain": domain, "query": "", "location": "United States", "start": start},
+            headers=HEADERS, timeout=20,
+        )
+        r.raise_for_status()
+        data = (r.json().get("data") or {})
+        positions = data.get("positions") or []
+        if not positions:
+            break
+        if total is None:
+            total = data.get("count", 0)
+        for pos in positions:
+            job_id = str(pos["id"])
+            locs = pos.get("standardizedLocations") or pos.get("locations") or []
+            loc = locs[0] if locs else ""
+            if is_non_us_location(loc):
+                continue
+            posted_ts = pos.get("postedTs")
+            posted_at = (
+                datetime.fromtimestamp(posted_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+                if posted_ts else None
+            )
+            jobs.append({
+                "ats_job_id": job_id,
+                "title": pos.get("name", ""),
+                "location": loc,
+                "url": f"{base}/careers/job/{job_id}",
+                "posted_at": posted_at,
+                "source_dept": pos.get("department") or "",
+                "description_text": "",
+                "salary_range": None,
+            })
+        start += len(positions)
+        if total is not None and start >= total:
+            break
+        time.sleep(0.5)
+    return jobs
+
+
 FETCHERS = {
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
     "ashby": fetch_ashby,
     "workday": fetch_workday,
+    "eightfold": fetch_eightfold,
     "icims": fetch_icims,
     "workable": fetch_workable,
     "bamboohr": fetch_bamboohr,

@@ -8,6 +8,7 @@ import { MatchesPanel } from "./matches-panel";
 import { JobChips } from "@/app/components/JobChips";
 import { useChatScroll } from "@/lib/useChatScroll";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
+import { normalizeCityState } from "@/lib/location";
 // Shared preference-editor option lists — single source of truth (lib/filters.ts).
 import {
   VISA_PREF_OPTIONS as VISA_OPTIONS,
@@ -322,7 +323,7 @@ function JobCard({ job }: { job: Job }) {
           {posted && <span className="text-xs text-zinc-400 ml-2 flex-shrink-0">{posted}</span>}
         </div>
         <p className="text-xs text-zinc-500 mb-1.5 truncate">
-          {displayCompany}{job.location ? ` · ${job.location}` : ""}
+          {displayCompany}{job.location ? ` · ${normalizeCityState(job.location, job.is_remote) || job.location}` : ""}
         </p>
         <JobChips
           salary_range={job.salary_range}

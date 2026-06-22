@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { JobRow } from "@/lib/query-jobs";
 import { getTnCategory } from "@/lib/tn-eligible";
+import { normalizeCityState } from "@/lib/location";
 import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 // Shared filter option lists — single source of truth (see lib/filters.ts + lib/taxonomy.ts).
@@ -40,36 +41,6 @@ const US_STATE_ABBREVS = new Set([
 ]);
 const AMBIGUOUS_ABBREVS = new Set(["in","or","me","hi","de","la","pa","wa","ok","id","co","ga","va","ma","al","mo","ar","ms"]);
 
-function normalizeLocation(loc: string): string {
-  const l = loc?.toLowerCase().trim() ?? "";
-  if (!l || l === "united states" || l === "us" || l === "usa") return "United States";
-  if (l.includes("remote")) return "Remote";
-  if (l.includes("san francisco") || l.includes(" sf,") || l === "sf" ||
-      l.match(/,\s*(ca|california)\s*$/) || l === "ca" || l === "california" ||
-      l.includes("palo alto") || l.includes("menlo park") || l.includes("mountain view") ||
-      l.includes("sunnyvale") || l.includes("san jose") || l.includes("south san francisco") ||
-      l === "ca - hybrid") return "San Francisco Bay Area";
-  if (l.includes("new york") || l === "ny" || l === "nyc" || l.includes("brooklyn") || l.includes("manhattan"))
-    return "New York City";
-  if (l.includes("seattle") || l === "wa" || l === "washington") return "Seattle, WA";
-  if (l.includes("chicago") || l === "il" || l === "illinois") return "Chicago, IL";
-  if (l.includes("los angeles") || l.includes("santa monica") || l.includes("culver city")) return "Los Angeles, CA";
-  if (l.includes("austin") || l === "tx" || l === "texas") return "Austin, TX";
-  if (l.includes("boston") || l === "ma" || l === "massachusetts") return "Boston, MA";
-  if (l.includes("denver") || l === "co" || l === "colorado") return "Denver, CO";
-  if (l.includes("washington, dc") || l === "dc" || l.includes("arlington, va")) return "Washington, DC";
-  if (l.includes("atlanta") || l === "ga") return "Atlanta, GA";
-  if (l.includes("nashville") || l.includes("tennessee")) return "Nashville, TN";
-  if (l.includes("miami") || l.includes("florida") || l === "fl") return "Miami, FL";
-  if (l.includes("salt lake") || l === "utah") return "Salt Lake City, UT";
-  if (l === "az" || l.includes("phoenix") || l.includes("arizona") || l.includes("scottsdale") || l.includes("tempe")) return "Phoenix, AZ";
-  if (l === "va" || l.includes("mclean") || l.includes("reston")) return "Virginia";
-  if (l === "nm" || l.includes("new mexico") || l.includes("albuquerque")) return "New Mexico";
-  if (l.includes("portland") || l === "or" || l.includes("oregon")) return "Portland, OR";
-  if (l.includes("pittsburgh") || l.includes("philadelphia") || l === "pa" || l.includes("pennsylvania")) return "Pennsylvania";
-  if (l.includes("san diego")) return "San Diego, CA";
-  return loc.split(",")[0].trim();
-}
 
 const COMPANY_NAME_OVERRIDES: Record<string, string> = {
   // Misc
@@ -588,7 +559,7 @@ function JobDetailPanel({ job, descHtml, descText, descLoading, copied, isSaved,
 function toJobWithNorm(raw: JobRow): JobWithNorm {
   return {
     ...raw,
-    _normLoc: normalizeLocation(raw.location ?? ""),
+    _normLoc: normalizeCityState(raw.location, raw.is_remote),
     _normCompany: normalizeCompanyName(raw.company ?? ""),
   };
 }

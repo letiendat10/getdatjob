@@ -9,6 +9,7 @@ import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 import PaywallScreen from "@/app/components/PaywallScreen";
 import { levelFromTitle, levelLabel } from "@/lib/taxonomy";
+import { normalizeCityState } from "@/lib/location";
 import { useChatScroll } from "@/lib/useChatScroll";
 
 // Feature flag: "paywall" → Stripe gate after batch1 (FREE_DAILY_MATCHES shown)
@@ -437,7 +438,7 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
       {(job.location || posted) && (
         <div className="flex items-center gap-1 text-xs text-zinc-500 mb-2">
           <MapPin size={10} className="text-zinc-400 flex-shrink-0" />
-          <span>{[job.location, posted ? `Posted ${posted}` : null].filter(Boolean).join(" · ")}</span>
+          <span>{[normalizeCityState(job.location, job.is_remote) || job.location, posted ? `Posted ${posted}` : null].filter(Boolean).join(" · ")}</span>
         </div>
       )}
 
@@ -598,7 +599,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
           {job.location && (
             <div className="flex items-center gap-1.5 text-xs text-zinc-500 mb-3">
               <MapPin size={11} className="flex-shrink-0 text-zinc-400" />
-              <span>{job.location}</span>
+              <span>{normalizeCityState(job.location, job.is_remote) || job.location}</span>
             </div>
           )}
 

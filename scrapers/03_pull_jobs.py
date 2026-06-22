@@ -56,11 +56,13 @@ _NON_US_COUNTRY_RE = re.compile(
     # 3-letter ISO country codes appearing in location strings
     # NOTE: "ind" intentionally excluded — it falsely blocks Indiana/IND (Indianapolis airport code)
     # India is already fully covered by the "india" word above + Indian city names below
-    r"twn|jpn|kor|chn|isr|can|esp|"
+    # NOTE: "prc" added — abbreviation for People's Republic of China (e.g., "PRC, Chengdu")
+    r"twn|jpn|kor|chn|isr|can|esp|prc|"
     # 2-letter country codes appearing as standalone tokens (not US state abbrevs)
     r"ie|fr|jp|cn|"
     # Non-US cities — India
     r"bengaluru|bangalore|noida|gurugram|gurgaon|mumbai|kolkata|hyderabad|pune|chennai|"
+    r"bhubaneswar|jaipur|ahmedabad|kochi|nagpur|lucknow|chandigarh|mysuru|mysore|"
     # Non-US cities — Philippines
     r"manila|makati|pasig|alabang|taguig|"
     # Non-US cities — Malaysia
@@ -92,9 +94,11 @@ _NON_US_COUNTRY_RE = re.compile(
     # Non-US cities — South Korea
     r"seoul|"
     # Non-US cities — Israel
-    r"rehovot|tel aviv|"
+    r"rehovot|tel aviv|petah tikva|haifa|herzliya|netanya|beer sheva|rishon lezion|"
     # Non-US cities — China
-    r"shanghai|beijing|shenzhen|"
+    r"shanghai|beijing|shenzhen|chengdu|wuhan|guangzhou|chongqing|tianjin|nanjing|hangzhou|xian|"
+    # Non-US cities — Australia (country "australia" is in list; add major cities for bare-city matches)
+    r"sydney|melbourne|brisbane|perth|adelaide|canberra|"
     # Non-US cities — Indonesia
     r"jakarta|"
     # Non-US cities — Chile
@@ -113,6 +117,11 @@ _NON_US_COUNTRY_RE = re.compile(
     r"bangkok|"
     # Non-US cities — Colombia
     r"bogota|"
+    # Peru / Bermuda — added 2026-06-22 after Marriott leak
+    # NOTE: "lima" not added — Lima, OH (~38k pop) is a real US city
+    # "peru" falsely matches tiny Peru, IN/IL but H-1B employers there are ~zero
+    # "bermuda" falsely matches Bermuda Dunes, CA but location strings there include ZIP
+    r"peru|bermuda|"
     # Non-US cities — Saudi Arabia
     r"riyadh|king abdullah|"
     # Non-US cities — Egypt
@@ -566,12 +575,18 @@ def fetch_workday(slug: str) -> list[dict]:
 
         for j in postings:
             loc = j.get("locationsText", "")
-            if is_non_us_location(loc):
+            title = j.get("title", "")
+            # "N Locations" means Workday collapsed multiple sites into a count — the real
+            # locations are unknown at list time. Also screen the title, which often names
+            # the cities (e.g. "… (Hong Kong/Singapore)") when the job is multi-country.
+            if is_non_us_location(loc) or (
+                re.match(r"^\d+ [Ll]ocation", loc) and is_non_us_location(title)
+            ):
                 continue
             path = j.get("externalPath", "")
             jobs.append({
                 "ats_job_id": path,  # externalPath is unique per company
-                "title": j.get("title", ""),
+                "title": title,
                 "location": loc,
                 "url": f"{base_url}/{jobsite}{path}",
                 # The list API has no posting date. Left NULL here and filled with the
@@ -919,290 +934,3 @@ def score_job(
         return "verified", desc_flag, tc, lca_count
     return "friendly", desc_flag, tc, lca_count
 
-
-# ── Main ─────────────────────────────────────────────────────────────────────
-
-if __name__ == "__main__":
-    import argparse, sys
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--ats", nargs="+", help="Only run for these ATS types (e.g. greenhouse lever)")
-    parser.add_argument("--employer-ids", nargs="+", type=int, help="Only pull for these employer IDs")
-    args = parser.parse_args()
-
-    # Human title reviews (from /admin/review) win over keyword heuristics for
-    # department/job_level on every job pulled. See classify.merge_db_overrides.
-    from classify import merge_db_overrides
-    merge_db_overrides(
-        sb.table("title_reviews").select("title_norm,department,job_level").execute().data
-    )
-
-    ats_rows = sb.table("employer_ats").select("employer_id,ats_type,slug").execute().data
-    if args.ats:
-        ats_rows = [r for r in ats_rows if r["ats_type"] in args.ats]
-    if args.employer_ids:
-        ats_rows = [r for r in ats_rows if r["employer_id"] in args.employer_ids]
-    # Deduplicate by (ats_type, slug) — keep first employer_id only
-    seen_slugs: set[tuple] = set()
-    unique_rows = []
-    for r in ats_rows:
-        key = (r["ats_type"], r["slug"])
-        if key not in seen_slugs:
-            seen_slugs.add(key)
-            unique_rows.append(r)
-        else:
-            print(f"  SKIP duplicate slug {r['ats_type']}:{r['slug']} (employer_id={r['employer_id']})", flush=True)
-    ats_rows = unique_rows
-    # Pull Amazon last: its job volume is large enough to hit Supabase statement
-    # timeouts, so a mid-run crash there must not block every later employer.
-    ats_rows.sort(key=lambda r: r["ats_type"] == "amazon")
-    print(f"Pulling jobs for {len(ats_rows)} employer-ATS mappings …", flush=True)
-
-    # ── Concurrent enrichment — enrichment rides the pull (Tier 2) ─────────────────
-    # New list-only-ATS jobs (Workday/SmartRecruiters/iCIMS) arrive with no description.
-    # Rather than depend on a separate always-on worker (whose GitHub hourly cron never
-    # reliably fired), we enrich them HERE — concurrently, as each employer is pulled — by
-    # reusing enrich_one(). A job's salary/description/posted_at/tier is filled within
-    # minutes of being pulled, in this one reliable process. enrich.yml is a daily backstop.
-    _enr_spec = importlib.util.spec_from_file_location(
-        "enrich_descriptions",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "04_enrich_descriptions.py"),
-    )
-    _enr = importlib.util.module_from_spec(_enr_spec)
-    _enr_spec.loader.exec_module(_enr)
-    enrich_one = _enr.enrich_one
-    ENRICHABLE = set(_enr.ENRICHABLE)
-
-    _enrich_pool = ThreadPoolExecutor(max_workers=8)
-    _in_flight: set[int] = set()
-    _enrich_lock = threading.Lock()
-    _enrich_stats = {"enriched": 0, "salary": 0, "excluded": 0, "errors": 0}
-
-    def _submit_enrich(job: dict) -> None:
-        jid = job.get("id")
-        if jid is None:
-            return
-        with _enrich_lock:
-            if jid in _in_flight:
-                return
-            _in_flight.add(jid)
-
-        def _run() -> None:
-            try:
-                res = enrich_one(job)  # fetch detail → salary/desc/posted_at → rescore tier
-                if res.get("status") == "enriched":
-                    with _enrich_lock:
-                        _enrich_stats["enriched"] += 1
-                        if res.get("with_salary"):
-                            _enrich_stats["salary"] += 1
-                        if res.get("rescored") == "excluded":
-                            _enrich_stats["excluded"] += 1
-            except Exception as e:
-                with _enrich_lock:
-                    _enrich_stats["errors"] += 1
-                print(f"  enrich error job {jid} — {e}", flush=True)
-            finally:
-                with _enrich_lock:
-                    _in_flight.discard(jid)
-
-        _enrich_pool.submit(_run)
-
-    total_jobs = 0
-    for mapping in ats_rows:
-        emp_id = mapping["employer_id"]
-        ats = mapping["ats_type"]
-        slug = mapping["slug"]
-        fetcher = FETCHERS.get(ats)
-        if not fetcher:
-            continue
-
-        try:
-            raw_jobs = fetcher(slug)
-        except Exception as e:
-            print(f"  ERROR {ats}:{slug} — {e}", flush=True)
-            continue
-
-        # A transient PostgREST/httpx timeout on this one lookup must not abort the whole
-        # run. It previously did exactly that (run #13): the exception propagated out of the
-        # per-employer loop and killed every later employer plus the downstream steps.
-        # Degrade to "no LCA-title boost for this employer this run"; the next run re-scores.
-        try:
-            lca_titles, lca_counts = build_lca_index(sb, emp_id)
-        except Exception as e:
-            print(f"  ERROR lca_index emp={emp_id} — {e}", flush=True)
-            lca_titles, lca_counts = set(), {}
-
-        job_rows = []
-        signal_rows = []
-        for j in raw_jobs:
-            # Salary: prefer a fetcher-provided range (e.g. Greenhouse pay_input_ranges),
-            # otherwise parse the description. parse_salary derives both the display
-            # string and the numeric bounds used for the keep-unknowns salary filter.
-            range_str = j.get("salary_range")
-            sal = parse_salary(range_str) if range_str else parse_salary(j.get("description_text") or "")
-            job_rows.append({
-                "employer_id": emp_id,
-                "title": j["title"],
-                "location": j["location"],
-                "url": j["url"],
-                "posted_at": j["posted_at"],
-                "ats_source": ats,
-                "ats_job_id": j["ats_job_id"],
-                "description_text": j["description_text"],
-                "salary_range": range_str or (sal["display"] if sal else None),
-                "salary_min_num": sal["min_num"] if sal else None,
-                "salary_max_num": sal["max_num"] if sal else None,
-                "salary_period": sal["period"] if sal else None,
-                "department": classify_department(j["title"], j.get("source_dept")),
-                # Cached strong-title discipline (restamp COALESCEs it over the source_dept mapping).
-                "title_dept_strong": strong_title_department(j["title"]),
-                # Raw ATS department (source of truth). map_source_dept.run_batch() folds it
-                # into the unified jobs.department post-pull (rule -> LLM) and re-stamps.
-                "source_department": (j.get("source_dept") or None),
-                "job_level": classify_level(j["title"]),
-                "is_remote": detect_remote(j["title"], j["location"]),
-                "is_active": True,
-                "last_seen_at": datetime.now(timezone.utc).isoformat(),
-            })
-
-        if not job_rows:
-            continue
-
-        # Dedup within the batch by ats_job_id (e.g. Amazon returns same job across entities)
-        job_rows = list({r["ats_job_id"]: r for r in job_rows}.values())
-
-        # Upsert in chunks of 100. Small batches keep each statement under Supabase's
-        # statement timeout — 500-row batches of Amazon rows (large description_text +
-        # on-conflict index maintenance) were timing out.
-        for i in range(0, len(job_rows), 100):
-            # Drop empty description_text / null salary_range from the payload so the
-            # enrichment pass (04_enrich_descriptions.py) — which backfills these for
-            # list-only ATSes like Workday — isn't clobbered on every daily run.
-            # Rows in a chunk are homogeneous (one ATS), so PostgREST's column set
-            # stays consistent across the batch.
-            # Drop empty enrichment fields so the enrichment pass (04_enrich_descriptions.py),
-            # which backfills these for list-only ATSes (Workday/SmartRecruiters/iCIMS),
-            # isn't clobbered with NULLs on every daily run.
-            chunk = [
-                {k: v for k, v in r.items()
-                 if v or k not in ("description_text", "salary_range",
-                                   "salary_min_num", "salary_max_num", "salary_period",
-                                   "posted_at", "department", "source_department")}
-                for r in job_rows[i:i+100]
-            ]
-            try:
-                sb.table("jobs").upsert(chunk, on_conflict="ats_source,ats_job_id").execute()
-            except Exception as e:
-                print(f"  ERROR upsert {ats}:{slug} chunk {i//100 + 1} — {e}", flush=True)
-
-        # Mark jobs removed from ATS as inactive
-        try:
-            fresh_ids = {j["ats_job_id"] for j in raw_jobs}
-            active_result = (
-                sb.table("jobs")
-                .select("id,ats_job_id")
-                .eq("employer_id", emp_id)
-                .eq("ats_source", ats)
-                .eq("is_active", True)
-                .execute()
-            )
-            stale_ids = [
-                row["id"] for row in active_result.data
-                if row["ats_job_id"] not in fresh_ids
-            ]
-            if stale_ids:
-                sb.table("jobs").update({"is_active": False}).in_("id", stale_ids).execute()
-                print(f"  Marked {len(stale_ids)} jobs inactive for {slug} ({ats})", flush=True)
-        except Exception as e:
-            print(f"  ERROR stale-mark {ats}:{slug} — {e}", flush=True)
-
-        # Fetch IDs back for signal computation. Pull only id+ats_job_id (small);
-        # title/description_text are already in job_rows, so join locally instead of
-        # re-fetching the heavy description_text column for every job (Amazon's volume
-        # made that SELECT exceed Supabase's statement timeout).
-        try:
-            ids_result = (
-                sb.table("jobs")
-                .select("id,ats_job_id")
-                .eq("employer_id", emp_id)
-                .eq("ats_source", ats)
-                .execute()
-            )
-            rows_by_ats_id = {r["ats_job_id"]: r for r in job_rows}
-            for rec in ids_result.data:
-                row = rows_by_ats_id.get(rec["ats_job_id"])
-                if row is None:
-                    continue
-                tier, flag, tc, lca_count = score_job(
-                    row["title"], row["description_text"] or "", lca_titles, lca_counts
-                )
-                signal_rows.append({
-                    "job_id": rec["id"],
-                    "confidence_tier": tier,
-                    "no_sponsor_in_desc_flag": flag,
-                    "title_clean": tc,
-                    "title_employer_lca_count": lca_count,
-                })
-            if signal_rows:
-                sb.table("job_signals").upsert(signal_rows, on_conflict="job_id").execute()
-        except Exception as e:
-            print(f"  ERROR signals {ats}:{slug} — {e}", flush=True)
-
-        # Enrich this employer's new list-only jobs NOW, concurrently — so salary /
-        # description / posted_at / tier are filled within minutes, not left for a separate
-        # run. Submitted AFTER the per-employer job_signals upsert above, so enrich_one's
-        # rescore updates an existing signal (no race with the pull's signal write). The
-        # pull thread doesn't wait on these; the pool drains alongside the rest of the pull.
-        # Cooldown-aware (skip jobs whose enrich was attempted in the last 7d); PostgREST's
-        # 1000-row cap naturally bounds a huge new employer to 1000/run (rest next run).
-        if ats in ENRICHABLE:
-            try:
-                cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-                cands = (
-                    sb.table("jobs")
-                    .select("id,ats_source,ats_job_id,employer_id")
-                    .eq("employer_id", emp_id)
-                    .eq("ats_source", ats)
-                    .is_("description_text", "null")
-                    .or_(f"enrich_attempted_at.is.null,enrich_attempted_at.lt.{cutoff}")
-                    .execute()
-                    .data
-                )
-                for cand in cands:
-                    _submit_enrich(cand)
-            except Exception as e:
-                print(f"  ERROR enrich-queue {ats}:{slug} — {e}", flush=True)
-
-        total_jobs += len(job_rows)
-        print(f"  {ats}:{slug} → {len(job_rows)} jobs", flush=True)
-        time.sleep(1)
-
-    print(f"\nDone. {total_jobs} jobs synced.", flush=True)
-
-    # Join the enrichment tail: the pool has been draining each employer's new jobs
-    # throughout the pull; wait for the remainder so they're done before the run ends.
-    print(f"Draining enrichment pool ({len(_in_flight)} in flight) …", flush=True)
-    _enrich_pool.shutdown(wait=True)
-    print(
-        f"Enrichment done — {_enrich_stats['enriched']} enriched "
-        f"({_enrich_stats['salary']} w/ salary, {_enrich_stats['excluded']} excluded, "
-        f"{_enrich_stats['errors']} errors).",
-        flush=True,
-    )
-
-    # Update pre-aggregated counts so /api/jobs/meta reads instantly
-    three_days_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
-    total_res = sb.table("jobs").select("id", count="exact").eq("is_active", True).execute()
-    three_day_res = (
-        sb.table("jobs")
-        .select("id", count="exact")
-        .gte("scraped_at", three_days_ago)
-        .execute()
-    )
-    sb.table("job_stats").upsert({
-        "id": 1,
-        "total_count": total_res.count or 0,
-        "week_count": 0,
-        "three_day_count": three_day_res.count or 0,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).execute()
-    print(f"job_stats updated — total: {total_res.count}, 3-day: {three_day_res.count}", flush=True)

@@ -14,7 +14,6 @@ import { normalizeCityState } from "@/lib/location";
 import { DEPARTMENTS, departmentLabel, toStoredDepartments, toCanonicalLevel } from "@/lib/taxonomy";
 // Shared filter option lists — single source of truth (see lib/filters.ts + lib/taxonomy.ts).
 import {
-  LOCATION_FILTER_OPTIONS as LOCATION_OPTIONS,
   POSTED_FILTER_OPTIONS as POSTED_DATE_OPTIONS,
   SALARY_FILTER_OPTIONS as SALARY_OPTIONS,
   VISA_FILTER_OPTIONS as VISA_OPTIONS,
@@ -172,26 +171,32 @@ function prefToVisa(v: string | null): string {
 
 function prefToLocation(l: string | null): string {
   if (!l) return "all";
+  // Already a normalized "City, ST" value or known special — pass through directly.
+  if (l === "Remote" || l === "Multiple Locations" || l === "Nationwide") return l;
+  if (/^.+, [A-Z]{2}$/.test(l)) return l;
+  // Map legacy named-metro labels (stored before dynamic facets) to normalized values
+  // that exist in the new /api/location-facets list.
   const p = l.toLowerCase();
   if (p.includes("remote")) return "Remote";
-  if (p.includes("san francisco") || p.includes("bay area") || p.includes("silicon valley")) return "San Francisco Bay Area";
-  if (p.includes("new york") || p.includes("nyc") || p.includes("brooklyn") || p.includes("manhattan")) return "New York City";
+  if (p.includes("san francisco") || p.includes("bay area") || p.includes("silicon valley")) return "San Francisco, CA";
+  if (p.includes("new york") || p.includes("nyc") || p.includes("brooklyn") || p.includes("manhattan")) return "New York, NY";
   if (p.includes("seattle")) return "Seattle, WA";
   if (p.includes("chicago")) return "Chicago, IL";
   if (p.includes("los angeles") || p.includes("santa monica")) return "Los Angeles, CA";
   if (p.includes("austin")) return "Austin, TX";
   if (p.includes("boston")) return "Boston, MA";
   if (p.includes("denver")) return "Denver, CO";
-  if (p.includes("washington") && p.includes("dc")) return "Washington, DC";
+  if ((p.includes("washington") && p.includes("dc")) || p.includes("district of columbia")) return "Washington, DC";
   if (p.includes("atlanta")) return "Atlanta, GA";
-  if (p.includes("miami") || p.includes("florida")) return "Miami, FL";
+  if (p.includes("miami")) return "Miami, FL";
   if (p.includes("nashville")) return "Nashville, TN";
   if (p.includes("portland")) return "Portland, OR";
   if (p.includes("salt lake")) return "Salt Lake City, UT";
-  if (p.includes("phoenix") || p.includes("arizona")) return "Phoenix, AZ";
+  if (p.includes("phoenix") || p.includes("scottsdale")) return "Phoenix, AZ";
   if (p.includes("san diego")) return "San Diego, CA";
-  if (p.includes("virginia") || p.includes("mclean") || p.includes("reston")) return "Virginia";
-  if (p.includes("pennsylvania") || p.includes("pittsburgh") || p.includes("philadelphia")) return "Pennsylvania";
+  if (p.includes("pittsburgh")) return "Pittsburgh, PA";
+  if (p.includes("philadelphia")) return "Philadelphia, PA";
+  if (p.includes("northern virginia") || p.includes("mclean") || p.includes("reston") || p.includes("virginia")) return "Arlington, VA";
   return "all";
 }
 
@@ -487,6 +492,17 @@ export function MatchesPanel({ preferences, isUnlocked }: {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Dynamic location options — fetched from /api/location-facets (1h CDN cache).
+  const [locationOptions, setLocationOptions] = useState([{ label: "All locations", value: "all" }]);
+  useEffect(() => {
+    fetch("/api/location-facets")
+      .then(r => r.json())
+      .then((opts: { label: string; value: string }[]) =>
+        setLocationOptions([{ label: "All locations", value: "all" }, ...opts])
+      )
+      .catch(() => {});
+  }, []);
 
   // Meta (companies + headline stats)
   const [allCompanies, setAllCompanies] = useState<string[]>([]);
@@ -866,7 +882,7 @@ export function MatchesPanel({ preferences, isUnlocked }: {
           <FilterChip label="Department" value={department} options={departmentOptions} onChange={setDepartment} isOpen={openChip === "department"} onToggle={() => setOpenChip(openChip === "department" ? null : "department")} icon={FilterIconDepartment} />
           <FilterChip label="Experience" value={level} options={LEVEL_OPTIONS} onChange={setLevel} isOpen={openChip === "level"} onToggle={() => setOpenChip(openChip === "level" ? null : "level")} icon={FilterIconExperience} />
           <FilterChip label="Compensation" value={salary} options={SALARY_OPTIONS} onChange={setSalary} isOpen={openChip === "salary"} onToggle={() => setOpenChip(openChip === "salary" ? null : "salary")} icon={FilterIconCompensation} />
-          <FilterChip label="Location" value={location} options={LOCATION_OPTIONS} onChange={setLocation} isOpen={openChip === "location"} onToggle={() => setOpenChip(openChip === "location" ? null : "location")} icon={FilterIconLocation} />
+          <FilterChip label="Location" value={location} options={locationOptions} onChange={setLocation} isOpen={openChip === "location"} onToggle={() => setOpenChip(openChip === "location" ? null : "location")} icon={FilterIconLocation} />
           <FilterChip label="Posted past week" value={postedDate} options={POSTED_DATE_OPTIONS} onChange={setPostedDate} isOpen={openChip === "postedDate"} onToggle={() => setOpenChip(openChip === "postedDate" ? null : "postedDate")} icon={FilterIconPosted} />
           <FilterChip label="All jobs" value={viewFilter} options={VIEW_OPTIONS} onChange={setViewFilter} isOpen={openChip === "viewFilter"} onToggle={() => setOpenChip(openChip === "viewFilter" ? null : "viewFilter")} icon={FilterIconAll} />
           {hasActiveFilters && (

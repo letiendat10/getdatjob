@@ -15,7 +15,6 @@ import { JobChips } from "@/app/components/JobChips";
 import { CompanyAvatar } from "@/app/components/CompanyAvatar";
 // Shared filter option lists — single source of truth (see lib/filters.ts + lib/taxonomy.ts).
 import {
-  LOCATION_FILTER_OPTIONS as LOCATION_OPTIONS,
   POSTED_FILTER_OPTIONS as POSTED_DATE_OPTIONS,
   SALARY_FILTER_OPTIONS as SALARY_OPTIONS,
   VISA_FILTER_OPTIONS as VISA_OPTIONS,
@@ -598,6 +597,18 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
   const [loading, setLoading] = useState(!initialData);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // Dynamic location options — fetched from /api/location-facets which normalizes
+  // raw ATS location strings and groups by city. Starts with just the "All" default.
+  const [locationOptions, setLocationOptions] = useState([{ label: "All locations", value: "all" }]);
+  useEffect(() => {
+    fetch("/api/location-facets")
+      .then(r => r.json())
+      .then((opts: { label: string; value: string }[]) =>
+        setLocationOptions([{ label: "All locations", value: "all" }, ...opts])
+      )
+      .catch(() => {});
+  }, []);
+
   // Meta (company list for dropdown + hero stats)
   // P2: lazy-loaded — see loadMetaOnce() below. Fires on first filter-bar
   // interaction OR via requestIdleCallback after first paint, whichever wins.
@@ -1083,7 +1094,7 @@ function PageContent({ initialData }: { initialData?: { jobs: JobRow[]; total: n
             label="Location"
             value={location}
             defaultValue="all"
-            options={LOCATION_OPTIONS}
+            options={locationOptions}
             onChange={setLocation}
             isOpen={openChip === "location"}
             onToggle={() => setOpenChip(openChip === "location" ? null : "location")}

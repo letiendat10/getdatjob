@@ -48,7 +48,7 @@ if not os.environ.get("ANTHROPIC_API_KEY"):
                     break
 
 from config import SUPABASE_URL, SUPABASE_KEY, DATA_DIR, TOP_N_EMPLOYERS
-from title_utils import clean_title
+from title_utils import clean_title, company_token_key, is_mergeable_fein, fein_digits
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 client = anthropic.Anthropic()
@@ -268,8 +268,55 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
         # Fetch existing employers (with last_filing_date, domain, poc_email for recency check + null-preservation).
         # Paginated — an un-paginated select is capped at 10,000 rows and would misclassify
         # beyond-cap employers as new, bypassing the recency guard and clobbering their POC.
-        existing_rows = fetch_all_employers("id,name_clean,last_filing_date,company_domain_url,poc_email")
+        existing_rows = fetch_all_employers(
+            "id,name,name_clean,fein,lca_count,last_filing_date,company_domain_url,poc_email")
         existing_by_name = {e["name_clean"]: e for e in existing_rows}
+
+        # ── FEIN pre-pass (durable de-fragmentation) ──────────────────────────────
+        # The upsert key is name_clean, so a new spelling of an existing company would
+        # create a SECOND employer row sharing its FEIN and split its lca_count. Before
+        # upserting, route same-company spelling variants onto the existing canonical row
+        # for that FEIN. "Same company" is the CONSERVATIVE token-key test (see
+        # title_utils.company_token_key) gated by a real FEIN (is_mergeable_fein), so it
+        # never fuses umbrella-FEIN siblings (SUNY campuses, etc.) or placeholder FEINs.
+        existing_by_fein: dict[str, dict] = {}
+        for e in existing_rows:
+            if not is_mergeable_fein(e.get("fein")):
+                continue
+            d = fein_digits(e["fein"])
+            cur = existing_by_fein.get(d)
+            cand = ((e.get("lca_count") or 0), (e.get("last_filing_date") or ""), -e["id"])
+            if cur is None or cand > (
+                (cur.get("lca_count") or 0), (cur.get("last_filing_date") or ""), -cur["id"]
+            ):
+                existing_by_fein[d] = e  # max lca_count, then newest filing, then lowest id
+
+        remap: dict[str, tuple] = {}  # file name_clean -> (canonical_id, canonical_name_clean)
+        for _, r in counts.iterrows():
+            nc = r["name_clean"]
+            if nc in remap or not is_mergeable_fein(r.get("fein")):
+                continue
+            canon = existing_by_fein.get(fein_digits(r["fein"]))
+            if not canon or canon["name_clean"] == nc:
+                continue
+            k = company_token_key(nc)
+            if k and k == company_token_key(canon["name_clean"]):
+                remap[nc] = (canon["id"], canon["name_clean"])
+
+        if remap:
+            print(f"  FEIN pre-pass: {len(remap):,} spelling-variant(s) routed onto existing "
+                  f"canonical rows (no new duplicate employers).")
+            # Relabel variant rows to the canonical name_clean so the upsert UPDATES the
+            # canonical row (keeping its name/name_clean) instead of inserting a duplicate,
+            # then keep the freshest row per name_clean so the batched upsert has no
+            # duplicate conflict keys.
+            canon_name = {v[1]: existing_by_name[v[1]]["name"]
+                          for v in remap.values() if v[1] in existing_by_name}
+            counts["name_clean"] = counts["name_clean"].map(lambda x: remap[x][1] if x in remap else x)
+            counts["employer_name"] = counts.apply(
+                lambda r: canon_name.get(r["name_clean"], r["employer_name"]), axis=1)
+            counts = (counts.sort_values("last_filing_date", ascending=False)
+                            .drop_duplicates("name_clean", keep="first"))
 
         # Build batched upsert lists — avoids per-row HTTP calls that exhaust HTTP/2 streams
         new_count = updated_count = 0
@@ -326,8 +373,14 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
         sb.table("lca_filings").delete().gte("received_date", str(rcvd_min)).lte("received_date", str(rcvd_max)).execute()
 
         # Insert all filings (all employers, no cutoff), including received_date
-        subset = df[df["name_clean"].isin(set(employer_ids.keys()))].copy()
-        subset["employer_id"] = subset["name_clean"].map(employer_ids)
+        # Map filings to employer ids, routing same-company spelling variants to the
+        # canonical id (so their filings land on one row instead of fragmenting again).
+        def _eff_id(nc):
+            if nc in remap:
+                return remap[nc][0]
+            return employer_ids.get(nc)
+        subset = df[df["name_clean"].map(lambda nc: _eff_id(nc) is not None)].copy()
+        subset["employer_id"] = subset["name_clean"].map(_eff_id)
         filing_rows = [
             {
                 "employer_id":    int(r["employer_id"]),

@@ -50,10 +50,13 @@ if not os.environ.get("ANTHROPIC_API_KEY"):
                     break
 
 from config import SUPABASE_URL, SUPABASE_KEY, DATA_DIR, TOP_N_EMPLOYERS
-from title_utils import clean_title
+from title_utils import clean_title, company_token_key, is_mergeable_fein, fein_digits
 
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 client = anthropic.Anthropic()
+
+# --dry-run: run ALL in-memory logic (incl. the FEIN pre-pass) but skip every DB write.
+DRY_RUN = False
 
 HEADERS = {"User-Agent": "getdatjob-bot/1.0"}
 TIMEOUT = 8
@@ -277,8 +280,58 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
         # Fetch existing employers (with last_filing_date, domain, poc_email for recency check + null-preservation).
         # Paginated — an un-paginated select is capped at 10,000 rows and would misclassify
         # beyond-cap employers as new, bypassing the recency guard and clobbering their POC.
-        existing_rows = fetch_all_employers("id,name_clean,last_filing_date,company_domain_url,poc_email")
+        existing_rows = fetch_all_employers(
+            "id,name,name_clean,fein,lca_count,last_filing_date,company_domain_url,poc_email")
         existing_by_name = {e["name_clean"]: e for e in existing_rows}
+
+        # ── FEIN pre-pass (durable de-fragmentation) ──────────────────────────────
+        # The upsert key is name_clean, so a new spelling of an existing company would
+        # create a SECOND employer row sharing its FEIN and split its lca_count. Before
+        # upserting, route same-company spelling variants onto the existing canonical row
+        # for that FEIN. "Same company" is the CONSERVATIVE token-key test (see
+        # title_utils.company_token_key) gated by a real FEIN (is_mergeable_fein), so it
+        # never fuses umbrella-FEIN siblings (SUNY campuses, etc.) or placeholder FEINs.
+        existing_by_fein: dict[str, dict] = {}
+        for e in existing_rows:
+            if not is_mergeable_fein(e.get("fein")):
+                continue
+            d = fein_digits(e["fein"])
+            cur = existing_by_fein.get(d)
+            cand = ((e.get("lca_count") or 0), (e.get("last_filing_date") or ""), -e["id"])
+            if cur is None or cand > (
+                (cur.get("lca_count") or 0), (cur.get("last_filing_date") or ""), -cur["id"]
+            ):
+                existing_by_fein[d] = e  # max lca_count, then newest filing, then lowest id
+
+        remap: dict[str, tuple] = {}  # file name_clean -> (canonical_id, canonical_name_clean)
+        for _, r in counts.iterrows():
+            nc = r["name_clean"]
+            if nc in remap or not is_mergeable_fein(r.get("fein")):
+                continue
+            canon = existing_by_fein.get(fein_digits(r["fein"]))
+            if not canon or canon["name_clean"] == nc:
+                continue
+            k = company_token_key(nc)
+            if k and k == company_token_key(canon["name_clean"]):
+                remap[nc] = (canon["id"], canon["name_clean"])
+
+        if remap:
+            print(f"  FEIN pre-pass: {len(remap):,} spelling-variant(s) routed onto existing "
+                  f"canonical rows (no new duplicate employers).")
+            if DRY_RUN:
+                for _vnc, (_cid, _cnc) in list(remap.items())[:8]:
+                    print(f"      remap: {_vnc!r} -> id={_cid} ({_cnc!r})")
+            # Relabel variant rows to the canonical name_clean so the upsert UPDATES the
+            # canonical row (keeping its name/name_clean) instead of inserting a duplicate,
+            # then keep the freshest row per name_clean so the batched upsert has no
+            # duplicate conflict keys.
+            canon_name = {v[1]: existing_by_name[v[1]]["name"]
+                          for v in remap.values() if v[1] in existing_by_name}
+            counts["name_clean"] = counts["name_clean"].map(lambda x: remap[x][1] if x in remap else x)
+            counts["employer_name"] = counts.apply(
+                lambda r: canon_name.get(r["name_clean"], r["employer_name"]), axis=1)
+            counts = (counts.sort_values("last_filing_date", ascending=False)
+                            .drop_duplicates("name_clean", keep="first"))
 
         # Build batched upsert lists — avoids per-row HTTP calls that exhaust HTTP/2 streams
         new_count = updated_count = 0
@@ -322,21 +375,41 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
                 })
                 new_count += 1
 
-        print(f"  Upserting {len(rows_to_write):,} employer rows in batches of 500 …")
-        for i in range(0, len(rows_to_write), 500):
-            sb.table("employers").upsert(rows_to_write[i:i + 500], on_conflict="name_clean").execute()
-            print(f"    {min(i + 500, len(rows_to_write)):,}/{len(rows_to_write):,}")
+        # FEIN pre-pass safety: the batched upsert (on_conflict=name_clean) must not contain two
+        # rows with the same name_clean, or PostgREST rejects the batch. The relabel+dedup above
+        # is meant to guarantee this — assert it here so a regression is caught loudly.
+        from collections import Counter as _Counter
+        _nc_dupes = [n for n, c in _Counter(r["name_clean"] for r in rows_to_write).items() if c > 1]
+        if _nc_dupes:
+            print(f"  ⚠ {len(_nc_dupes)} duplicate name_clean in upsert batch (would FAIL): {_nc_dupes[:5]}")
+        if DRY_RUN:
+            print(f"  [DRY RUN] would upsert {len(rows_to_write):,} employer rows "
+                  f"(new={new_count:,}, updated={updated_count:,}); name_clean collisions={len(_nc_dupes)}")
+        else:
+            print(f"  Upserting {len(rows_to_write):,} employer rows in batches of 500 …")
+            for i in range(0, len(rows_to_write), 500):
+                sb.table("employers").upsert(rows_to_write[i:i + 500], on_conflict="name_clean").execute()
+                print(f"    {min(i + 500, len(rows_to_write)):,}/{len(rows_to_write):,}")
 
         # Fetch full employer ID map (paginated — see fetch_all_employers)
         employer_ids = {r["name_clean"]: r["id"] for r in fetch_all_employers("id,name_clean")}
 
         # Replace filings for this file's received_date range (idempotent re-run)
-        print(f"  Replacing lca_filings for received_date {rcvd_min} → {rcvd_max} …")
-        sb.table("lca_filings").delete().gte("received_date", str(rcvd_min)).lte("received_date", str(rcvd_max)).execute()
+        if DRY_RUN:
+            print(f"  [DRY RUN] would delete+replace lca_filings for received_date {rcvd_min} → {rcvd_max}")
+        else:
+            print(f"  Replacing lca_filings for received_date {rcvd_min} → {rcvd_max} …")
+            sb.table("lca_filings").delete().gte("received_date", str(rcvd_min)).lte("received_date", str(rcvd_max)).execute()
 
         # Insert all filings (all employers, no cutoff), including received_date
-        subset = df[df["name_clean"].isin(set(employer_ids.keys()))].copy()
-        subset["employer_id"] = subset["name_clean"].map(employer_ids)
+        # Map filings to employer ids, routing same-company spelling variants to the
+        # canonical id (so their filings land on one row instead of fragmenting again).
+        def _eff_id(nc):
+            if nc in remap:
+                return remap[nc][0]
+            return employer_ids.get(nc)
+        subset = df[df["name_clean"].map(lambda nc: _eff_id(nc) is not None)].copy()
+        subset["employer_id"] = subset["name_clean"].map(_eff_id)
         filing_rows = [
             {
                 "employer_id":    int(r["employer_id"]),
@@ -353,15 +426,24 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
             }
             for _, r in subset.iterrows()
         ]
-        print(f"  Inserting {len(filing_rows):,} lca_filings …")
-        for i in range(0, len(filing_rows), 500):
-            sb.table("lca_filings").insert(filing_rows[i:i + 500]).execute()
-            print(f"    {min(i + 500, len(filing_rows)):,}/{len(filing_rows):,}")
+        if DRY_RUN:
+            _via_remap = int(df["name_clean"].isin(set(remap.keys())).sum()) if remap else 0
+            print(f"  [DRY RUN] would insert {len(filing_rows):,} lca_filings "
+                  f"({_via_remap:,} file rows route via FEIN-remap to a canonical id). "
+                  f"NOTE: filings for brand-new employers are omitted here since no upsert ran.")
+        else:
+            print(f"  Inserting {len(filing_rows):,} lca_filings …")
+            for i in range(0, len(filing_rows), 500):
+                sb.table("lca_filings").insert(filing_rows[i:i + 500]).execute()
+                print(f"    {min(i + 500, len(filing_rows)):,}/{len(filing_rows):,}")
 
         # Recompute all lca_count / lca_fy* columns from lca_filings using RECEIVED_DATE
         # (SQL owns count logic — never computed manually in Python)
-        print("  Recomputing lca counts from received_date …")
-        sb.rpc("recompute_lca_counts", {}).execute()
+        if DRY_RUN:
+            print("  [DRY RUN] would call recompute_lca_counts()")
+        else:
+            print("  Recomputing lca counts from received_date …")
+            sb.rpc("recompute_lca_counts", {}).execute()
 
         total_res = sb.table("lca_filings").select("id", count="exact").execute()
         total_in_db = total_res.count or len(filing_rows)
@@ -507,7 +589,18 @@ def run_agent(xlsx_path: str) -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python scrapers/00_quarterly_intake.py <path_to_lca.xlsx>")
+    pos = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if len(pos) < 1:
+        print("Usage: python scrapers/00_quarterly_intake.py [--dry-run] <path_to_lca.xlsx>")
         sys.exit(1)
-    run_agent(sys.argv[1])
+    if "--dry-run" in sys.argv:
+        DRY_RUN = True
+        print("=== DRY RUN — no DB writes (validates the FEIN pre-pass on real data) ===\n")
+        result = run_lca_enrichment(pos[0])
+        print("\n=== dry-run result ===")
+        print(json.dumps({k: v for k, v in result.items() if k != "traceback"}, indent=2, default=str))
+        if "error" in result:
+            print("TRACEBACK:\n" + result.get("traceback", ""))
+            sys.exit(1)
+    else:
+        run_agent(pos[0])

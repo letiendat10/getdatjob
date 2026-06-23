@@ -114,6 +114,66 @@ def clean_title(title: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Employer-name normalization for FEIN de-duplication
+# Used by merge_fein_dupes.py and 00_quarterly_intake.py to decide whether two
+# employer rows that share a FEIN are the SAME company (formatting/spelling
+# variants) or DISTINCT entities filing under one umbrella FEIN (e.g. SUNY
+# campuses, CUNY colleges, NY State agencies). Equality of the token key is a
+# CONSERVATIVE same-company test — see company_token_key.
+# ---------------------------------------------------------------------------
+
+# Legal-entity suffixes / forms — noise for company identity.
+_LEGAL_TOKENS = frozenset({
+    "inc", "incorporated", "llc", "lc", "llp", "lp", "plc", "pllc", "pc",
+    "corp", "corporation", "co", "company", "ltd", "limited",
+    "gmbh", "sa", "ag", "nv", "bv", "spa", "srl", "kk", "pte", "pty",
+})
+# Connector / filler words — order-independent noise.
+_CONNECTOR_TOKENS = frozenset({"the", "of", "and", "for", "a", "an", "at", "to", "by"})
+
+# Known placeholder / test FEINs that group unrelated firms (digits only).
+_PLACEHOLDER_FEINS = frozenset({"123456789", "012345678", "123456780", "987654321"})
+
+
+def company_token_key(name: str) -> frozenset:
+    """Significant-word set identifying a company — order- and punctuation-independent.
+
+    "Shopify (USA) Inc."  -> {'shopify', 'usa'}
+    "Shopify USA Inc."     -> {'shopify', 'usa'}     (== -> same company)
+    "DISH Network, L.L.C." -> {'dish', 'network'}
+    "SUNY at Canton"       -> {'suny', 'canton'}     (!= "SUNY at Cobleskill" -> distinct campus)
+
+    Equality of two keys is a CONSERVATIVE same-company test: it merges pure
+    formatting / punctuation / legal-suffix variants, but treats any differing
+    significant token (a campus, a place, a number — or a typo) as a different
+    entity, so it never fuses umbrella-FEIN siblings. Typo variants therefore fall
+    to manual review rather than being auto-merged (the safe direction).
+    """
+    if not name:
+        return frozenset()
+    s = str(name).lower()
+    s = s.replace("&", " and ")
+    s = s.replace(".", "").replace("'", "").replace("’", "")  # l.l.c.->llc, macy's->macys
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    toks = [t for t in s.split()
+            if t and t not in _LEGAL_TOKENS and t not in _CONNECTOR_TOKENS]
+    return frozenset(toks)
+
+
+def fein_digits(fein) -> str:
+    """Digits-only FEIN string, or '' for a falsy value."""
+    return re.sub(r"\D", "", str(fein)) if fein else ""
+
+
+def is_mergeable_fein(fein) -> bool:
+    """True only for a plausibly-real FEIN that may drive a merge: exactly 9 digits,
+    not all the same digit, and not a known placeholder. Blank/garbage FEINs (NULL,
+    short, all-zeros, 123456789) must never group employers for merging."""
+    d = fein_digits(fein)
+    return len(d) == 9 and len(set(d)) > 1 and d not in _PLACEHOLDER_FEINS
+
+
+# ---------------------------------------------------------------------------
 # Auto-verification helper used by 07_title_review_sheet.py
 # ---------------------------------------------------------------------------
 

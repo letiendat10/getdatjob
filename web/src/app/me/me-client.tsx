@@ -14,7 +14,6 @@ import {
   LEVEL_PREF_OPTIONS as LEVEL_OPTIONS,
   SALARY_PREF_OPTIONS as SALARY_OPTIONS,
   POSTED_PREF_OPTIONS as POSTED_OPTIONS,
-  LOCATION_PREF_OPTIONS as LOCATION_PROFILE_OPTIONS,
   DEPARTMENT_PREF_OPTIONS as DEPT_OPTIONS,
 } from "@/lib/filters";
 import s from "./me.module.css";
@@ -768,6 +767,22 @@ function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut, onPrefs
   const [prefsSaved, setPrefsSaved] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Location options — dynamically fetched from /api/location-facets (1h CDN cache).
+  // Excludes filter-only values (Multiple Locations, Nationwide) since those aren't
+  // meaningful work-location preferences.
+  const [locationPrefOptions, setLocationPrefOptions] = useState([{ label: "Any location", value: "" }]);
+  useEffect(() => {
+    fetch("/api/location-facets")
+      .then(r => r.json())
+      .then((opts: { label: string; value: string }[]) =>
+        setLocationPrefOptions([
+          { label: "Any location", value: "" },
+          ...opts.filter(o => o.label !== "Multiple Locations" && o.label !== "Nationwide"),
+        ])
+      )
+      .catch(() => {});
+  }, []);
+
   // Department options follow the unified-vocabulary SoT (department_facets via /api/jobs/meta);
   // the canonical taxonomy is the fallback. New approved buckets appear here with no code change.
   const [deptOptions, setDeptOptions] = useState(DEPT_OPTIONS);
@@ -924,7 +939,7 @@ function AccountTab({ profile, alertPrefs: initialAlertPrefs, onSignOut, onPrefs
               <div className={s["pref-field"]}>
                 <label className={s["pref-label"]}>Location</label>
                 <select className={s["pref-select"]} value={prefs.location} onChange={e => updatePref("location", e.target.value)}>
-                  {LOCATION_PROFILE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {locationPrefOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div className={s["pref-field"]}>

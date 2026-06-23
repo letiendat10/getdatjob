@@ -5,28 +5,6 @@ export const PAGE_SIZE = 30;
 
 const POSTED_DAYS: Record<string, number> = { "1d": 1, "2d": 2, "3d": 3, "7d": 7, "30d": 30, "90d": 90 };
 
-const LOC_PATTERNS: Record<string, string[]> = {
-  "Remote":                  ["remote"],
-  "San Francisco Bay Area":  ["san francisco", "palo alto", "menlo park", "mountain view", "sunnyvale", "south san francisco", "redwood city", "bay area", "ca -", "california"],
-  "New York City":           ["new york", "brooklyn", "manhattan", "nyc"],
-  "Seattle, WA":             ["seattle", "washington"],
-  "Chicago, IL":             ["chicago", "illinois"],
-  "Los Angeles, CA":         ["los angeles", "santa monica", "culver city"],
-  "Austin, TX":              ["austin", "texas"],
-  "Boston, MA":              ["boston", "massachusetts"],
-  "Denver, CO":              ["denver", "colorado"],
-  "Washington, DC":          ["washington dc", "arlington va"],
-  "Atlanta, GA":             ["atlanta", "georgia"],
-  "Miami, FL":               ["miami", "florida"],
-  "Nashville, TN":           ["nashville", "tennessee"],
-  "Portland, OR":            ["portland", "oregon"],
-  "Salt Lake City, UT":      ["salt lake", "utah"],
-  "Phoenix, AZ":             ["phoenix", "scottsdale", "tempe", "arizona"],
-  "San Diego, CA":           ["san diego"],
-  "Northern Virginia":       ["mclean", "reston", "virginia"],
-  "Philadelphia, PA":        ["philadelphia", "pennsylvania"],
-  "Pittsburgh, PA":          ["pittsburgh"],
-};
 
 const VISA_PATTERNS: Record<string, string> = {
   "H1B": "H-1B",
@@ -119,8 +97,16 @@ export async function queryJobs(params: {
   }
 
   if (location !== "all") {
-    const patterns = LOC_PATTERNS[location];
-    if (patterns) dbq = dbq.or(patterns.map((p) => `location.ilike.%${p}%`).join(","));
+    if (location === "Remote") {
+      dbq = dbq.eq("is_remote", true);
+    } else if (location === "Multiple Locations") {
+      dbq = dbq.ilike("location", "% location%");
+    } else if (location === "Nationwide") {
+      dbq = dbq.in("location", ["United States", "United States of America", "USA", "US"]);
+    } else {
+      const city = location.split(",")[0].trim();
+      if (city) dbq = dbq.ilike("location", `%${city}%`);
+    }
   }
 
   // Filter on the stored canonical classification (classify.py → jobs.department /

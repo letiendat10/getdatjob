@@ -34,39 +34,12 @@ export type { FilterOption };
 export const LEVEL_PREF_OPTIONS: FilterOption[] = LEVELS.map((l) => ({ label: levelLabel(l), value: l }));
 export const DEPARTMENT_PREF_OPTIONS: FilterOption[] = DEPARTMENTS.map((d) => ({ label: departmentLabel(d), value: d }));
 
-// ── Locations (one canonical list; all metros in "City, ST" or named-region format) ──
-export const US_LOCATIONS = [
-  "Remote",
-  "San Francisco Bay Area",
-  "New York City",
-  "Seattle, WA",
-  "Chicago, IL",
-  "Los Angeles, CA",
-  "Austin, TX",
-  "Boston, MA",
-  "Denver, CO",
-  "Washington, DC",
-  "Atlanta, GA",
-  "Miami, FL",
-  "Nashville, TN",
-  "Portland, OR",
-  "Salt Lake City, UT",
-  "Phoenix, AZ",
-  "San Diego, CA",
-  "Northern Virginia",
-  "Philadelphia, PA",
-  "Pittsburgh, PA",
-] as const;
-
-export const LOCATION_FILTER_OPTIONS: FilterOption[] = [
-  { label: "All locations", value: "all" },
-  ...US_LOCATIONS.map((l) => ({ label: l, value: l })),
-];
-
-export const LOCATION_PREF_OPTIONS: FilterOption[] = [
-  { label: "Any location", value: "" },
-  ...US_LOCATIONS.map((l) => ({ label: l, value: l })),
-];
+// Location options are dynamically fetched from /api/location-facets, which
+// applies normalizeCityState() to aggregate actual job locations from the DB.
+// These stubs keep TypeScript imports valid; components fetch real options on mount.
+export const US_LOCATIONS: readonly string[] = [] as const;
+export const LOCATION_FILTER_OPTIONS: FilterOption[] = [{ label: "All locations", value: "all" }];
+export const LOCATION_PREF_OPTIONS: FilterOption[] = [{ label: "Any location", value: "" }];
 
 // ── Visa ──────────────────────────────────────────────────────────────────────
 // Filter bar: maps to lib/query-jobs.ts VISA_PATTERNS keys (H1B/E3/TN).

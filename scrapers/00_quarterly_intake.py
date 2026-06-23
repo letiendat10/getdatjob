@@ -53,6 +53,9 @@ from title_utils import clean_title, company_token_key, is_mergeable_fein, fein_
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 client = anthropic.Anthropic()
 
+# --dry-run: run ALL in-memory logic (incl. the FEIN pre-pass) but skip every DB write.
+DRY_RUN = False
+
 HEADERS = {"User-Agent": "getdatjob-bot/1.0"}
 TIMEOUT = 8
 
@@ -306,6 +309,9 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
         if remap:
             print(f"  FEIN pre-pass: {len(remap):,} spelling-variant(s) routed onto existing "
                   f"canonical rows (no new duplicate employers).")
+            if DRY_RUN:
+                for _vnc, (_cid, _cnc) in list(remap.items())[:8]:
+                    print(f"      remap: {_vnc!r} -> id={_cid} ({_cnc!r})")
             # Relabel variant rows to the canonical name_clean so the upsert UPDATES the
             # canonical row (keeping its name/name_clean) instead of inserting a duplicate,
             # then keep the freshest row per name_clean so the batched upsert has no
@@ -360,17 +366,31 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
                 })
                 new_count += 1
 
-        print(f"  Upserting {len(rows_to_write):,} employer rows in batches of 500 …")
-        for i in range(0, len(rows_to_write), 500):
-            sb.table("employers").upsert(rows_to_write[i:i + 500], on_conflict="name_clean").execute()
-            print(f"    {min(i + 500, len(rows_to_write)):,}/{len(rows_to_write):,}")
+        # FEIN pre-pass safety: the batched upsert (on_conflict=name_clean) must not contain two
+        # rows with the same name_clean, or PostgREST rejects the batch. The relabel+dedup above
+        # is meant to guarantee this — assert it here so a regression is caught loudly.
+        from collections import Counter as _Counter
+        _nc_dupes = [n for n, c in _Counter(r["name_clean"] for r in rows_to_write).items() if c > 1]
+        if _nc_dupes:
+            print(f"  ⚠ {len(_nc_dupes)} duplicate name_clean in upsert batch (would FAIL): {_nc_dupes[:5]}")
+        if DRY_RUN:
+            print(f"  [DRY RUN] would upsert {len(rows_to_write):,} employer rows "
+                  f"(new={new_count:,}, updated={updated_count:,}); name_clean collisions={len(_nc_dupes)}")
+        else:
+            print(f"  Upserting {len(rows_to_write):,} employer rows in batches of 500 …")
+            for i in range(0, len(rows_to_write), 500):
+                sb.table("employers").upsert(rows_to_write[i:i + 500], on_conflict="name_clean").execute()
+                print(f"    {min(i + 500, len(rows_to_write)):,}/{len(rows_to_write):,}")
 
         # Fetch full employer ID map (paginated — see fetch_all_employers)
         employer_ids = {r["name_clean"]: r["id"] for r in fetch_all_employers("id,name_clean")}
 
         # Replace filings for this file's received_date range (idempotent re-run)
-        print(f"  Replacing lca_filings for received_date {rcvd_min} → {rcvd_max} …")
-        sb.table("lca_filings").delete().gte("received_date", str(rcvd_min)).lte("received_date", str(rcvd_max)).execute()
+        if DRY_RUN:
+            print(f"  [DRY RUN] would delete+replace lca_filings for received_date {rcvd_min} → {rcvd_max}")
+        else:
+            print(f"  Replacing lca_filings for received_date {rcvd_min} → {rcvd_max} …")
+            sb.table("lca_filings").delete().gte("received_date", str(rcvd_min)).lte("received_date", str(rcvd_max)).execute()
 
         # Insert all filings (all employers, no cutoff), including received_date
         # Map filings to employer ids, routing same-company spelling variants to the
@@ -397,15 +417,24 @@ def run_lca_enrichment(xlsx_path: str) -> dict:
             }
             for _, r in subset.iterrows()
         ]
-        print(f"  Inserting {len(filing_rows):,} lca_filings …")
-        for i in range(0, len(filing_rows), 500):
-            sb.table("lca_filings").insert(filing_rows[i:i + 500]).execute()
-            print(f"    {min(i + 500, len(filing_rows)):,}/{len(filing_rows):,}")
+        if DRY_RUN:
+            _via_remap = int(df["name_clean"].isin(set(remap.keys())).sum()) if remap else 0
+            print(f"  [DRY RUN] would insert {len(filing_rows):,} lca_filings "
+                  f"({_via_remap:,} file rows route via FEIN-remap to a canonical id). "
+                  f"NOTE: filings for brand-new employers are omitted here since no upsert ran.")
+        else:
+            print(f"  Inserting {len(filing_rows):,} lca_filings …")
+            for i in range(0, len(filing_rows), 500):
+                sb.table("lca_filings").insert(filing_rows[i:i + 500]).execute()
+                print(f"    {min(i + 500, len(filing_rows)):,}/{len(filing_rows):,}")
 
         # Recompute all lca_count / lca_fy* columns from lca_filings using RECEIVED_DATE
         # (SQL owns count logic — never computed manually in Python)
-        print("  Recomputing lca counts from received_date …")
-        sb.rpc("recompute_lca_counts", {}).execute()
+        if DRY_RUN:
+            print("  [DRY RUN] would call recompute_lca_counts()")
+        else:
+            print("  Recomputing lca counts from received_date …")
+            sb.rpc("recompute_lca_counts", {}).execute()
 
         total_res = sb.table("lca_filings").select("id", count="exact").execute()
         total_in_db = total_res.count or len(filing_rows)
@@ -551,7 +580,18 @@ def run_agent(xlsx_path: str) -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python scrapers/00_quarterly_intake.py <path_to_lca.xlsx>")
+    pos = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if len(pos) < 1:
+        print("Usage: python scrapers/00_quarterly_intake.py [--dry-run] <path_to_lca.xlsx>")
         sys.exit(1)
-    run_agent(sys.argv[1])
+    if "--dry-run" in sys.argv:
+        DRY_RUN = True
+        print("=== DRY RUN — no DB writes (validates the FEIN pre-pass on real data) ===\n")
+        result = run_lca_enrichment(pos[0])
+        print("\n=== dry-run result ===")
+        print(json.dumps({k: v for k, v in result.items() if k != "traceback"}, indent=2, default=str))
+        if "error" in result:
+            print("TRACEBACK:\n" + result.get("traceback", ""))
+            sys.exit(1)
+    else:
+        run_agent(pos[0])

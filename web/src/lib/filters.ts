@@ -34,7 +34,7 @@ export type { FilterOption };
 export const LEVEL_PREF_OPTIONS: FilterOption[] = LEVELS.map((l) => ({ label: levelLabel(l), value: l }));
 export const DEPARTMENT_PREF_OPTIONS: FilterOption[] = DEPARTMENTS.map((d) => ({ label: departmentLabel(d), value: d }));
 
-// ── Locations (one canonical list; metros + a couple of states) ───────────────
+// ── Locations (one canonical list; all metros in "City, ST" or named-region format) ──
 export const US_LOCATIONS = [
   "Remote",
   "San Francisco Bay Area",
@@ -53,8 +53,9 @@ export const US_LOCATIONS = [
   "Salt Lake City, UT",
   "Phoenix, AZ",
   "San Diego, CA",
-  "Virginia",
-  "Pennsylvania",
+  "Northern Virginia",
+  "Philadelphia, PA",
+  "Pittsburgh, PA",
 ] as const;
 
 export const LOCATION_FILTER_OPTIONS: FilterOption[] = [

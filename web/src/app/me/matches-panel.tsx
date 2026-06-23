@@ -213,8 +213,9 @@ function prefToLocation(l: string | null): string {
   if (p.includes("salt lake")) return "Salt Lake City, UT";
   if (p.includes("phoenix") || p.includes("arizona")) return "Phoenix, AZ";
   if (p.includes("san diego")) return "San Diego, CA";
-  if (p.includes("virginia") || p.includes("mclean") || p.includes("reston")) return "Virginia";
-  if (p.includes("pennsylvania") || p.includes("pittsburgh") || p.includes("philadelphia")) return "Pennsylvania";
+  if (p.includes("virginia") || p.includes("mclean") || p.includes("reston")) return "Northern Virginia";
+  if (p.includes("pittsburgh")) return "Pittsburgh, PA";
+  if (p.includes("philadelphia") || p.includes("pennsylvania")) return "Philadelphia, PA";
   return "all";
 }
 

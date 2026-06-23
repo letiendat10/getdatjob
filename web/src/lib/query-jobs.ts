@@ -23,8 +23,9 @@ const LOC_PATTERNS: Record<string, string[]> = {
   "Salt Lake City, UT":      ["salt lake", "utah"],
   "Phoenix, AZ":             ["phoenix", "scottsdale", "tempe", "arizona"],
   "San Diego, CA":           ["san diego"],
-  "Virginia":                ["mclean", "reston", "virginia"],
-  "Pennsylvania":            ["pittsburgh", "philadelphia", "pennsylvania"],
+  "Northern Virginia":       ["mclean", "reston", "virginia"],
+  "Philadelphia, PA":        ["philadelphia", "pennsylvania"],
+  "Pittsburgh, PA":          ["pittsburgh"],
 };
 
 const VISA_PATTERNS: Record<string, string> = {

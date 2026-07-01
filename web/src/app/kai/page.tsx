@@ -397,7 +397,7 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
     setSaved(v => !v);
   }
 
-  const posted = timeAgo(job.effective_posted_at ?? job.posted_at);
+  const posted = timeAgo(job.posted_at);
   const displayCompany = normalizeCompanyName(job.company);
 
   return (
@@ -462,7 +462,7 @@ function JobDetailModal({ job, onClose }: { job: Job; onClose: () => void }) {
   const [descText, setDescText] = useState("");
   const [descLoading, setDescLoading] = useState(true);
   const displayCompany = normalizeCompanyName(job.company);
-  const posted = timeAgo(job.effective_posted_at ?? job.posted_at);
+  const posted = timeAgo(job.posted_at);
   const [apiSalary, setApiSalary] = useState<string | null>(null);
   const extractedSalary = useMemo(() => extractPostedSalary(descHtml || descText), [descHtml, descText]);
   const postedSalary = job.salary_range || apiSalary || extractedSalary;

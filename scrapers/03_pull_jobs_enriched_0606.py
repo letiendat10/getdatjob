@@ -314,6 +314,14 @@ def fetch_workday_recent(slug: str) -> list[dict]:
             ):
                 continue
             posted = parse_workday_posted_on(j.get("postedOn"))   # coarse list date or None
+            if posted is None and j.get("postedOn"):              # ISO-date fallback ("2026-04-22")
+                try:
+                    _d = datetime.fromisoformat(j["postedOn"])
+                    if _d.tzinfo is None:
+                        _d = _d.replace(tzinfo=timezone.utc)
+                    posted = _d.isoformat()
+                except (ValueError, AttributeError):
+                    pass
             pdt = _parse_dt(posted)
             if pdt is None or pdt >= cutoff:   # fresh OR unknown-date → keep scanning
                 page_fresh = True

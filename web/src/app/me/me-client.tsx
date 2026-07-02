@@ -304,7 +304,7 @@ function KaiText({ text, isStreaming }: { text: string; isStreaming?: boolean })
 }
 
 function JobCard({ job }: { job: Job }) {
-  const posted = timeAgo(job.effective_posted_at ?? job.posted_at);
+  const posted = timeAgo(job.posted_at);
   const displayCompany = normalizeCompanyName(job.company);
   return (
     <a

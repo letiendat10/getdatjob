@@ -348,6 +348,19 @@ def fetch_workday_recent(slug: str) -> list[dict]:
 FETCHERS["workday"] = fetch_workday_recent
 
 
+def fetch_successfactors_recent(slug: str) -> list[dict]:
+    """SuccessFactors list fetch with the window cutoff passed through — pj's fetcher
+    early-stops once a page is entirely older than the window (the /search/ list is
+    sorted referencedate desc). Keeps big re-dating tenants (Cintas ~2k jobs) inside
+    the per-employer SIGALRM budget; tenants without list dates (jobs.sap.com) never
+    look stale and do the full bounded crawl."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=WINDOW_DAYS)
+    return pj.fetch_successfactors(slug, cutoff=cutoff)
+
+
+FETCHERS["successfactors"] = fetch_successfactors_recent
+
+
 # ── Phase 1: focus-set driver ──────────────────────────────────────────────────────
 
 def _fetch_all_employers(min_lca: int) -> list[dict]:

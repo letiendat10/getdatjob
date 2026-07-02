@@ -243,9 +243,49 @@ def check_workable(slug: str) -> tuple[str | None, bool]:
         return None, False
 
 
+def check_successfactors(slug: str) -> tuple[str | None, bool]:
+    """slug must be the PUBLIC careers domain (e.g. careers.cintas.com), optionally with
+    a base path — the server-rendered RMK /search/ surface. SF company codes and
+    *.successfactors.com hosts are JS-only apply shells and must NOT be stored as slugs
+    (03.fetch_successfactors refuses them). Verifies by finding the RMK results marker;
+    returns the page <title> as the company-name signal for the fuzzy-match gate."""
+    host = (slug or "").strip("/").split("/")[0]
+    if not host or "." not in host or host.endswith("successfactors.com") \
+            or host.endswith("successfactors.eu"):
+        return None, False
+    ua = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+    try:
+        r = requests.get(f"https://{slug.strip('/')}/search/",
+                         params={"q": "", "startrow": 0},
+                         headers=ua, timeout=TIMEOUT, allow_redirects=True)
+        if r.status_code != 200:
+            return None, False
+        # The results marker is tag/entity-split in raw HTML ("Results <b>1</b>&nbsp;–…")
+        # — strip tags and normalize whitespace before matching. Tenants skin the
+        # phrasing: "Results 1 – 25 of N" | "Showing 1 to 25 of N Jobs" | "1 to 10 of
+        # N results" (keep in sync with 03_pull_jobs._SF_RESULTS_RE).
+        text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", r.text.replace("&nbsp;", " ")))
+        if not re.search(
+            r"(?:Results\s+[\d,]+\s*[–—-]\s*[\d,]+\s+of\s+[\d,]+"
+            r"|Showing\s+[\d,]+\s+to\s+[\d,]+\s+of\s+[\d,]+\s+Jobs"
+            r"|[\d,]+\s+to\s+[\d,]+\s+of\s+[\d,]+\s+results)",
+            text, re.I,
+        ):
+            return None, False
+        m = re.search(r"<title>(.*?)</title>", r.text, re.S | re.I)
+        title = re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+        # Page titles look like "Careers at Cintas" / "SAP Jobs" — strip boilerplate.
+        name = re.sub(r"^\s*(careers?|jobs?)\s+(at|with)\s+|\s*[-|–].*$|\s*(careers?|jobs?)\s*$",
+                      "", title, flags=re.I).strip()
+        return (name or None), True
+    except Exception:
+        return None, False
+
+
 def check_url_alive(url: str) -> bool:
     """Soft verification for ATSes without a clean JSON API (Workday, Oracle HCM,
-    Taleo, SuccessFactors, etc.). Just confirms the URL the SERP found is alive."""
+    Taleo, etc.). Just confirms the URL the SERP found is alive."""
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT, allow_redirects=True)
         return r.status_code < 400
@@ -261,12 +301,15 @@ SUPPORTED_CHECKERS = {
     "icims": check_icims,
     "bamboohr": check_bamboohr,
     "workable": check_workable,
+    # SF verifies against the public RMK /search/ surface — the slug this stores is the
+    # fetchable public careers domain, never the *.successfactors.com company code.
+    "successfactors": check_successfactors,
 }
 
 # ATSes where we soft-verify (URL alive + employer-name in page is too brittle to
 # rely on; we trust the SERP URL and let downstream pull/QA catch errors).
 SOFT_VERIFY_ATSES = {
-    "workday", "oracle_hcm", "taleo", "successfactors", "jobvite",
+    "workday", "oracle_hcm", "taleo", "jobvite",
     "phenom", "eightfold", "avature", "recruitee", "breezy",
     "teamtailor", "pinpoint", "jazzhr",
 }

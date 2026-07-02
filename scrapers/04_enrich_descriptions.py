@@ -94,8 +94,9 @@ def detail_smartrecruiters(slug: str, ats_job_id: str) -> tuple[str, str | None]
     return "\n\n".join(parts), None
 
 
-def _icims_jsonld(soup: BeautifulSoup) -> dict | None:
-    """First ld+json JobPosting object on an iCIMS detail page — clean structured data."""
+def _jsonld_jobposting(soup: BeautifulSoup) -> dict | None:
+    """First ld+json JobPosting object on a detail page — clean structured data.
+    Generic schema.org extraction; shared by the iCIMS and SuccessFactors detail fetchers."""
     for tag in soup.find_all("script", type="application/ld+json"):
         try:
             data = json.loads(tag.get_text())
@@ -130,7 +131,7 @@ def detail_icims_fields(slug: str, ats_job_id: str) -> dict:
     r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
-    jp = _icims_jsonld(soup)
+    jp = _jsonld_jobposting(soup)
     if jp:
         return {
             "title": (jp.get("title") or "").strip() or None,
@@ -199,13 +200,55 @@ def detail_eightfold(slug: str, ats_job_id: str) -> tuple[str, str | None]:
     return html, posted
 
 
+# ── SuccessFactors (RMK) detail ───────────────────────────────────────────────
+_SF_UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+          "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+
+
+def _sf_microdata_posted(soup: BeautifulSoup) -> str | None:
+    """RMK detail pages embed schema.org MICRODATA (not JSON-LD):
+    <meta itemprop="datePosted" content="Wed Jul 01 07:00:00 UTC 2026">."""
+    tag = soup.select_one("meta[itemprop='datePosted']")
+    raw = (tag.get("content") or "").strip() if tag else ""
+    if not raw:
+        return None
+    for fmt in ("%a %b %d %H:%M:%S UTC %Y", "%Y-%m-%d", "%b %d, %Y"):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return raw[:10] if re.match(r"\d{4}-\d{2}-\d{2}", raw) else None
+
+
+def detail_successfactors(slug: str, ats_job_id: str) -> tuple[str, str | None]:
+    """RMK detail page → (description HTML, posted ISO date).
+
+    Description comes from the itemprop='description' microdata node (RMK's standard;
+    JSON-LD tried first for tenants that add it); posted from the datePosted microdata.
+    slug = the employer's public careers host, optionally with a base path
+    (e.g. "careers.cintas.com", "careers.knorr-bremse.com/Bendix"); ats_job_id = the
+    root-absolute detail path stored by 03.fetch_successfactors (so the URL is just
+    host + path — the base path only matters for the /search/ list surface)."""
+    host = (slug or "").strip("/").split("/")[0]
+    r = requests.get(f"https://{host}{ats_job_id}", headers=_SF_UA, timeout=TIMEOUT)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+    posted = _sf_microdata_posted(soup)
+    jp = _jsonld_jobposting(soup)
+    if jp and jp.get("description"):
+        return jp["description"], (jp.get("datePosted") or "")[:10] or posted
+    node = soup.select_one("span[itemprop='description'], .jobdescription, .jobDisplay, .job")
+    return (str(node) if node else ""), posted
+
+
 DETAIL = {
     "workday": detail_workday,
     "smartrecruiters": detail_smartrecruiters,
     "icims": detail_icims,
     "eightfold": detail_eightfold,
+    "successfactors": detail_successfactors,
 }
-ENRICHABLE = ENRICHABLE + ("eightfold",)
+ENRICHABLE = ENRICHABLE + ("eightfold", "successfactors")
 
 
 # ── slug cache (employer_id, ats) → slug ──────────────────────────────────────

@@ -29,6 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import requests
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
@@ -1055,6 +1056,203 @@ def fetch_atlassian(slug: str) -> list[dict]:
     return jobs
 
 
+# ── SAP SuccessFactors (RMK career sites) ─────────────────────────────────────
+# RMK is CAPTCHA-wary under aggressive automated load — use a real browser UA and
+# a 1s/page delay (probes 2026-07-01 saw no blocking at this cadence).
+_SF_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+# Results-count marker — tenants skin the phrasing: "Results 1 – 25 of 1,037"
+# (classic table), "Showing 1 to 25 of 518 Jobs" (SMBC/Boehringer/NatGrid/Schaeffler),
+# "1 to 10 of 792 results" (Herc). Total = whichever named group matched.
+_SF_RESULTS_RE = re.compile(
+    r"(?:Results\s+[\d,]+\s*[–—-]\s*[\d,]+\s+of\s+(?P<t1>[\d,]+)"
+    r"|Showing\s+[\d,]+\s+to\s+[\d,]+\s+of\s+(?P<t2>[\d,]+)\s+Jobs"
+    r"|[\d,]+\s+to\s+[\d,]+\s+of\s+(?P<t3>[\d,]+)\s+results)",
+    re.I,
+)
+_SF_DATE_FORMATS = ("%b %d, %Y", "%b %d %Y", "%d %b %Y", "%m/%d/%Y", "%d.%m.%Y")
+_US_STATES = {
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID",
+    "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO",
+    "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA",
+    "PR", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+}
+# RMK URL slugs embed "-ST-ZIP" for US postings ("...-Quality-Laboratory-OH-44691/id/");
+# non-US slugs carry city + bare postal code ("...-Aftermarket%29-12940/id/").
+_SF_HREF_STATE_RE = re.compile(r"-([A-Z]{2})-\d{5}(?:-\d{4})?/")
+
+
+def _sf_parse_date(s: str) -> str | None:
+    s = (s or "").strip()
+    for fmt in _SF_DATE_FORMATS:
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def _sf_non_us(loc: str) -> bool:
+    """RMK locations are 'City, Region, CC, ZIP' — trust the explicit 2-letter country
+    token when present (the shared blocklist can't tell DE=Germany from DE=Delaware on
+    global tenants like SAP); fall back to the blocklist for tenants without one."""
+    parts = [p.strip() for p in (loc or "").split(",")]
+    if len(parts) >= 3 and re.fullmatch(r"[A-Z]{2}", parts[2]):
+        return parts[2] != "US"
+    return is_non_us_location(loc)
+
+
+def _sf_tile_fields(tile) -> dict:
+    """Tile skin renders labeled pairs: <span class="section-label">City</span><div>Jakarta</div>.
+    Labels vary per tenant (City | Location | Country/Region | Job Family | Date | ...)."""
+    out: dict = {}
+    for lab in tile.select("span.section-label"):
+        val = lab.find_next_sibling("div") or lab.find_next("div")
+        if val:
+            out.setdefault(lab.get_text(strip=True), val.get_text(" ", strip=True))
+    return out
+
+
+def _sf_tile_non_us(fields: dict, loc: str, path: str) -> bool:
+    """US gate for tile tenants, most-explicit signal first: Country/Region label →
+    location country/state tokens → the URL's '-ST-ZIP' tail. Global tile tenants
+    (Schaeffler) render bare city names ('Herzogenaurach') that the blocklist can't
+    catch, so a bare city with no US state-zip in the href is treated as non-US."""
+    country = (fields.get("Country/Region") or fields.get("Country") or "").strip().upper()
+    if country:
+        return country not in ("US", "USA", "UNITED STATES")
+    if _sf_non_us(loc):
+        return True
+    parts = [p.strip() for p in (loc or "").split(",")]
+    if len(parts) >= 2 and re.fullmatch(r"[A-Z]{2}", parts[1]):
+        return parts[1] not in _US_STATES  # "Waltham, MA" ok; "Herzogenaurach, BY" not
+    m = _SF_HREF_STATE_RE.search(path)
+    return not (m and m.group(1) in _US_STATES)
+
+
+def fetch_successfactors(slug: str, cutoff: datetime | None = None) -> list[dict]:
+    """SuccessFactors RMK career sites — server-rendered /search/ HTML, 25/page.
+
+    slug = the employer's PUBLIC careers host, optionally with a base path
+    (e.g. "careers.cintas.com", "jobs.sap.com", "careers.knorr-bremse.com/Bendix").
+    SF company codes and *.successfactors.com apply-backends are JS-only shells and
+    NOT fetchable — 12_resolve_sf_domains.py normalizes slugs to the public domain
+    before this fetcher sees them. Raises on a non-domain slug so the caller's
+    per-employer try/except degrades it to a skip.
+
+    cutoff (optional): the list is sorted referencedate desc, so once a page is
+    entirely older than cutoff we're past the fresh head and stop early (same
+    early-stop as 0606's fetch_workday_recent; tenants without list dates, e.g.
+    jobs.sap.com, never look stale and fall back to the full bounded crawl).
+    """
+    host = (slug or "").strip("/").split("/")[0]
+    if not host or "." not in host or host.endswith("successfactors.com") \
+            or host.endswith("successfactors.eu"):
+        raise ValueError(f"successfactors slug is not a public careers domain: {slug!r}")
+    base = f"https://{slug.strip('/')}"
+    jobs: list[dict] = []
+    seen: set[str] = set()
+    startrow = 0
+    total: int | None = None
+    seen_fresh, stale_streak = False, 0
+    MAX_PAGES = 200  # hard backstop (~5k jobs) against pagination-ignoring tenants
+    for _page in range(MAX_PAGES):
+        try:
+            r = requests.get(
+                f"{base}/search/",
+                params={"q": "", "sortColumn": "referencedate", "sortDirection": "desc",
+                        "startrow": startrow},
+                headers=_SF_HEADERS, timeout=20,
+            )
+            r.raise_for_status()
+        except Exception:
+            if jobs:
+                # Mid-crawl 408/abort (Boehringer rate-limits long crawls): partial is
+                # safe — upsert accumulates and cleanup is age-based, so keep the haul.
+                print(f"  [sf-partial] {slug}: page fetch failed at startrow={startrow}, "
+                      f"returning {len(jobs)} rows", flush=True)
+                break
+            raise
+        soup = BeautifulSoup(r.text, "html.parser")
+        if total is None:
+            m = _SF_RESULTS_RE.search(soup.get_text(" ", strip=True))
+            total = (int(next(g for g in m.groups() if g).replace(",", ""))
+                     if m else None)
+        # Two RMK skins: classic table (tr.data-row + .jobLocation/.jobDate spans) and
+        # tile (li.job-tile + labeled section pairs). Bare-anchor fallback for the rest.
+        rows = soup.select("tr.data-row")
+        tiles = [] if rows else soup.select("li.job-tile")
+        units = rows or tiles or soup.select("a.jobTitle-link") \
+            or soup.select("a[href*='/job/']")
+        new_this_page = 0
+        page_fresh = False
+        for unit in units:
+            a = unit if unit.name == "a" else (
+                unit.select_one("a.jobTitle-link") or unit.select_one("a[href*='/job/']"))
+            if a is None:
+                continue
+            href = a.get("href") or ""
+            if "/job/" not in href:
+                continue
+            full_url = urljoin(base + "/", href)
+            path = urlparse(full_url).path
+            if path in seen:
+                continue
+            seen.add(path)
+            new_this_page += 1  # progress = fresh rows fetched, kept or not
+            if tiles:
+                fields = _sf_tile_fields(unit)
+                loc = fields.get("Location") or fields.get("City") or ""
+                posted = _sf_parse_date(fields.get("Date") or fields.get("Posted Date") or "")
+                dept = (fields.get("Job Family") or fields.get("Department")
+                        or fields.get("Function") or "")
+                non_us = _sf_tile_non_us(fields, loc, path)
+            else:
+                row = unit if unit.name == "tr" else unit.find_parent("tr")
+                loc_el = row.select_one(".jobLocation") if row else None
+                date_el = row.select_one(".jobDate") if row else None
+                dept_el = row.select_one(".jobDepartment") if row else None
+                loc = loc_el.get_text(" ", strip=True) if loc_el else ""
+                posted = _sf_parse_date(date_el.get_text(strip=True)) if date_el else None
+                dept = dept_el.get_text(" ", strip=True) if dept_el else ""
+                non_us = _sf_non_us(loc)
+            if cutoff is not None:
+                pdt = (datetime.strptime(posted, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                       if posted else None)
+                if pdt is None or pdt >= cutoff:  # fresh OR unknown-date → keep scanning
+                    page_fresh = True
+            if non_us:
+                continue
+            jobs.append({
+                # detail path is unique per tenant (Workday externalPath pattern) and
+                # lets 04.detail_successfactors reconstruct the URL from slug + id
+                "ats_job_id": path,
+                "title": a.get_text(" ", strip=True),
+                "location": loc,
+                "url": full_url,
+                "posted_at": posted,
+                "source_dept": dept,
+                "description_text": "",  # detail enrichment fills
+                "salary_range": None,
+            })
+        # Stop: no fresh links (tenant ignored startrow / last page re-served),
+        # the reported total is reached, or (with cutoff) we're past the fresh head.
+        if new_this_page == 0:
+            break
+        if cutoff is not None:
+            if page_fresh:
+                seen_fresh, stale_streak = True, 0
+            else:
+                stale_streak += 1
+            if seen_fresh and stale_streak >= 2:  # past the newest-first fresh head
+                break
+        startrow += len(rows) if rows else (len(tiles) if tiles else new_this_page)
+        if total is not None and startrow >= total:
+            break
+        time.sleep(0.5)
+    return jobs
+
+
 FETCHERS = {
     "greenhouse": fetch_greenhouse,
     "lever": fetch_lever,
@@ -1068,6 +1266,7 @@ FETCHERS = {
     "smartrecruiters": fetch_smartrecruiters,
     "jibe": fetch_jibe,
     "atlassian": fetch_atlassian,
+    "successfactors": fetch_successfactors,
 }
 
 

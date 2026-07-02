@@ -719,9 +719,13 @@ def main():
         # a previous run already stored them, deactivate them — one batched call, not one per job.
         if dropped_ids:
             try:
-                (sb.table("jobs").update({"is_active": False})
-                   .eq("employer_id", emp_id).eq("ats_source", ats)
-                   .in_("ats_job_id", dropped_ids).execute())
+                # Chunk the id-list: SF/Workday ats_job_ids are long URL paths, and one
+                # big .in_() blows PostgREST's request-line limit (SAP's ~340 dropped
+                # ids returned 400 "JSON could not be generated" on the seed run).
+                for i in range(0, len(dropped_ids), 50):
+                    (sb.table("jobs").update({"is_active": False})
+                       .eq("employer_id", emp_id).eq("ats_source", ats)
+                       .in_("ats_job_id", dropped_ids[i:i + 50]).execute())
             except Exception as e:
                 print(f"  ERROR drop-deactivate {ats}:{slug} — {e}", flush=True)
 
